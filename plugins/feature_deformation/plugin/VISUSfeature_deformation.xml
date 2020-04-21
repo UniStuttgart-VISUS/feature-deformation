@@ -58,17 +58,17 @@
                     </PropertyWidgetDecorator>
                 </Hints>
             </IntVectorProperty>
-            <IntVectorProperty name="MaxNumIterations" label="Number of iterations" command="SetMaxNumIterations" number_of_elements="1" default_values="10">
+            <IntVectorProperty name="MaxNumIterations" label="Number of iterations" command="SetMaxNumIterations" number_of_elements="1" default_values="1000">
                 <Hints>
                     <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Method" value="1" />
                 </Hints>
             </IntVectorProperty>
-            <DoubleVectorProperty name="Lambda" label="Smoothing factor" command="SetLambda" number_of_elements="1" default_values="0.5">
+            <DoubleVectorProperty name="Lambda" label="Smoothing factor" command="SetLambda" number_of_elements="1" default_values="0.7">
                 <Hints>
                     <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Method" value="1" />
                 </Hints>
             </DoubleVectorProperty>
-            <DoubleVectorProperty name="Mu" label="Inflation factor" command="SetMu" number_of_elements="1" default_values="-0.7">
+            <DoubleVectorProperty name="Mu" label="Inflation factor" command="SetMu" number_of_elements="1" default_values="-0.75">
                 <Hints>
                     <PropertyWidgetDecorator type="CompositeDecorator">
                         <Expression type="and">
@@ -79,7 +79,7 @@
                 </Hints>
             </DoubleVectorProperty>
 
-            <IntVectorProperty name="Interpolator" label="Interpolator" command="SetInterpolator" number_of_elements="1" default_values="0">
+            <IntVectorProperty name="Interpolator" label="Interpolator" command="SetInterpolator" number_of_elements="1" default_values="1">
                 <EnumerationDomain name="enum">
                     <Entry value="0" text="Linear"/>
                     <Entry value="1" text="Exponential"/>
@@ -89,7 +89,7 @@
                 </Hints>
             </IntVectorProperty>
 
-            <IntVectorProperty name="Weight" command="SetWeight" label="Weight" number_of_elements="1" default_values="0">
+            <IntVectorProperty name="Weight" command="SetWeight" label="Weight" number_of_elements="1" default_values="4">
                 <EnumerationDomain name="enum">
                     <Entry value="0" text="Greedy"/>
                     <Entry value="5" text="Greedy Joints"/>
