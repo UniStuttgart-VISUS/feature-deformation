@@ -1,0 +1,243 @@
+<ServerManagerConfiguration>
+    <ProxyGroup name="filters">
+        <!--
+
+        Feature Deformation.
+
+        Deform a feature and its surrounding space.
+
+        -->
+        <SourceProxy name="Feature Deformation" class="feature_deformation" label="Feature Deformation">
+            <InputProperty name="Feature" command="SetInputConnection" port_index="1">
+                <ProxyGroupDomain name="groups">
+                    <Group name="sources"/>
+                    <Group name="filters"/>
+                </ProxyGroupDomain>
+            </InputProperty>
+            <InputProperty name="Grid" command="SetInputConnection" port_index="0">
+                <ProxyGroupDomain name="groups">
+                    <Group name="sources"/>
+                    <Group name="filters"/>
+                </ProxyGroupDomain>
+            </InputProperty>
+            <InputProperty name="Geometry" command="SetInputConnection" port_index="2">
+                <ProxyGroupDomain name="groups">
+                    <Group name="sources"/>
+                    <Group name="filters"/>
+                </ProxyGroupDomain>
+            </InputProperty>
+
+            <IntVectorProperty name="LineID" label="Line ID" command="SetLineID" number_of_elements="1" default_values="0">
+            </IntVectorProperty>
+            <StringVectorProperty name="SelectInputVectors" label="Vectors" command="SetInputArrayToProcess" number_of_elements="5" element_types="0 0 0 0 2" animateable="0">
+                <ArrayListDomain name="array_list" attribute_type="Vectors" input_domain_name="inputs_array">
+                    <RequiredProperties>
+                        <Property name="Grid" function="Input" />
+                    </RequiredProperties>
+                </ArrayListDomain>
+            </StringVectorProperty>
+
+            <IntVectorProperty name="Method" command="SetMethod" label="Method" number_of_elements="1" default_values="0">
+                <EnumerationDomain name="enum">
+                    <Entry value="0" text="Direct displacement"/>
+                    <Entry value="1" text="Iterative smoothing"/>
+                    <Entry value="2" text="Time-local (z-plane-wise)"/>
+                </EnumerationDomain>
+            </IntVectorProperty>
+            <IntVectorProperty name="Variant" label="Variant" command="SetVariant" number_of_elements="1" default_values="0">
+                <EnumerationDomain name="enum">
+                    <Entry value="0" text="Fix endpoints"/>
+                    <Entry value="1" text="Keep arc length"/>
+                </EnumerationDomain>
+                <Hints>
+                    <PropertyWidgetDecorator type="CompositeDecorator">
+                        <Expression type="or">
+                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Method" value="0" />
+                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Method" value="1" />
+                        </Expression>
+                    </PropertyWidgetDecorator>
+                </Hints>
+            </IntVectorProperty>
+            <IntVectorProperty name="MaxNumIterations" label="Number of iterations" command="SetMaxNumIterations" number_of_elements="1" default_values="10">
+                <Hints>
+                    <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Method" value="1" />
+                </Hints>
+            </IntVectorProperty>
+            <DoubleVectorProperty name="Lambda" label="Smoothing factor" command="SetLambda" number_of_elements="1" default_values="0.5">
+                <Hints>
+                    <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Method" value="1" />
+                </Hints>
+            </DoubleVectorProperty>
+            <DoubleVectorProperty name="Mu" label="Inflation factor" command="SetMu" number_of_elements="1" default_values="-0.7">
+                <Hints>
+                    <PropertyWidgetDecorator type="CompositeDecorator">
+                        <Expression type="and">
+                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Method" value="1" />
+                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Variant" value="1" />
+                        </Expression>
+                    </PropertyWidgetDecorator>
+                </Hints>
+            </DoubleVectorProperty>
+
+            <IntVectorProperty name="Interpolator" label="Interpolator" command="SetInterpolator" number_of_elements="1" default_values="0">
+                <EnumerationDomain name="enum">
+                    <Entry value="0" text="Linear"/>
+                    <Entry value="1" text="Exponential"/>
+                </EnumerationDomain>
+                <Hints>
+                    <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Method" value="1" />
+                </Hints>
+            </IntVectorProperty>
+
+            <IntVectorProperty name="Weight" command="SetWeight" label="Weight" number_of_elements="1" default_values="0">
+                <EnumerationDomain name="enum">
+                    <Entry value="0" text="Greedy"/>
+                    <Entry value="5" text="Greedy Joints"/>
+                    <Entry value="1" text="Voronoi"/>
+                    <Entry value="2" text="Projection"/>
+                    <Entry value="3" text="B-Spline"/>
+                    <Entry value="4" text="B-Spline Joints"/>
+                </EnumerationDomain>
+            </IntVectorProperty>
+            <DoubleVectorProperty name="EpsilonScalar" label="Inverse distance weighting exponent" command="SetEpsilonScalar" number_of_elements="1" default_values="5.0">
+                <Hints>
+                    <PropertyWidgetDecorator type="CompositeDecorator">
+                        <Expression type="or">
+                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Weight" value="0" />
+                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Weight" value="1" />
+                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Weight" value="5" />
+                        </Expression>
+                    </PropertyWidgetDecorator>
+                </Hints>
+            </DoubleVectorProperty>
+            <IntVectorProperty name="VoronoiDistance" label="Voronoi distance" command="SetVoronoiDistance" number_of_elements="1" default_values="1">
+                <Hints>
+                    <PropertyWidgetDecorator type="CompositeDecorator">
+                        <Expression type="or">
+                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Weight" value="0" />
+                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Weight" value="1" />
+                        </Expression>
+                    </PropertyWidgetDecorator>
+                </Hints>
+            </IntVectorProperty>
+            <IntVectorProperty name="SplineDegree" label="B-Spline degree" command="SetSplineDegree" number_of_elements="1" default_values="3">
+                <Hints>
+                    <PropertyWidgetDecorator type="CompositeDecorator">
+                        <Expression type="or">
+                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Weight" value="3" />
+                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Weight" value="4" />
+                        </Expression>
+                    </PropertyWidgetDecorator>
+                </Hints>
+            </IntVectorProperty>
+            <DoubleVectorProperty name="GaussParameter" label="Gauss kernel parameter" command="SetGaussParameter" number_of_elements="1" default_values="0.1">
+                <Hints>
+                    <PropertyWidgetDecorator type="CompositeDecorator">
+                        <Expression type="or">
+                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Weight" value="2" />
+                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Weight" value="3" />
+                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Weight" value="4" />
+                        </Expression>
+                    </PropertyWidgetDecorator>
+                </Hints>
+            </DoubleVectorProperty>
+            <IntVectorProperty name="Subdivisions" label="Number of subdivisions" command="SetSubdivisions" number_of_elements="1" default_values="10">
+                <Hints>
+                    <PropertyWidgetDecorator type="CompositeDecorator">
+                        <Expression type="or">
+                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Weight" value="3" />
+                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Weight" value="4" />
+                        </Expression>
+                    </PropertyWidgetDecorator>
+                </Hints>
+            </IntVectorProperty>
+
+            <IntVectorProperty name="OutputBSplineDistance" label="Output B-spline distance" command="SetOutputBSplineDistance" number_of_elements="1" default_values="0">
+                <BooleanDomain name="bool"/>
+            </IntVectorProperty>
+            <IntVectorProperty name="OutputDeformedGrid" label="Output deformed grid" command="SetOutputDeformedGrid" number_of_elements="1" default_values="0">
+                <BooleanDomain name="bool"/>
+            </IntVectorProperty>
+            <IntVectorProperty name="OutputVectorField" label="Output vector field" command="SetOutputVectorField" number_of_elements="1" default_values="0">
+                <BooleanDomain name="bool"/>
+                <Hints>
+                    <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="OutputDeformedGrid" value="1" />
+                </Hints>
+            </IntVectorProperty>
+            <IntVectorProperty name="OutputResampledGrid" label="Output resampled grid" command="SetOutputResampledGrid" number_of_elements="1" default_values="0">
+                <BooleanDomain name="bool"/>
+                <Hints>
+                    <PropertyWidgetDecorator type="CompositeDecorator">
+                        <Expression type="or">
+                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="OutputDeformedGrid" value="1" />
+                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="OutputVectorField" value="1" />
+                        </Expression>
+                    </PropertyWidgetDecorator>
+                </Hints>
+            </IntVectorProperty>
+            <IntVectorProperty name="RemoveCells" label="Remove elongated cells" command="SetRemoveCells" number_of_elements="1" default_values="0">
+                <BooleanDomain name="bool"/>
+                <Hints>
+                    <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="OutputDeformedGrid" value="1" />
+                </Hints>
+            </IntVectorProperty>
+            <DoubleVectorProperty name="RemoveCellsScalar" label="Scalar determining cell removal" command="SetRemoveCellsScalar" number_of_elements="1" default_values="2.0">
+                <Hints>
+                    <PropertyWidgetDecorator type="CompositeDecorator">
+                        <Expression type="and">
+                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="OutputDeformedGrid" value="1" />
+                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="RemoveCells" value="1" />
+                        </Expression>
+                    </PropertyWidgetDecorator>
+                </Hints>
+            </DoubleVectorProperty>
+
+            <DoubleVectorProperty information_only="1" name="TimestepValues" repeatable="1">
+                <TimeStepsInformationHelper />
+            </DoubleVectorProperty>
+
+            <PropertyGroup label="Smoothing">
+                <Property name="Method" />
+                <Property name="Variant" />
+                <Property name="MaxNumIterations" />
+                <Property name="Lambda" />
+                <Property name="Mu" />
+            </PropertyGroup>
+
+            <PropertyGroup label="Animation">
+                <Property name="Interpolator" />
+
+                <Hints>
+                    <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Method" value="1" />
+                </Hints>
+            </PropertyGroup>
+
+            <PropertyGroup label="Deformation">
+                <Property name="Weight" />
+                <Property name="EpsilonScalar" />
+                <Property name="VoronoiDistance" />
+                <Property name="SplineDegree" />
+                <Property name="GaussParameter" />
+                <Property name="Subdivisions" />
+            </PropertyGroup>
+
+            <PropertyGroup label="Output">
+                <Property name="OutputBSplineDistance" />
+                <Property name="OutputDeformedGrid" />
+                <Property name="OutputVectorField" />
+                <Property name="OutputResampledGrid" />
+                <Property name="RemoveCells" />
+                <Property name="RemoveCellsScalar" />
+            </PropertyGroup>
+
+            <OutputPort name="Deformed Lines" index="0" id="lines"/>
+            <OutputPort name="Deformed Geometry" index="1" id="geometry"/>
+            <OutputPort name="Deformed Grid" index="2" id="grid" />
+            <OutputPort name="Resampled Grid" index="3" id="resampled"/>
+
+            <Hints>
+                <ShowInMenu category="VISUS Feature Deformation"/>
+            </Hints>
+        </SourceProxy>
+    </ProxyGroup>
+</ServerManagerConfiguration>

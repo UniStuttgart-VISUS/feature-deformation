@@ -1,0 +1,30 @@
+cmake_minimum_required(VERSION 3.12)
+
+# Create VTK module
+set(sources
+  b-spline.h b-spline.cxx
+  displacement.h displacement.cu
+  hash.h
+  smoothing.h smoothing.cxx)
+
+pv_module(feature_deformation ${PROJECT_NAME} "${sources}" feature_deformation_target)
+
+# Find and link OpenMP
+find_package(OpenMP)
+
+if(OpenMP_CXX_FOUND)
+  target_link_libraries(${feature_deformation_target} PRIVATE OpenMP::OpenMP_CXX)
+endif()
+
+# Find and link Eigen
+find_package(Eigen3 REQUIRED NO_MODULE)
+
+if(NOT TARGET Eigen3::Eigen)
+  message(FATAL_ERROR "Target for eigen3 not found")
+endif()
+
+target_link_libraries(${feature_deformation_target} PUBLIC Eigen3::Eigen)
+
+# Configure CUDA
+set_target_properties(${feature_deformation_target} PROPERTIES CUDA_STANDARD 14)
+target_include_directories(${feature_deformation_target} PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
