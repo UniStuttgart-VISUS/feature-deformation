@@ -708,12 +708,11 @@ void displacement_kernel_projection(const float3* in_points, float3* out_points,
 * @param num_points             Number of points
 * @param num_displacements      Number of displacement vectors and positions
 * @param epsilon                Parameter for the Gauss kernel
-* @param iterations             Number of iterations to find the corresponding point on the B-spline
 * @param degree                 B-Spline degree
 */
 __global__
 void displacement_kernel_spline_handles(const float3* in_points, const float3* point_mapping, const float* arc_position_mapping,
-    float3* out_points, float4* infos, const int num_points, const int num_displacements, const float epsilon, const int iterations, const int degree)
+    float3* out_points, float4* infos, const int num_points, const int num_displacements, const float epsilon, const int degree)
 {
     __get_kernel__parameters__
 
@@ -753,12 +752,11 @@ void displacement_kernel_spline_handles(const float3* in_points, const float3* p
 * @param num_points             Number of points
 * @param num_displacements      Number of displacement vectors and positions
 * @param epsilon                Parameter for the Gauss kernel
-* @param iterations             Number of iterations to find the corresponding point on the B-spline
 * @param degree                 B-Spline degree
 */
 __global__
 void displacement_kernel_spline_joints(const float3* in_points, const float3* point_mapping, const float3* tangent_mapping, const float* arc_position_mapping,
-    float3* out_points, float4* infos, const int num_points, const int num_displacements, const float epsilon, const int iterations, const int degree)
+    float3* out_points, float4* infos, const int num_points, const int num_displacements, const float epsilon, const int degree)
 {
     __get_kernel__parameters__
 
@@ -1166,7 +1164,7 @@ void cuda::displacement::displace(const method_t method, const parameter_t param
         // Run computation
         displacement_kernel_spline_handles __kernel__parameters__(this->cuda_res_input_points, this->cuda_res_mapping_point,
             this->cuda_res_mapping_arc_position, this->cuda_res_output_points, this->cuda_res_info, static_cast<int>(this->points.size()),
-            static_cast<int>(positions.size()), parameters.b_spline.gauss_parameter, parameters.b_spline.iterations, parameters.b_spline.degree);
+            static_cast<int>(positions.size()), parameters.b_spline.gauss_parameter, parameters.b_spline.degree);
 
         // Destroy resources
         cudaDestroyTextureObject(cuda_tex_knot_vector);
@@ -1209,7 +1207,7 @@ void cuda::displacement::displace(const method_t method, const parameter_t param
 
         displacement_kernel_spline_joints __kernel__parameters__(this->cuda_res_input_points, this->cuda_res_mapping_point, this->cuda_res_mapping_tangent,
             this->cuda_res_mapping_arc_position, this->cuda_res_output_points, this->cuda_res_info, static_cast<int>(this->points.size()),
-            static_cast<int>(positions.size()), parameters.b_spline.gauss_parameter, parameters.b_spline.iterations, parameters.b_spline.degree);
+            static_cast<int>(positions.size()), parameters.b_spline.gauss_parameter, parameters.b_spline.degree);
 
         // Destroy resources
         cudaDestroyTextureObject(cuda_tex_first_derivative);

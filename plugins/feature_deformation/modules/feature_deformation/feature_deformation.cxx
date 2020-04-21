@@ -297,7 +297,7 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
             this->parameter_displacement.method == cuda::displacement::method_t::b_spline_joints))
         {
             const uint32_t precomputation_hash = hash(this->parameter_lines.selected_line_id, this->parameter_displacement.bspline_parameters.degree,
-                this->parameter_displacement.bspline_parameters.iterations, this->input_grid.hash, this->input_lines.hash);
+                this->parameter_displacement.bspline_parameters.iterations, this->input_grid.hash, this->input_lines.hash, this->results_grid_displacement.displacement.get());
 
             if (precomputation_hash != this->results_grid_displacement.hash)
             {
@@ -349,7 +349,7 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
             this->parameter_displacement.method == cuda::displacement::method_t::b_spline_joints))
         {
             const uint32_t precomputation_hash = hash(this->parameter_lines.selected_line_id, this->parameter_displacement.bspline_parameters.degree,
-                this->parameter_displacement.bspline_parameters.iterations, this->input_lines.hash);
+                this->parameter_displacement.bspline_parameters.iterations, this->input_lines.hash, this->results_line_displacement.displacement.get());
 
             if (precomputation_hash != this->results_line_displacement.hash)
             {
@@ -392,7 +392,7 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
             this->parameter_displacement.method == cuda::displacement::method_t::b_spline_joints))
         {
             const uint32_t precomputation_hash = hash(this->parameter_lines.selected_line_id, this->parameter_displacement.bspline_parameters.degree,
-                this->parameter_displacement.bspline_parameters.iterations, this->input_lines.hash, this->input_geometry.hash);
+                this->parameter_displacement.bspline_parameters.iterations, this->input_lines.hash, this->input_geometry.hash, this->results_geometry_displacement.displacement.get());
 
             if (precomputation_hash != this->results_geometry_displacement.hash)
             {
