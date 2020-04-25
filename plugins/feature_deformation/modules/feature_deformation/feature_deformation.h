@@ -9,6 +9,7 @@
 #include "vtkImageData.h"
 #include "vtkInformation.h"
 #include "vtkInformationVector.h"
+#include "vtkMultiBlockDataSet.h"
 #include "vtkPointSet.h"
 #include "vtkPolyData.h"
 #include "vtkSmartPointer.h"
@@ -111,6 +112,7 @@ private:
     void operator=(const feature_deformation&);
 
     struct cache_output_lines_t;
+    struct cache_output_geometry_t;
 
     /// Process parameters
     void cache_parameter_lines();
@@ -140,7 +142,10 @@ private:
     void set_output_deformed_grid(vtkPointSet* output_deformed_grid, const cuda::displacement& grid_displacement) const;
 
     void set_output_deformed_lines(vtkPolyData* input_lines, vtkPolyData* output_deformed_lines, const cuda::displacement& line_displacement,
-        bool modified, cache_output_lines_t& output_lines, const std::string& name) const;
+        bool modified, cache_output_lines_t& output_lines) const;
+
+    void set_output_deformed_geometry(const std::vector<vtkPointSet*>& input_geometry, vtkMultiBlockDataSet* output_deformed_geometry,
+        const cuda::displacement& geometry_displacement, bool modified, cache_output_geometry_t& output_geometry) const;
 
     /// Deform velocities using a displacement map
     void create_displacement_field(vtkPointSet* output_deformed_grid) const;
@@ -285,5 +290,11 @@ private:
     {
         vtkSmartPointer<vtkPolyData> data;
 
-    } output_lines, output_geometry;
+    } output_lines;
+
+    struct cache_output_geometry_t : public cache_t
+    {
+        vtkSmartPointer<vtkMultiBlockDataSet> data;
+
+    } output_geometry;
 };

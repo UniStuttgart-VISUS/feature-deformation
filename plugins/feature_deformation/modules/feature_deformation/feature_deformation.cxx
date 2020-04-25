@@ -8,13 +8,13 @@
 #include "vtkCell.h"
 #include "vtkCellArray.h"
 #include "vtkCellData.h"
+#include "vtkDataObjectTypes.h"
 #include "vtkDoubleArray.h"
 #include "vtkFloatArray.h"
 #include "vtkInformation.h"
 #include "vtkInformationVector.h"
 #include "vtkImageData.h"
 #include "vtkMultiBlockDataSet.h"
-#include "vtkObjectFactory.h"
 #include "vtkPointData.h"
 #include "vtkPointSet.h"
 #include "vtkPolyData.h"
@@ -107,7 +107,7 @@ int feature_deformation::ProcessRequest(vtkInformation* request, vtkInformationV
 int feature_deformation::RequestDataObject(vtkInformation*, vtkInformationVector**, vtkInformationVector* output_vector)
 {
     create_or_get_data_object<vtkPolyData>(0, this, output_vector);
-    create_or_get_data_object<vtkPolyData>(1, this, output_vector);
+    create_or_get_data_object<vtkMultiBlockDataSet>(1, this, output_vector);
     create_or_get_data_object<vtkMultiBlockDataSet>(2, this, output_vector);
     create_or_get_data_object<vtkImageData>(3, this, output_vector);
 
@@ -118,22 +118,14 @@ int feature_deformation::RequestInformation(vtkInformation*, vtkInformationVecto
 {
     // If iterative smoothing is selected, create time step values based on animation parameters
     std::array<double, 2> time_range;
-    std::vector<double> time_steps;
 
     if (this->Method == 1)
     {
         time_range = { 0.0, 1.0 };
-        time_steps.resize(this->MaxNumIterations);
-
-        for (std::size_t i = 0; i < time_steps.size(); ++i)
-        {
-            time_steps[i] = i * (1.0 / (this->MaxNumIterations - 1));
-        }
     }
     else
     {
         time_range = { 0.0, 0.0 };
-        time_steps = { 0.0 };
     }
 
     output_vector->GetInformationObject(0)->Set(vtkStreamingDemandDrivenPipeline::TIME_RANGE(), time_range.data(), 2);
@@ -159,7 +151,8 @@ int feature_deformation::FillInputPortInformation(int port, vtkInformation* info
     }
     else if (port == 2)
     {
-        info->Set(vtkAlgorithm::INPUT_REQUIRED_DATA_TYPE(), "vtkPolyData");
+        info->Set(vtkAlgorithm::INPUT_REQUIRED_DATA_TYPE(), "vtkPointSet");
+        info->Set(vtkAlgorithm::INPUT_IS_REPEATABLE(), 1);
         info->Set(vtkAlgorithm::INPUT_IS_OPTIONAL(), 1);
         return 1;
     }
@@ -176,7 +169,7 @@ int feature_deformation::FillOutputPortInformation(int port, vtkInformation* inf
     }
     else if (port == 1)
     {
-        info->Set(vtkDataObject::DATA_TYPE_NAME(), "vtkPolyData");
+        info->Set(vtkDataObject::DATA_TYPE_NAME(), "vtkMultiBlockDataSet");
         return 1;
     }
     else if (port == 2)
@@ -482,7 +475,7 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
         auto output_deformed_lines = vtkPolyData::SafeDownCast(out_deformed_lines_info->Get(vtkDataObject::DATA_OBJECT()));
 
         set_output_deformed_lines(vtkPolyData::SafeDownCast(input_vector[1]->GetInformationObject(0)->Get(vtkDataObject::DATA_OBJECT())), 
-            output_deformed_lines, *this->results_line_displacement.displacement, this->input_lines.modified, this->output_lines, "lines");
+            output_deformed_lines, *this->results_line_displacement.displacement, this->input_lines.modified, this->output_lines);
 
         out_deformed_lines_info->Set(vtkDataObject::DATA_TIME_STEP(), time);
         this->Modified();
@@ -496,10 +489,22 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
     if (this->results_geometry_displacement.valid && this->results_geometry_displacement.modified)
     {
         auto out_deformed_geometry_info = output_vector->GetInformationObject(1);
-        auto output_deformed_geometry = vtkPolyData::SafeDownCast(out_deformed_geometry_info->Get(vtkDataObject::DATA_OBJECT()));
+        auto output_deformed_geometry = vtkMultiBlockDataSet::SafeDownCast(out_deformed_geometry_info->Get(vtkDataObject::DATA_OBJECT()));
 
-        set_output_deformed_lines(vtkPolyData::SafeDownCast(input_vector[2]->GetInformationObject(0)->Get(vtkDataObject::DATA_OBJECT())),
-            output_deformed_geometry, *this->results_geometry_displacement.displacement, this->input_geometry.modified, this->output_geometry, "geometry");
+        std::vector<vtkPointSet*> input_datasets(input_vector[2]->GetNumberOfInformationObjects());
+
+        for (int input_index = 0; input_index < input_vector[2]->GetNumberOfInformationObjects(); ++input_index)
+        {
+            input_datasets[input_index] = vtkPointSet::SafeDownCast(input_vector[2]->GetInformationObject(input_index)->Get(vtkDataObject::DATA_OBJECT()));
+        }
+
+        set_output_deformed_geometry(input_datasets, output_deformed_geometry,
+            *this->results_geometry_displacement.displacement, this->input_geometry.modified, this->output_geometry);
+
+        for (unsigned int block_index = 0; block_index < output_deformed_geometry->GetNumberOfBlocks(); ++block_index)
+        {
+            output_deformed_geometry->GetBlock(block_index)->GetInformation()->Set(vtkDataObject::DATA_TIME_STEP(), time);
+        }
 
         out_deformed_geometry_info->Set(vtkDataObject::DATA_TIME_STEP(), time);
         this->Modified();
@@ -844,6 +849,7 @@ void feature_deformation::cache_input_lines(vtkInformationVector* input_lines_ve
                 {
                     this->input_lines.selected_line.resize(point_list->GetNumberOfIds());
 
+                    #pragma omp parallel for
                     for (vtkIdType point_index = 0; point_index < point_list->GetNumberOfIds(); ++point_index)
                     {
                         std::array<double, 3> point;
@@ -879,31 +885,53 @@ void feature_deformation::cache_input_geometry(vtkInformationVector* input_geome
 {
     if (input_geometry_vector != nullptr && input_geometry_vector->GetInformationObject(0) != nullptr)
     {
-        // Get geometry
-        auto vtk_input_geometry = vtkPolyData::SafeDownCast(input_geometry_vector->GetInformationObject(0)->Get(vtkDataObject::DATA_OBJECT()));
+        // Calculate hash
+        uint32_t new_hash = input_geometry_vector->GetNumberOfInformationObjects();
 
-        if (vtk_input_geometry != nullptr)
+        vtkIdType num_points = 0;
+
+        this->input_geometry.valid = true;
+
+        for (int input_index = 0; input_index < input_geometry_vector->GetNumberOfInformationObjects(); ++input_index)
         {
-            // Calculate hash
-            std::array<double, 6> bounds;
-            vtk_input_geometry->GetBounds(bounds.data());
+            auto vtk_input_geometry = vtkPointSet::SafeDownCast(input_geometry_vector->GetInformationObject(input_index)->Get(vtkDataObject::DATA_OBJECT()));
 
-            const auto new_hash = hash(vtk_input_geometry->GetNumberOfCells(), vtk_input_geometry->GetNumberOfPoints(),
-                bounds[0], bounds[1], bounds[2], bounds[3], bounds[4], bounds[5]);
-
-            if (this->input_geometry.hash != new_hash)
+            if (vtk_input_geometry != nullptr)
             {
-                std::cout << "Loading input geometry" << std::endl;
+                std::array<double, 6> bounds;
+                vtk_input_geometry->GetBounds(bounds.data());
 
-                // Input has been modified
-                this->input_geometry.hash = new_hash;
-                this->input_geometry.modified = true;
+                new_hash = hash(new_hash, vtk_input_geometry->GetNumberOfCells(), vtk_input_geometry->GetNumberOfPoints(),
+                    bounds[0], bounds[1], bounds[2], bounds[3], bounds[4], bounds[5]);
 
-                // Input is now valid
-                this->input_geometry.valid = true;
+                num_points += vtk_input_geometry->GetNumberOfPoints();
+            }
+            else
+            {
+                std::cerr << "Invalid geometry" << std::endl;
+
+                this->input_geometry.valid = false;
+            }
+        }
+
+        // Load geometry
+        this->input_geometry.geometry.resize(num_points);
+
+        std::size_t point_index = 0;
+
+        if (this->input_geometry.hash != new_hash && this->input_geometry.valid)
+        {
+            std::cout << "Loading input geometry" << (input_geometry_vector->GetNumberOfInformationObjects() > 1 ? "..." : "") << std::endl;
+
+            for (int input_index = 0; input_index < input_geometry_vector->GetNumberOfInformationObjects(); ++input_index)
+            {
+                if (input_geometry_vector->GetNumberOfInformationObjects() > 1)
+                {
+                    std::cout << "  input " << input_index << std::endl;
+                }
 
                 // Get geometry
-                this->input_geometry.geometry.resize(vtk_input_geometry->GetNumberOfPoints());
+                auto vtk_input_geometry = vtkPointSet::SafeDownCast(input_geometry_vector->GetInformationObject(input_index)->Get(vtkDataObject::DATA_OBJECT()));
 
                 #pragma omp parallel for
                 for (vtkIdType p = 0; p < vtk_input_geometry->GetNumberOfPoints(); ++p)
@@ -911,17 +939,19 @@ void feature_deformation::cache_input_geometry(vtkInformationVector* input_geome
                     std::array<double, 3> point;
                     vtk_input_geometry->GetPoints()->GetPoint(p, point.data());
 
-                    this->input_geometry.geometry[p] = { static_cast<float>(point[0]), static_cast<float>(point[1]), static_cast<float>(point[2]) };
+                    this->input_geometry.geometry[point_index + p] = { static_cast<float>(point[0]), static_cast<float>(point[1]), static_cast<float>(point[2]) };
                 }
+
+                point_index += vtk_input_geometry->GetNumberOfPoints();
             }
-            else
-            {
-                std::cout << "Loading input geometry from cache" << std::endl;
-            }
+
+            // Input has been modified
+            this->input_geometry.hash = new_hash;
+            this->input_geometry.modified = true;
         }
-        else
+        else if (this->input_geometry.valid)
         {
-            this->input_geometry.valid = false;
+            std::cout << "Loading input geometry from cache" << std::endl;
         }
     }
     else
@@ -940,7 +970,8 @@ std::pair<std::vector<std::array<float, 4>>, std::vector<std::array<float, 4>>> 
     positions.resize(displacement.size());
     displacements.resize(displacement.size());
 
-    for (std::size_t i = 0; i < displacements.size(); ++i)
+    #pragma omp parallel for
+    for (long long i = 0; i < static_cast<long long>(displacements.size()); ++i)
     {
         positions[i] = { displacement[i].first[0], displacement[i].first[1], displacement[i].first[2], 1.0f };
         displacements[i] = { displacement[i].second[0], displacement[i].second[1], displacement[i].second[2], 0.0f };
@@ -966,6 +997,7 @@ void feature_deformation::create_undeformed_grid(vtkPointSet* output_deformed_gr
 
     vtkIdType index = 0;
 
+    #pragma omp parallel for
     for (int z = 0; z < dimension[2]; ++z)
     {
         for (int y = 0; y < dimension[1]; ++y)
@@ -1128,6 +1160,7 @@ void feature_deformation::set_output_deformed_grid(vtkPointSet* output_deformed_
     // Set displaced points
     const auto& displaced_grid = grid_displacement.get_results();
 
+    #pragma omp parallel for
     for (vtkIdType i = 0; i < output_deformed_grid->GetNumberOfPoints(); ++i)
     {
         output_deformed_grid->GetPoints()->SetPoint(i, displaced_grid[i].data());
@@ -1147,12 +1180,12 @@ void feature_deformation::set_output_deformed_grid(vtkPointSet* output_deformed_
 }
 
 void feature_deformation::set_output_deformed_lines(vtkPolyData* input_lines, vtkPolyData* output_deformed_lines, const cuda::displacement& line_displacement,
-    const bool modified, cache_output_lines_t& output_lines, const std::string& name) const
+    const bool modified, cache_output_lines_t& output_lines) const
 {
     // Create output geometry
     if (modified || !output_lines.valid)
     {
-        std::cout << "Creating deformed " << name << " output" << std::endl;
+        std::cout << "Creating deformed lines output" << std::endl;
 
         output_lines.data = vtkSmartPointer<vtkPolyData>::New();
         output_lines.data->DeepCopy(input_lines);
@@ -1175,12 +1208,13 @@ void feature_deformation::set_output_deformed_lines(vtkPolyData* input_lines, vt
     }
     else
     {
-        std::cout << "Updating deformed " << name << " output" << std::endl;
+        std::cout << "Updating deformed lines output" << std::endl;
     }
 
     // Set displaced points
     const auto& displaced_lines = line_displacement.get_results();
 
+    #pragma omp parallel for
     for (vtkIdType i = 0; i < output_lines.data->GetNumberOfPoints(); ++i)
     {
         output_lines.data->GetPoints()->SetPoint(i, displaced_lines[i].data());
@@ -1225,6 +1259,116 @@ void feature_deformation::set_output_deformed_lines(vtkPolyData* input_lines, vt
     output_deformed_lines->DeepCopy(output_lines.data);
 }
 
+void feature_deformation::set_output_deformed_geometry(const std::vector<vtkPointSet*>& input_geometry, vtkMultiBlockDataSet* output_deformed_geometry,
+    const cuda::displacement& geometry_displacement, bool modified, cache_output_geometry_t& output_geometry) const
+{
+    // Create output geometry
+    if (modified || !output_geometry.valid)
+    {
+        std::cout << "Creating deformed geometry output" << std::endl;
+
+        output_geometry.data = vtkSmartPointer<vtkMultiBlockDataSet>::New();
+
+        for (unsigned int block_index = 0; block_index < static_cast<unsigned int>(input_geometry.size()); ++block_index)
+        {
+            output_geometry.data->SetBlock(block_index, vtkDataObjectTypes::NewDataObject(input_geometry[block_index]->GetClassName()));
+            output_geometry.data->GetBlock(block_index)->DeepCopy(input_geometry[block_index]);
+
+            auto displacement_id_array = vtkSmartPointer<vtkFloatArray>::New();
+            displacement_id_array->SetNumberOfComponents(4);
+            displacement_id_array->SetNumberOfTuples(input_geometry[block_index]->GetNumberOfPoints());
+            displacement_id_array->SetName("Displacement Information");
+            displacement_id_array->FillValue(0.0f);
+
+            auto displacement_distance_array = vtkSmartPointer<vtkFloatArray>::New();
+            displacement_distance_array->SetNumberOfComponents(1);
+            displacement_distance_array->SetNumberOfTuples(input_geometry[block_index]->GetNumberOfPoints());
+            displacement_distance_array->SetName("B-Spline Distance");
+            displacement_distance_array->FillValue(0.0f);
+
+            vtkPointSet::SafeDownCast(output_geometry.data->GetBlock(block_index))->GetPointData()->AddArray(displacement_id_array);
+            vtkPointSet::SafeDownCast(output_geometry.data->GetBlock(block_index))->GetPointData()->AddArray(displacement_distance_array);
+        }
+
+        output_geometry.valid = true;
+    }
+    else
+    {
+        std::cout << "Updating deformed geometry output" << std::endl;
+    }
+
+    // Set displaced points
+    const auto& displaced_geometry = geometry_displacement.get_results();
+
+    std::size_t global_id = 0;
+
+    for (unsigned int block_index = 0; block_index < output_geometry.data->GetNumberOfBlocks(); ++block_index)
+    {
+        auto block = vtkPointSet::SafeDownCast(output_geometry.data->GetBlock(block_index));
+
+        for (vtkIdType i = 0; i < block->GetNumberOfPoints(); ++i, ++global_id)
+        {
+            block->GetPoints()->SetPoint(i, displaced_geometry[global_id].data());
+        }
+    }
+
+    // Set displacement ID arrays
+    const auto& displacement_ids = geometry_displacement.get_displacement_info();
+
+    std::size_t global_data_index = 0;
+
+    for (unsigned int block_index = 0; block_index < output_geometry.data->GetNumberOfBlocks(); ++block_index)
+    {
+        auto block = vtkPointSet::SafeDownCast(output_geometry.data->GetBlock(block_index));
+        auto data_array = vtkFloatArray::SafeDownCast(block->GetPointData()->GetArray("Displacement Information"));
+
+        std::memcpy(data_array->GetPointer(0), &displacement_ids[global_data_index], data_array->GetNumberOfTuples() * sizeof(float4));
+
+        global_data_index += data_array->GetNumberOfTuples();
+    }
+
+    // In case of the B-Spline, store distance on B-Spline for neighboring points
+    if ((this->parameter_displacement.method == cuda::displacement::method_t::b_spline ||
+        this->parameter_displacement.method == cuda::displacement::method_t::b_spline_joints) &&
+        this->OutputBSplineDistance)
+    {
+        for (unsigned int block_index = 0; block_index < output_geometry.data->GetNumberOfBlocks(); ++block_index)
+        {
+            auto block = vtkPointSet::SafeDownCast(output_geometry.data->GetBlock(block_index));
+            auto displacement_distance_array = vtkFloatArray::SafeDownCast(block->GetPointData()->GetArray("B-Spline Distance"));
+
+            if (vtkPolyData::SafeDownCast(block) != nullptr)
+            {
+                auto poly_block = vtkPolyData::SafeDownCast(block);
+
+                vtkIdType index = 0;
+                vtkIdType cell_index = 0;
+
+                for (vtkIdType l = 0; l < poly_block->GetLines()->GetNumberOfCells(); ++l)
+                {
+                    const auto num_points = poly_block->GetLines()->GetData()->GetValue(cell_index);
+
+                    displacement_distance_array->SetValue(index, std::abs(displacement_ids[index].w - displacement_ids[index + 1].w));
+
+                    for (vtkIdType i = 1; i < num_points - 1; ++i)
+                    {
+                        displacement_distance_array->SetValue(index + i, 0.5f * (std::abs(displacement_ids[index + i - 1].w - displacement_ids[index + i].w)
+                            + std::abs(displacement_ids[index + i].w - displacement_ids[index + i + 1].w)));
+                    }
+
+                    displacement_distance_array->SetValue(index + num_points - 1, std::abs(displacement_ids[index + num_points - 2].w - displacement_ids[index + num_points - 1].w));
+
+                    index += num_points;
+                    cell_index += num_points + 1;
+                }
+            }
+        }
+    }
+
+    // Cache output
+    output_deformed_geometry->DeepCopy(output_geometry.data);
+}
+
 void feature_deformation::create_displacement_field(vtkPointSet* output_deformed_grid) const
 {
     // Create displacement field
@@ -1233,6 +1377,7 @@ void feature_deformation::create_displacement_field(vtkPointSet* output_deformed
     displacement_map->SetNumberOfTuples(output_deformed_grid->GetPoints()->GetNumberOfPoints());
     displacement_map->SetName("Displacement Map");
 
+    #pragma omp parallel for
     for (vtkIdType p = 0; p < output_deformed_grid->GetPoints()->GetNumberOfPoints(); ++p)
     {
         Eigen::Vector3d displaced_point;
@@ -1318,6 +1463,7 @@ void feature_deformation::deform_velocities(vtkPointSet* output_deformed_grid, v
     velocities_p->SetNumberOfTuples(dimension[0] * dimension[1] * dimension[2]);
     velocities_p->SetName(data_array->GetName());
 
+    #pragma omp parallel for
     for (int z = 0; z < dimension[2]; ++z)
     {
         for (int y = 0; y < dimension[1]; ++y)
@@ -1360,6 +1506,7 @@ void feature_deformation::deform_velocities(vtkPointSet* output_deformed_grid, v
     velocities_c->SetNumberOfTuples((dimension[0] - 1) * (dimension[1] - 1) * (dimension[2] - 1));
     velocities_c->SetName(data_array->GetName());
 
+    #pragma omp parallel for
     for (int z = 0; z < dimension[2] - 1; ++z)
     {
         for (int y = 0; y < dimension[1] - 1; ++y)
