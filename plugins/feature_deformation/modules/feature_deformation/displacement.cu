@@ -186,7 +186,7 @@ float4 compute_rotation(float3 source_vec, float3 target_vec)
     }
 
     const auto axis = normalize(cross(source_vec, target_vec));
-    const auto angle = acosf(dot(source_vec, target_vec));
+    const auto angle = acosf(fmaxf(fminf(dot(source_vec, target_vec), 1.0f), -1.0f));
 
     const auto diff_pos_angle = length(rotate(source_vec, axis, angle) - target_vec);
     const auto diff_neg_angle = length(rotate(source_vec, axis, -angle) - target_vec);
