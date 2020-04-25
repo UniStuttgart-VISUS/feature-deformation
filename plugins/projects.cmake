@@ -39,6 +39,7 @@ function(pv_project NAME ENABLED)
 
       vtk_module_build(
         MODULES                     ${modules}
+        PACKAGE                     ${PROJECT_NAME}
         INSTALL_HEADERS             OFF
       )
 

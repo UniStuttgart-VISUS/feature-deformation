@@ -247,16 +247,6 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
             smoother.next_step();
         }
 
-        // Replace the input line, in case resampling was done by the smoother
-        const auto zero_displacement = smoother.get_displacement();
-
-        for (std::size_t i = 0; i < zero_displacement.size(); ++i)
-        {
-            this->input_lines.lines[this->parameter_lines.selected_line_id][i][0] = zero_displacement[i].first[0];
-            this->input_lines.lines[this->parameter_lines.selected_line_id][i][1] = zero_displacement[i].first[1];
-            this->input_lines.lines[this->parameter_lines.selected_line_id][i][2] = zero_displacement[i].first[2];
-        }
-
         // Store results in cache
         std::tie(this->results_smoothing.positions, this->results_smoothing.displacements) = get_displacements(smoother.get_displacement());
 
@@ -331,17 +321,7 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
         {
             std::cout << "  uploading points to the GPU" << std::endl;
 
-            std::vector<std::array<float, 3>> line_points;
-
-            for (const auto& line : this->input_lines.lines)
-            {
-                for (const auto& point : line)
-                {
-                    line_points.push_back(point);
-                }
-            }
-
-            this->results_line_displacement.displacement = std::make_shared<cuda::displacement>(line_points);
+            this->results_line_displacement.displacement = std::make_shared<cuda::displacement>(this->input_lines.lines);
         }
 
         // Pre-compute B-Spline mapping, if relevant parameters changed, or the lines were modified
@@ -570,13 +550,18 @@ void feature_deformation::cache_parameter_lines()
     }
 }
 
-void feature_deformation::cache_parameter_smoothing(const double time)
+void feature_deformation::cache_parameter_smoothing(double time)
 {
     // In case of animation, set modified number of iterations
     int num_iterations = this->MaxNumIterations;
 
     if (this->parameter_lines.method == smoothing::method_t::smoothing)
     {
+        if (this->Inverse)
+        {
+            time = 1.0 - time;
+        }
+
         if (this->Interpolator == 0)
         {
             // Linear
@@ -833,54 +818,37 @@ void feature_deformation::cache_input_lines(vtkInformationVector* input_lines_ve
             this->input_lines.hash = new_hash;
             this->input_lines.modified = true;
 
-            // Input is now (preliminarily) valid
+            // Input is now valid
             this->input_lines.valid = true;
 
-            // Sanity checks
-            if (vtk_input_lines->GetLines()->GetNumberOfCells() == 0)
+            // Get lines
+            this->input_lines.lines.resize(vtk_input_lines->GetNumberOfPoints());
+
+            #pragma omp parallel for
+            for (vtkIdType p = 0; p < vtk_input_lines->GetNumberOfPoints(); ++p)
             {
-                this->input_lines.lines.clear();
-                this->input_lines.selected_line.clear();
+                std::array<double, 3> point;
+                vtk_input_lines->GetPoints()->GetPoint(p, point.data());
 
-                std::cout << "No lines -- nothing to do" << std::endl;
-
-                this->input_lines.valid = false;
-                return;
+                this->input_lines.lines[p] = { static_cast<float>(point[0]), static_cast<float>(point[1]), static_cast<float>(point[2]) };
             }
 
-            if (this->parameter_lines.selected_line_id >= vtk_input_lines->GetLines()->GetNumberOfCells())
-            {
-                std::cerr << "Selected line does not exist" << std::endl;
-
-                this->input_lines.valid = false;
-                return;
-            }
-
-            // Get lines and extract selected line
-            this->input_lines.lines.resize(vtk_input_lines->GetLines()->GetNumberOfCells());
-
+            // Extract selected line
             auto point_list = vtkSmartPointer<vtkIdList>::New();
             std::size_t line_index = 0;
 
             vtk_input_lines->GetLines()->InitTraversal();
             while (vtk_input_lines->GetLines()->GetNextCell(point_list))
             {
-                this->input_lines.lines[line_index].resize(point_list->GetNumberOfIds());
-
                 if (line_index == this->parameter_lines.selected_line_id)
                 {
                     this->input_lines.selected_line.resize(point_list->GetNumberOfIds());
-                }
 
-                for (vtkIdType point_index = 0; point_index < point_list->GetNumberOfIds(); ++point_index)
-                {
-                    std::array<double, 3> point;
-                    vtk_input_lines->GetPoints()->GetPoint(point_list->GetId(point_index), point.data());
-
-                    this->input_lines.lines[line_index][point_index] = { static_cast<float>(point[0]), static_cast<float>(point[1]), static_cast<float>(point[2]) };
-
-                    if (line_index == this->parameter_lines.selected_line_id)
+                    for (vtkIdType point_index = 0; point_index < point_list->GetNumberOfIds(); ++point_index)
                     {
+                        std::array<double, 3> point;
+                        vtk_input_lines->GetPoints()->GetPoint(point_list->GetId(point_index), point.data());
+
                         this->input_lines.selected_line[point_index] << static_cast<float>(point[0]), static_cast<float>(point[1]), static_cast<float>(point[2]);
                     }
                 }

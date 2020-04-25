@@ -50,6 +50,12 @@ public:
     vtkGetMacro(Interpolator, int);
     vtkSetMacro(Interpolator, int);
 
+    vtkGetMacro(Duration, int);
+    vtkSetMacro(Duration, int);
+
+    vtkGetMacro(Inverse, int);
+    vtkSetMacro(Inverse, int);
+
     vtkGetMacro(Weight, int);
     vtkSetMacro(Weight, int);
 
@@ -157,6 +163,8 @@ private:
 
     /// Animation parameters
     int Interpolator;
+    int Duration;
+    int Inverse;
 
     /// Weighting function for the displacement and corresponding parameters
     int Weight;
@@ -247,7 +255,7 @@ private:
 
     struct cache_input_lines_t : public cache_t
     {
-        std::vector<std::vector<std::array<float, 3>>> lines;
+        std::vector<std::array<float, 3>> lines;
         std::vector<Eigen::Vector3f> selected_line;
 
     } input_lines;

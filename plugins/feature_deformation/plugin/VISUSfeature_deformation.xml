@@ -88,6 +88,17 @@
                     <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Method" value="1" />
                 </Hints>
             </IntVectorProperty>
+            <IntVectorProperty name="Duration" label="Duration (s)" command="SetDuration" number_of_elements="1" default_values="5">
+                <Hints>
+                    <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Method" value="1" />
+                </Hints>
+            </IntVectorProperty>
+            <IntVectorProperty name="Inverse" label="Inverse" command="SetInverse" number_of_elements="1" default_values="0">
+                <BooleanDomain name="bool"/>
+                <Hints>
+                    <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Method" value="1" />
+                </Hints>
+            </IntVectorProperty>
 
             <IntVectorProperty name="Weight" command="SetWeight" label="Weight" number_of_elements="1" default_values="4">
                 <EnumerationDomain name="enum">
@@ -206,6 +217,8 @@
 
             <PropertyGroup label="Animation">
                 <Property name="Interpolator" />
+                <Property name="Duration" />
+                <Property name="Inverse" />
 
                 <Hints>
                     <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Method" value="1" />
