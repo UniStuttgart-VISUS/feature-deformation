@@ -5,6 +5,8 @@
 #include "hash.h"
 #include "smoothing.h"
 
+#include "common/math.h"
+
 #include "vtkCell.h"
 #include "vtkCellArray.h"
 #include "vtkCellData.h"
@@ -224,14 +226,53 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
         return 0;
     }
 
-    // Smooth line and store results in cache
+    // Smooth line completely once and calculate Gauss parameter epsilon
     if (this->parameter_lines.modified || this->parameter_smoothing.modified || this->input_lines.modified)
+    {
+        std::cout << "Computing Gauss parameter" << std::endl;
+
+        // Create smoother
+        smoothing smoother(this->input_lines.selected_line, this->parameter_lines.method, this->parameter_smoothing.variant,
+            this->parameter_smoothing.lambda, this->parameter_smoothing.max_num_iterations);
+
+        // Straighten the selected line
+        while (smoother.has_step())
+        {
+            // Perform smoothing step
+            smoother.next_step();
+        }
+
+        // Get results and extract largest displacement
+        const auto displacements = get_displacements(smoother.get_displacement()).second;
+
+        const auto max_displacement = std::max_element(displacements.begin(), displacements.end(),
+            [](const std::array<float, 4>& lhs, const std::array<float, 4>& rhs)
+            {
+                const Eigen::Vector3f lhs_eigen(lhs[0], lhs[1], lhs[2]);
+                const Eigen::Vector3f rhs_eigen(rhs[0], rhs[1], rhs[2]);
+
+                return lhs_eigen.squaredNorm() < rhs_eigen.squaredNorm();
+            }
+        );
+
+        const auto max_influence = 1.1 * (pi / 2.0f) * Eigen::Vector3f((*max_displacement)[0], (*max_displacement)[1], (*max_displacement)[2]).norm();
+        const auto epsilon = 2.0f / max_influence;
+
+        this->GaussParameter = epsilon;
+
+        cache_parameter_displacement();
+
+        std::cout << "  setting epsilon to " << this->parameter_displacement.bspline_parameters.gauss_parameter << std::endl << std::endl;
+    }
+
+    // Smooth line and store results in cache
+    if (this->parameter_lines.modified || this->parameter_smoothing.modified || this->parameter_smoothing.modified_time || this->input_lines.modified)
     {
         std::cout << "Smoothing line" << std::endl;
 
         // Create smoother
         smoothing smoother(this->input_lines.selected_line, this->parameter_lines.method, this->parameter_smoothing.variant,
-            this->parameter_smoothing.lambda, this->parameter_smoothing.max_num_iterations);
+            this->parameter_smoothing.lambda, this->parameter_smoothing.num_iterations);
 
         // Straighten the selected line
         while (smoother.has_step())
@@ -521,6 +562,7 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
     // Set modification to false for the next run
     this->parameter_lines.modified = false;
     this->parameter_smoothing.modified = false;
+    this->parameter_smoothing.modified_time = false;
     this->parameter_displacement.modified = false;
     this->parameter_output_grid.modified = false;
 
@@ -588,16 +630,24 @@ void feature_deformation::cache_parameter_smoothing(double time)
 
     if (this->parameter_smoothing.variant != static_cast<smoothing::variant_t>(this->Variant) ||
         this->parameter_smoothing.lambda != static_cast<float>(this->Lambda) ||
-        this->parameter_smoothing.max_num_iterations != num_iterations)
+        this->parameter_smoothing.max_num_iterations != this->MaxNumIterations)
     {
         // Set cached parameters
         this->parameter_smoothing.variant = static_cast<smoothing::variant_t>(this->Variant);
 
         this->parameter_smoothing.lambda = static_cast<float>(this->Lambda);
-        this->parameter_smoothing.max_num_iterations = num_iterations;
+        this->parameter_smoothing.max_num_iterations = this->MaxNumIterations;
 
         // Parameters have been modified
         this->parameter_smoothing.modified = true;
+    }
+
+    // Track time-dependant parameter separately
+    if (this->parameter_smoothing.num_iterations != num_iterations)
+    {
+        this->parameter_smoothing.num_iterations = num_iterations;
+
+        this->parameter_smoothing.modified_time = true;
     }
 }
 
@@ -1064,19 +1114,18 @@ void feature_deformation::create_cells(vtkUnstructuredGrid* output_deformed_grid
                 // Create cell faces
                 if (!discard_cell)
                 {
-                    auto faces = vtkSmartPointer<vtkCellArray>::New();
-
-                    vtkIdType face0[4] = { point0, point1, point3, point2 }; // front
-                    faces->InsertNextCell(4, face0);
-
                     if (!is_2d)
                     {
+                        auto faces = vtkSmartPointer<vtkCellArray>::New();
+
+                        vtkIdType face0[4] = { point0, point1, point3, point2 }; // front
                         vtkIdType face1[4] = { point6, point7, point5, point4 }; // back
                         vtkIdType face2[4] = { point4, point5, point1, point0 }; // bottom
                         vtkIdType face3[4] = { point2, point3, point7, point6 }; // top
                         vtkIdType face4[4] = { point0, point2, point6, point4 }; // left
                         vtkIdType face5[4] = { point1, point5, point7, point3 }; // right
 
+                        faces->InsertNextCell(4, face0);
                         faces->InsertNextCell(4, face1);
                         faces->InsertNextCell(4, face2);
                         faces->InsertNextCell(4, face3);
@@ -1100,26 +1149,27 @@ void feature_deformation::create_cells(vtkUnstructuredGrid* output_deformed_grid
                     }
                     else
                     {
-                        output_deformed_grid->InsertNextCell(VTK_QUAD, 4, point_ids.data(), 1, faces->GetData()->GetPointer(0));
+                        const std::array<vtkIdType, 8> point_ids{ point0, point1, point3, point2 };
+
+                        output_deformed_grid->InsertNextCell(VTK_QUAD, 4, point_ids.data());
 
                         handiness->InsertNextValue(0.0f);
                     }
                 }
                 else
                 {
-                    auto faces = vtkSmartPointer<vtkCellArray>::New();
-
-                    vtkIdType face0[4] = { point0, point1, point3, point2 }; // front
-                    faces->InsertNextCell(4, face0);
-
                     if (!is_2d)
                     {
+                        auto faces = vtkSmartPointer<vtkCellArray>::New();
+
+                        vtkIdType face0[4] = { point0, point1, point3, point2 }; // front
                         vtkIdType face1[4] = { point6, point7, point5, point4 }; // back
                         vtkIdType face2[4] = { point4, point5, point1, point0 }; // bottom
                         vtkIdType face3[4] = { point2, point3, point7, point6 }; // top
                         vtkIdType face4[4] = { point0, point2, point6, point4 }; // left
                         vtkIdType face5[4] = { point1, point5, point7, point3 }; // right
 
+                        faces->InsertNextCell(4, face0);
                         faces->InsertNextCell(4, face1);
                         faces->InsertNextCell(4, face2);
                         faces->InsertNextCell(4, face3);
@@ -1130,7 +1180,9 @@ void feature_deformation::create_cells(vtkUnstructuredGrid* output_deformed_grid
                     }
                     else
                     {
-                        output_deformed_grid_removed->InsertNextCell(VTK_QUAD, 4, point_ids.data(), 1, faces->GetData()->GetPointer(0));
+                        const std::array<vtkIdType, 8> point_ids{ point0, point1, point3, point2 };
+
+                        output_deformed_grid_removed->InsertNextCell(VTK_QUAD, 4, point_ids.data());
                     }
                 }
             }

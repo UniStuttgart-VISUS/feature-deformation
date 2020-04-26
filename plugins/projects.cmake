@@ -93,9 +93,10 @@ function(pv_module NAME PLUGIN SOURCES RESULT_TARGET)
     add_library(${PLUGIN}::${NAME} ALIAS ${PLUGIN}_${NAME})
 
     target_link_libraries(${PLUGIN}_${NAME} PRIVATE ${VTK_LIBRARIES})
-    target_include_directories(${PLUGIN}_${NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+    target_include_directories(${PLUGIN}_${NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} PRIVATE ${common_include})
 
     set_target_properties(${PLUGIN}_${NAME} PROPERTIES VTK_HEADERS "${CMAKE_CURRENT_SOURCE_DIR}/${NAME}.h")
+    set_target_properties(${PLUGIN}_${NAME} PROPERTIES CXX_STANDARD 14)
 
     set(${RESULT_TARGET} ${PLUGIN}_${NAME} PARENT_SCOPE)
   else()
@@ -110,5 +111,8 @@ function(pv_module NAME PLUGIN SOURCES RESULT_TARGET)
 
     _vtk_module_real_target(_RESULT_TARGET ${PLUGIN}::${NAME})
     set(${RESULT_TARGET} ${_RESULT_TARGET} PARENT_SCOPE)
+
+    target_include_directories(${_RESULT_TARGET} PRIVATE ${common_include})
+    set_target_properties(${_RESULT_TARGET} PROPERTIES CXX_STANDARD 14)
   endif()
 endfunction()

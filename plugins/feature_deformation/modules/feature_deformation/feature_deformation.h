@@ -211,7 +211,10 @@ private:
         float lambda;
         float mu;
 
+        int num_iterations;
         int max_num_iterations;
+
+        bool modified_time;
 
     } parameter_smoothing;
 
