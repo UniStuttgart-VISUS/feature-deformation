@@ -45,9 +45,6 @@ public:
     vtkGetMacro(Lambda, double);
     vtkSetMacro(Lambda, double);
 
-    vtkGetMacro(Mu, double);
-    vtkSetMacro(Mu, double);
-
     vtkGetMacro(Interpolator, int);
     vtkSetMacro(Interpolator, int);
 
@@ -164,7 +161,7 @@ private:
     int Method;
     int Variant;
     int MaxNumIterations;
-    double Lambda, Mu;
+    double Lambda;
 
     /// Animation parameters
     int Interpolator;

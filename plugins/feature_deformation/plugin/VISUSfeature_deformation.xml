@@ -47,7 +47,7 @@
             <IntVectorProperty name="Variant" label="Variant" command="SetVariant" number_of_elements="1" default_values="0">
                 <EnumerationDomain name="enum">
                     <Entry value="0" text="Fix endpoints"/>
-                    <Entry value="1" text="Keep arc length"/>
+                    <Entry value="1" text="Growing"/>
                 </EnumerationDomain>
                 <Hints>
                     <PropertyWidgetDecorator type="CompositeDecorator">
@@ -66,16 +66,6 @@
             <DoubleVectorProperty name="Lambda" label="Smoothing factor" command="SetLambda" number_of_elements="1" default_values="0.7">
                 <Hints>
                     <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Method" value="1" />
-                </Hints>
-            </DoubleVectorProperty>
-            <DoubleVectorProperty name="Mu" label="Inflation factor" command="SetMu" number_of_elements="1" default_values="-0.75">
-                <Hints>
-                    <PropertyWidgetDecorator type="CompositeDecorator">
-                        <Expression type="and">
-                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Method" value="1" />
-                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Variant" value="1" />
-                        </Expression>
-                    </PropertyWidgetDecorator>
                 </Hints>
             </DoubleVectorProperty>
 
@@ -212,7 +202,6 @@
                 <Property name="Variant" />
                 <Property name="MaxNumIterations" />
                 <Property name="Lambda" />
-                <Property name="Mu" />
             </PropertyGroup>
 
             <PropertyGroup label="Animation">

@@ -20,11 +20,11 @@ public:
     enum class variant_t
     {
         fixed_endpoints,
-        fixed_arclength
+        growing
     };
 
-    /// Set method and variant, as well as parameters for Gaussian/Taubin smoothing
-    smoothing(std::vector<Eigen::Vector3f> line, method_t method, variant_t variant, float lambda, float mu, std::size_t num_iterations);
+    /// Set method and variant, as well as parameters for Gaussian smoothing
+    smoothing(std::vector<Eigen::Vector3f> line, method_t method, variant_t variant, float lambda, std::size_t num_iterations);
 
     /// Perform one step for the chosen method and variant
     std::vector<std::pair<Eigen::Vector3f, Eigen::Vector3f>> next_step();
@@ -46,19 +46,10 @@ private:
     Eigen::Vector3f gaussian_smoothing(const std::vector<Eigen::Vector3f>& points, std::size_t index, float weight) const;
 
     /// Gaussian line smoothing
-    std::vector<Eigen::Vector3f> gaussian_line_smoothing() const;
-
-    /// Taubin line smoothing
-    std::vector<Eigen::Vector3f> taubin_line_smoothing() const;
-
-    /// Calculate arc length of a line
-    float calculate_arc_length(const std::vector<Eigen::Vector3f>& line) const;
+    std::vector<Eigen::Vector3f> gaussian_line_smoothing(std::size_t offset = 1) const;
 
     /// Line for straightening
     std::vector<Eigen::Vector3f> line;
-
-    /// Original arc length
-    const float arc_length;
 
     /// Displacement after all performed steps
     std::vector<std::pair<Eigen::Vector3f, Eigen::Vector3f>> displacement;
@@ -67,10 +58,16 @@ private:
     std::size_t num_performed_steps;
     std::size_t num_steps;
 
+    enum class state_t
+    {
+        growing, shrinking
+    } state;
+
+    float max_distance;
+
     /// Parameters
     const method_t method;
     const variant_t variant;
 
     const float lambda;
-    const float mu;
 };

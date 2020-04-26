@@ -231,7 +231,7 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
 
         // Create smoother
         smoothing smoother(this->input_lines.selected_line, this->parameter_lines.method, this->parameter_smoothing.variant,
-            this->parameter_smoothing.lambda, this->parameter_smoothing.mu, this->parameter_smoothing.max_num_iterations);
+            this->parameter_smoothing.lambda, this->parameter_smoothing.max_num_iterations);
 
         // Straighten the selected line
         while (smoother.has_step())
@@ -588,15 +588,12 @@ void feature_deformation::cache_parameter_smoothing(double time)
 
     if (this->parameter_smoothing.variant != static_cast<smoothing::variant_t>(this->Variant) ||
         this->parameter_smoothing.lambda != static_cast<float>(this->Lambda) ||
-        this->parameter_smoothing.mu != static_cast<float>(this->Mu) ||
         this->parameter_smoothing.max_num_iterations != num_iterations)
     {
         // Set cached parameters
         this->parameter_smoothing.variant = static_cast<smoothing::variant_t>(this->Variant);
 
         this->parameter_smoothing.lambda = static_cast<float>(this->Lambda);
-        this->parameter_smoothing.mu = static_cast<float>(this->Mu);
-
         this->parameter_smoothing.max_num_iterations = num_iterations;
 
         // Parameters have been modified
@@ -683,24 +680,6 @@ bool feature_deformation::parameter_checks() const
         if (this->Lambda <= 0.0)
         {
             std::cerr << "Lambda must be larger than zero to achieve smoothing." << std::endl;
-            return false;
-        }
-
-        if (this->Mu > 0.0)
-        {
-            std::cerr << "Mu must not be larger than zero to achieve inflation (or zero for pure Gaussian smoothing)." << std::endl;
-            return false;
-        }
-
-        if (this->Mu == 0.0 && static_cast<smoothing::variant_t>(this->Variant) == smoothing::variant_t::fixed_arclength)
-        {
-            std::cerr << "Mu must not be zero to achieve inflation." << std::endl;
-            return false;
-        }
-
-        if (-this->Mu < this->Lambda && static_cast<smoothing::variant_t>(this->Variant) == smoothing::variant_t::fixed_arclength)
-        {
-            std::cerr << "The absolute of mu must not be smaller than lambda to achieve inflation." << std::endl;
             return false;
         }
     }
@@ -1030,7 +1009,9 @@ void feature_deformation::create_cells(vtkUnstructuredGrid* output_deformed_grid
     handiness->Allocate((dimension[0] - 1) * (dimension[1] - 1) * (dimension[2] - 1));
     handiness->SetName("Handiness");
 
-    for (int z = 0; z < dimension[2] - 1; ++z)
+    const bool is_2d = dimension[2] == 1;
+
+    for (int z = 0; z < (is_2d ? 1 : (dimension[2] - 1)); ++z)
     {
         for (int y = 0; y < dimension[1] - 1; ++y)
         {
@@ -1063,9 +1044,9 @@ void feature_deformation::create_cells(vtkUnstructuredGrid* output_deformed_grid
                 if (this->parameter_output_grid.remove_cells)
                 {
                     // Get all cell points
-                    std::vector<Eigen::Vector3d> cell_points(point_ids.size());
+                    std::vector<Eigen::Vector3d> cell_points(is_2d ? 4 : 8);
 
-                    for (std::size_t point_index = 0; point_index < point_ids.size(); ++point_index)
+                    for (std::size_t point_index = 0; point_index < (is_2d ? 4 : 8); ++point_index)
                     {
                         output_deformed_grid->GetPoints()->GetPoint(point_ids[point_index], cell_points[point_index].data());
                     }
@@ -1086,64 +1067,71 @@ void feature_deformation::create_cells(vtkUnstructuredGrid* output_deformed_grid
                     auto faces = vtkSmartPointer<vtkCellArray>::New();
 
                     vtkIdType face0[4] = { point0, point1, point3, point2 }; // front
-                    vtkIdType face1[4] = { point6, point7, point5, point4 }; // back
-                    vtkIdType face2[4] = { point4, point5, point1, point0 }; // bottom
-                    vtkIdType face3[4] = { point2, point3, point7, point6 }; // top
-                    vtkIdType face4[4] = { point0, point2, point6, point4 }; // left
-                    vtkIdType face5[4] = { point1, point5, point7, point3 }; // right
-
                     faces->InsertNextCell(4, face0);
-                    faces->InsertNextCell(4, face1);
-                    faces->InsertNextCell(4, face2);
-                    faces->InsertNextCell(4, face3);
-                    faces->InsertNextCell(4, face4);
-                    faces->InsertNextCell(4, face5);
 
-                    output_deformed_grid->InsertNextCell(VTK_POLYHEDRON, 8, point_ids.data(), 6, faces->GetData()->GetPointer(0));
+                    if (!is_2d)
+                    {
+                        vtkIdType face1[4] = { point6, point7, point5, point4 }; // back
+                        vtkIdType face2[4] = { point4, point5, point1, point0 }; // bottom
+                        vtkIdType face3[4] = { point2, point3, point7, point6 }; // top
+                        vtkIdType face4[4] = { point0, point2, point6, point4 }; // left
+                        vtkIdType face5[4] = { point1, point5, point7, point3 }; // right
 
-                    // Calculate handiness
-                    std::array<Eigen::Vector3d, 4> points;
-                    output_deformed_grid->GetPoints()->GetPoint(point0, points[0].data());
-                    output_deformed_grid->GetPoints()->GetPoint(point1, points[1].data());
-                    output_deformed_grid->GetPoints()->GetPoint(point2, points[2].data());
-                    output_deformed_grid->GetPoints()->GetPoint(point4, points[3].data());
+                        faces->InsertNextCell(4, face1);
+                        faces->InsertNextCell(4, face2);
+                        faces->InsertNextCell(4, face3);
+                        faces->InsertNextCell(4, face4);
+                        faces->InsertNextCell(4, face5);
 
-                    const auto vector_1 = points[1] - points[0];
-                    const auto vector_2 = points[2] - points[0];
-                    const auto vector_3 = points[3] - points[0];
+                        output_deformed_grid->InsertNextCell(VTK_POLYHEDRON, 8, point_ids.data(), 6, faces->GetData()->GetPointer(0));
 
-                    handiness->InsertNextValue(static_cast<float>(vector_1.cross(vector_2).dot(vector_3)));
+                        // Calculate handiness
+                        std::array<Eigen::Vector3d, 4> points;
+                        output_deformed_grid->GetPoints()->GetPoint(point0, points[0].data());
+                        output_deformed_grid->GetPoints()->GetPoint(point1, points[1].data());
+                        output_deformed_grid->GetPoints()->GetPoint(point2, points[2].data());
+                        output_deformed_grid->GetPoints()->GetPoint(point4, points[3].data());
+
+                        const auto vector_1 = points[1] - points[0];
+                        const auto vector_2 = points[2] - points[0];
+                        const auto vector_3 = points[3] - points[0];
+
+                        handiness->InsertNextValue(static_cast<float>(vector_1.cross(vector_2).dot(vector_3)));
+                    }
+                    else
+                    {
+                        output_deformed_grid->InsertNextCell(VTK_QUAD, 4, point_ids.data(), 1, faces->GetData()->GetPointer(0));
+
+                        handiness->InsertNextValue(0.0f);
+                    }
                 }
                 else
                 {
                     auto faces = vtkSmartPointer<vtkCellArray>::New();
 
                     vtkIdType face0[4] = { point0, point1, point3, point2 }; // front
-                    vtkIdType face1[4] = { point6, point7, point5, point4 }; // back
-                    vtkIdType face2[4] = { point4, point5, point1, point0 }; // bottom
-                    vtkIdType face3[4] = { point2, point3, point7, point6 }; // top
-                    vtkIdType face4[4] = { point0, point2, point6, point4 }; // left
-                    vtkIdType face5[4] = { point1, point5, point7, point3 }; // right
-
                     faces->InsertNextCell(4, face0);
-                    faces->InsertNextCell(4, face1);
-                    faces->InsertNextCell(4, face2);
-                    faces->InsertNextCell(4, face3);
-                    faces->InsertNextCell(4, face4);
-                    faces->InsertNextCell(4, face5);
 
-                    output_deformed_grid_removed->InsertNextCell(VTK_POLYHEDRON, 8, point_ids.data(), 6, faces->GetData()->GetPointer(0));
+                    if (!is_2d)
+                    {
+                        vtkIdType face1[4] = { point6, point7, point5, point4 }; // back
+                        vtkIdType face2[4] = { point4, point5, point1, point0 }; // bottom
+                        vtkIdType face3[4] = { point2, point3, point7, point6 }; // top
+                        vtkIdType face4[4] = { point0, point2, point6, point4 }; // left
+                        vtkIdType face5[4] = { point1, point5, point7, point3 }; // right
 
-                    // Calculate handiness
-                    std::array<Eigen::Vector3d, 4> points;
-                    output_deformed_grid_removed->GetPoints()->GetPoint(point0, points[0].data());
-                    output_deformed_grid_removed->GetPoints()->GetPoint(point1, points[1].data());
-                    output_deformed_grid_removed->GetPoints()->GetPoint(point2, points[2].data());
-                    output_deformed_grid_removed->GetPoints()->GetPoint(point4, points[3].data());
+                        faces->InsertNextCell(4, face1);
+                        faces->InsertNextCell(4, face2);
+                        faces->InsertNextCell(4, face3);
+                        faces->InsertNextCell(4, face4);
+                        faces->InsertNextCell(4, face5);
 
-                    const auto vector_1 = points[1] - points[0];
-                    const auto vector_2 = points[2] - points[0];
-                    const auto vector_3 = points[3] - points[0];
+                        output_deformed_grid_removed->InsertNextCell(VTK_POLYHEDRON, 8, point_ids.data(), 6, faces->GetData()->GetPointer(0));
+                    }
+                    else
+                    {
+                        output_deformed_grid_removed->InsertNextCell(VTK_QUAD, 4, point_ids.data(), 1, faces->GetData()->GetPointer(0));
+                    }
                 }
             }
         }

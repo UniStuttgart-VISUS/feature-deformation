@@ -7,16 +7,15 @@
 #include <utility>
 #include <vector>
 
-smoothing::smoothing(std::vector<Eigen::Vector3f> line, const method_t method, const variant_t variant, const float lambda,
-    const float mu, const std::size_t num_iterations) :
+smoothing::smoothing(std::vector<Eigen::Vector3f> line, const method_t method, const variant_t variant, const float lambda, const std::size_t num_iterations) :
     line(line),
-    arc_length(calculate_arc_length(line)),
     num_performed_steps(0),
     method(method),
     variant(method == method_t::time_local ? variant_t::fixed_endpoints : variant),
     lambda(lambda),
-    mu(mu),
-    num_steps(num_iterations)
+    num_steps(num_iterations),
+    state(state_t::growing),
+    max_distance((line.back() - line.front()).norm())
 {
     // Resample line if necessary
     if (this->method == method_t::time_local)
@@ -56,7 +55,7 @@ std::vector<std::pair<Eigen::Vector3f, Eigen::Vector3f>> smoothing::next_step()
             line_end = this->line.back();
 
             break;
-        case variant_t::fixed_arclength:
+        case variant_t::growing:
             // Compute target line endpoints using PCA
             std::tie(line_start, line_end) = approx_line_pca();
 
@@ -86,9 +85,27 @@ std::vector<std::pair<Eigen::Vector3f, Eigen::Vector3f>> smoothing::next_step()
             target_line = gaussian_line_smoothing();
 
             break;
-        case variant_t::fixed_arclength:
-            // Apply Taubin smoothing step(s)
-            target_line = taubin_line_smoothing();
+        case variant_t::growing:
+            // Apply Gaussian smoothing step, fixing the endpoints only after letting them grow apart
+            if (this->state == state_t::growing)
+            {
+                auto new_line = gaussian_line_smoothing(0);
+
+                const auto distance = (new_line.front() - new_line.back()).norm();
+
+                if (distance < 0.9 * this->max_distance)
+                {
+                    this->state = state_t::shrinking;
+                }
+
+                this->max_distance = std::max(this->max_distance, distance);
+
+                target_line = new_line;
+            }
+            else
+            {
+                target_line = gaussian_line_smoothing();
+            }
 
             break;
         }
@@ -268,71 +285,14 @@ Eigen::Vector3f smoothing::gaussian_smoothing(const std::vector<Eigen::Vector3f>
     return point;
 }
 
-std::vector<Eigen::Vector3f> smoothing::gaussian_line_smoothing() const
+std::vector<Eigen::Vector3f> smoothing::gaussian_line_smoothing(const std::size_t offset) const
 {
     auto deformed_line = this->line;
 
-    for (std::size_t i = 1; i < this->line.size() - 1; ++i)
+    for (std::size_t i = offset; i < this->line.size() - offset; ++i)
     {
         deformed_line[i] = gaussian_smoothing(this->line, i, this->lambda);
     }
 
     return deformed_line;
-}
-
-std::vector<Eigen::Vector3f> smoothing::taubin_line_smoothing() const
-{
-    std::vector<Eigen::Vector3f> deformed_line_first(this->line.size());
-    std::vector<Eigen::Vector3f> deformed_line_second(this->line.size());
-
-    // Perform Gaussian smoothing with positive weight
-    for (std::size_t i = 0; i < this->line.size(); ++i)
-    {
-        deformed_line_first[i] = gaussian_smoothing(this->line, i, this->lambda);
-    }
-
-    // Iteratively inflate until the original arc length is approximately restored
-    auto current_arc_length = calculate_arc_length(deformed_line_first);
-
-    while (current_arc_length < this->arc_length)
-    {
-        // Perform Gaussian smoothing for inflation using a negative weight
-        for (std::size_t i = 0; i < deformed_line_first.size(); ++i)
-        {
-            deformed_line_second[i] = gaussian_smoothing(deformed_line_first, i, this->mu);
-        }
-
-        const auto new_arc_length = calculate_arc_length(deformed_line_second);
-
-        // Sanity check
-        if (new_arc_length < current_arc_length)
-        {
-            std::cerr << "Inflation step of Taubin smoothing decreased the arc length. Bad parameters?" << std::endl;
-            return deformed_line_first;
-        }
-
-        // If the new arc length is larger than the targeted one and the approximation is worse than in the last iteration, revert it
-        if (new_arc_length > this->arc_length && std::abs(new_arc_length - this->arc_length) > std::abs(current_arc_length - this->arc_length))
-        {
-            deformed_line_second = deformed_line_first;
-        }
-
-        // Prepare for the next iteration
-        std::swap(deformed_line_first, deformed_line_second);
-        current_arc_length = new_arc_length;
-    }
-
-    return deformed_line_second;
-}
-
-float smoothing::calculate_arc_length(const std::vector<Eigen::Vector3f>& line) const
-{
-    float arc_length = 0.0f;
-
-    for (std::size_t i = 0; i < line.size() - 1; ++i)
-    {
-        arc_length += (line[i + 1] - line[i]).norm();
-    }
-
-    return arc_length;
 }
