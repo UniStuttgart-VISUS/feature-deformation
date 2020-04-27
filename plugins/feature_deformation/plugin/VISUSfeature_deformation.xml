@@ -153,6 +153,13 @@
                 </Hints>
             </IntVectorProperty>
 
+            <IntVectorProperty name="ComputeGauss" label="Compute Gauss parameter epsilon" command="SetComputeGauss" number_of_elements="1" default_values="0">
+                <BooleanDomain name="bool"/>
+            </IntVectorProperty>
+            <IntVectorProperty name="ComputeTearing" label="Compute tearing regions" command="SetComputeTearing" number_of_elements="1" default_values="0">
+                <BooleanDomain name="bool"/>
+            </IntVectorProperty>
+
             <IntVectorProperty name="OutputBSplineDistance" label="Output B-spline distance" command="SetOutputBSplineDistance" number_of_elements="1" default_values="0">
                 <BooleanDomain name="bool"/>
             </IntVectorProperty>
@@ -221,6 +228,11 @@
                 <Property name="SplineDegree" />
                 <Property name="GaussParameter" />
                 <Property name="Subdivisions" />
+            </PropertyGroup>
+
+            <PropertyGroup label="Pre-computation">
+                <Property name="ComputeGauss" />
+                <Property name="ComputeTearing" />
             </PropertyGroup>
 
             <PropertyGroup label="Output">

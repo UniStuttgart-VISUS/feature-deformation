@@ -73,6 +73,12 @@ public:
     vtkGetMacro(Subdivisions, int);
     vtkSetMacro(Subdivisions, int);
 
+    vtkGetMacro(ComputeGauss, int);
+    vtkSetMacro(ComputeGauss, int);
+
+    vtkGetMacro(ComputeTearing, int);
+    vtkSetMacro(ComputeTearing, int);
+
     vtkGetMacro(OutputBSplineDistance, int);
     vtkSetMacro(OutputBSplineDistance, int);
 
@@ -116,6 +122,7 @@ private:
     void cache_parameter_lines();
     void cache_parameter_smoothing(double time);
     void cache_parameter_displacement();
+    void cache_parameter_precompute();
     void cache_parameter_output_grid();
 
     bool parameter_checks() const;
@@ -177,6 +184,10 @@ private:
     double GaussParameter;
     int Subdivisions;
 
+    /// Pre-computation options
+    int ComputeGauss;
+    int ComputeTearing;
+
     /// Output options
     int OutputBSplineDistance;
     int OutputDeformedGrid;
@@ -229,6 +240,13 @@ private:
         cuda::displacement::b_spline_parameters_t bspline_parameters;
 
     } parameter_displacement;
+
+    struct cache_parameter_precompute_t : public cache_t
+    {
+        bool compute_gauss;
+        bool compute_tearing;
+
+    } parameter_precompute;
 
     struct cache_parameter_output_grid_t : public cache_t
     {
