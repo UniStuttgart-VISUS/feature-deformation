@@ -1869,7 +1869,7 @@ void feature_deformation::deform_velocities(vtkPointSet* output_deformed_grid, v
 
                 // Calculate velocities
                 auto velocity = get_velocity(x, y, z);
-                velocity = Jacobian * velocity;
+                velocity = (Jacobian / Jacobian.determinant()) * velocity;
 
                 velocities_p->SetTuple(index_p, velocity.data());
             }
