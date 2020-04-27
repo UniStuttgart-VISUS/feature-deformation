@@ -227,10 +227,9 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
     }
 
     // Smooth line completely once and calculate Gauss parameter epsilon
-    if (this->parameter_lines.modified || this->parameter_smoothing.modified || this->input_lines.modified)
+    if (this->parameter_lines.modified || this->parameter_smoothing.modified ||
+        this->parameter_displacement.modified || this->input_lines.modified || this->input_grid.modified)
     {
-        std::cout << "Computing Gauss parameter" << std::endl;
-
         // Create smoother
         smoothing smoother(this->input_lines.selected_line, this->parameter_lines.method, this->parameter_smoothing.variant,
             this->parameter_smoothing.lambda, this->parameter_smoothing.max_num_iterations);
@@ -242,27 +241,125 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
             smoother.next_step();
         }
 
-        // Get results and extract largest displacement
-        const auto displacements = get_displacements(smoother.get_displacement()).second;
+        const auto displacements = get_displacements(smoother.get_displacement());
 
-        const auto max_displacement = std::max_element(displacements.begin(), displacements.end(),
-            [](const std::array<float, 4>& lhs, const std::array<float, 4>& rhs)
+        // Compute good choice for Gauss parameter
+        /*if (this->parameter_lines.modified || this->parameter_smoothing.modified || this->input_lines.modified)
+        {
+            std::cout << "Computing Gauss parameter" << std::endl;
+
+            const auto max_displacement = std::max_element(displacements.second.begin(), displacements.second.end(),
+                [](const std::array<float, 4>& lhs, const std::array<float, 4>& rhs)
+                {
+                    const Eigen::Vector3f lhs_eigen(lhs[0], lhs[1], lhs[2]);
+                    const Eigen::Vector3f rhs_eigen(rhs[0], rhs[1], rhs[2]);
+
+                    return lhs_eigen.squaredNorm() < rhs_eigen.squaredNorm();
+                }
+            );
+
+            const auto max_influence = 1.1 * (pi / 2.0f) * Eigen::Vector3f((*max_displacement)[0], (*max_displacement)[1], (*max_displacement)[2]).norm();
+            const auto epsilon = 2.0f / max_influence;
+
+            this->GaussParameter = epsilon;
+
+            cache_parameter_displacement();
+
+            std::cout << "  setting epsilon to " << this->parameter_displacement.bspline_parameters.gauss_parameter << std::endl << std::endl;
+        }*/
+
+        // Deform grid and mark cells which are going to tear
+        if (this->input_grid.valid && this->parameter_output_grid.output_deformed_grid && this->parameter_output_grid.remove_cells)
+        {
+            std::cout << "Pre-computing tearing cells" << std::endl;
+
+            precompute_tearing.removed_cells = vtkSmartPointer<vtkFloatArray>::New();
+            precompute_tearing.removed_cells->SetNumberOfComponents(2);
+            precompute_tearing.removed_cells->SetNumberOfTuples(this->input_grid.grid->GetNumberOfPoints());
+            precompute_tearing.removed_cells->SetName("Tearing cells");
+            precompute_tearing.removed_cells->FillValue(0.0f);
+
+            // Deform grid
+            auto displacement = std::make_shared<cuda::displacement>(
+                std::array<double, 3>{ this->input_grid.origin[0], this->input_grid.origin[1], this->input_grid.origin[2] },
+                std::array<double, 3>{ this->input_grid.spacing[0], this->input_grid.spacing[1], this->input_grid.spacing[2] },
+                this->input_grid.dimension);
+
+            if ((this->parameter_displacement.method == cuda::displacement::method_t::b_spline ||
+                this->parameter_displacement.method == cuda::displacement::method_t::b_spline_joints))
             {
-                const Eigen::Vector3f lhs_eigen(lhs[0], lhs[1], lhs[2]);
-                const Eigen::Vector3f rhs_eigen(rhs[0], rhs[1], rhs[2]);
-
-                return lhs_eigen.squaredNorm() < rhs_eigen.squaredNorm();
+                displacement->precompute(this->parameter_displacement.parameters, displacements.first);
             }
-        );
 
-        const auto max_influence = 1.1 * (pi / 2.0f) * Eigen::Vector3f((*max_displacement)[0], (*max_displacement)[1], (*max_displacement)[2]).norm();
-        const auto epsilon = 2.0f / max_influence;
+            displacement->displace(this->parameter_displacement.method, this->parameter_displacement.parameters, displacements.first, displacements.second);
 
-        this->GaussParameter = epsilon;
+            const auto displaced_positions = displacement->get_results();
 
-        cache_parameter_displacement();
+            // Set value to 1 for all points that are part of a cell that tears
+            const auto threshold = static_cast<float>(this->parameter_output_grid.remove_cells_scalar) * this->input_grid.spacing.norm();
+            const bool is_2d = this->input_grid.dimension[2] == 1;
 
-        std::cout << "  setting epsilon to " << this->parameter_displacement.bspline_parameters.gauss_parameter << std::endl << std::endl;
+            for (int z = 0; z < (is_2d ? 1 : (this->input_grid.dimension[2] - 1)); ++z)
+            {
+                for (int y = 0; y < this->input_grid.dimension[1] - 1; ++y)
+                {
+                    for (int x = 0; x < this->input_grid.dimension[0] - 1; ++x)
+                    {
+                        // Create point IDs
+                        const auto point0 = calc_index_point(this->input_grid.dimension, x + 0, y + 0, z + 0);
+                        const auto point1 = calc_index_point(this->input_grid.dimension, x + 1, y + 0, z + 0);
+                        const auto point2 = calc_index_point(this->input_grid.dimension, x + 0, y + 1, z + 0);
+                        const auto point3 = calc_index_point(this->input_grid.dimension, x + 1, y + 1, z + 0);
+                        const auto point4 = calc_index_point(this->input_grid.dimension, x + 0, y + 0, z + 1);
+                        const auto point5 = calc_index_point(this->input_grid.dimension, x + 1, y + 0, z + 1);
+                        const auto point6 = calc_index_point(this->input_grid.dimension, x + 0, y + 1, z + 1);
+                        const auto point7 = calc_index_point(this->input_grid.dimension, x + 1, y + 1, z + 1);
+
+                        const std::array<vtkIdType, 8> point_ids{
+                            point0,
+                            point1,
+                            point2,
+                            point3,
+                            point4,
+                            point5,
+                            point6,
+                            point7
+                        };
+
+                        // Calculate distances between points and compare to threshold
+                        bool discard_cell = false;
+
+                        std::vector<Eigen::Vector3d> cell_points(is_2d ? 4 : 8);
+
+                        for (std::size_t point_index = 0; point_index < (is_2d ? 4 : 8); ++point_index)
+                        {
+                            cell_points[point_index] = Eigen::Vector3d(displaced_positions[point_ids[point_index]][0],
+                                displaced_positions[point_ids[point_index]][1], displaced_positions[point_ids[point_index]][2]);
+                        }
+
+                        // Pairwise calculate the distance between all points and compare the result with the threshold
+                        for (std::size_t i = 0; i < cell_points.size() - 1; ++i)
+                        {
+                            for (std::size_t j = i + 1; j < cell_points.size(); ++j)
+                            {
+                                discard_cell |= (cell_points[i] - cell_points[j]).norm() > threshold;
+                            }
+                        }
+
+                        // Set value if discarded
+                        if (discard_cell)
+                        {
+                            for (std::size_t point_index = 0; point_index < (is_2d ? 4 : 8); ++point_index)
+                            {
+                                precompute_tearing.removed_cells->SetComponent(point_ids[point_index], 0, 1.0);
+                            }
+                        }
+                    }
+                }
+            }
+
+            precompute_tearing.valid = true;
+        }
     }
 
     // Smooth line and store results in cache
@@ -472,6 +569,12 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
 
                 // Create cells
                 create_cells(vtkUnstructuredGrid::SafeDownCast(output_deformed_grid), output_deformed_grid_removed, this->input_grid.dimension, this->input_grid.spacing);
+
+                // Add tear array if possible
+                if (this->precompute_tearing.valid && this->precompute_tearing.removed_cells->GetNumberOfTuples() == output_deformed_grid->GetNumberOfPoints())
+                {
+                    output_deformed_grid->GetPointData()->AddArray(this->precompute_tearing.removed_cells);
+                }
             }
 
             // Create displacement field and use it to "deform" the velocities

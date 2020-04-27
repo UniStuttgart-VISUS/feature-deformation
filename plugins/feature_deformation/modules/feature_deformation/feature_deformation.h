@@ -6,6 +6,7 @@
 #include "smoothing.h"
 
 #include "vtkDataArray.h"
+#include "vtkFloatArray.h"
 #include "vtkImageData.h"
 #include "vtkInformation.h"
 #include "vtkInformationVector.h"
@@ -270,6 +271,13 @@ private:
         std::vector<std::array<float, 3>> geometry;
 
     } input_geometry;
+
+    // Precomputation caches
+    struct cache_precompute_tearing_t : public cache_t
+    {
+        vtkSmartPointer<vtkFloatArray> removed_cells;
+
+    } precompute_tearing;
 
     // Results caches
     struct cache_results_smoothing_t : public cache_t
