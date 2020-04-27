@@ -6,7 +6,7 @@
 #include "smoothing.h"
 
 #include "vtkDataArray.h"
-#include "vtkFloatArray.h"
+#include "vtkIdTypeArray.h"
 #include "vtkImageData.h"
 #include "vtkInformation.h"
 #include "vtkInformationVector.h"
@@ -275,7 +275,7 @@ private:
     // Precomputation caches
     struct cache_precompute_tearing_t : public cache_t
     {
-        vtkSmartPointer<vtkFloatArray> removed_cells;
+        vtkSmartPointer<vtkIdTypeArray> removed_cells;
 
     } precompute_tearing;
 
