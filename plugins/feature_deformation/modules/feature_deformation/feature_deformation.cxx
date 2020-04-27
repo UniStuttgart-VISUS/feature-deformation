@@ -880,6 +880,7 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
     this->parameter_smoothing.modified = false;
     this->parameter_smoothing.modified_time = false;
     this->parameter_displacement.modified = false;
+    this->parameter_precompute.modified = false;
     this->parameter_output_grid.modified = false;
 
     this->input_grid.modified = false;
