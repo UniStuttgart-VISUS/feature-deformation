@@ -323,4 +323,7 @@ private:
         vtkSmartPointer<vtkMultiBlockDataSet> data;
 
     } output_geometry;
+
+    // Variable for counting the number of output frames
+    int frames;
 };

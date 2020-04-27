@@ -74,7 +74,7 @@ namespace
 
 vtkStandardNewMacro(feature_deformation);
 
-feature_deformation::feature_deformation()
+feature_deformation::feature_deformation() : frames(0)
 {
     this->SetNumberOfInputPorts(3);
     this->SetNumberOfOutputPorts(4);
@@ -200,7 +200,7 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
 {
     // Output info
     std::cout << "------------------------------------------------------" << std::endl;
-    std::cout << "Starting deformation" << std::endl << std::endl;
+    std::cout << "Starting deformation, frame: " << this->frames++ << std::endl << std::endl;
 
     // Get time
     const auto time = output_vector->GetInformationObject(0)->Get(vtkStreamingDemandDrivenPipeline::UPDATE_TIME_STEP());
