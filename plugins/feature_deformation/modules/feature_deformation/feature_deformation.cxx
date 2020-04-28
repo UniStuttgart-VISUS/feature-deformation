@@ -243,6 +243,8 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
     }
 
     // Compute Gauss parameter epsilon and tearing
+    const bool is_2d = this->input_grid.dimension[2] == 1;
+
     if (this->input_grid.valid && (this->parameter_lines.modified || this->parameter_smoothing.modified ||
         this->parameter_displacement.modified || this->parameter_precompute.modified || this->input_grid.modified || this->input_lines.modified))
     {
@@ -268,8 +270,7 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
                 this->input_grid.dimension);
 
             // Set threshold for tearing cells
-            const auto threshold = static_cast<float>(this->parameter_output_grid.remove_cells_scalar)* this->input_grid.spacing.norm();
-            const bool is_2d = this->input_grid.dimension[2] == 1;
+            const auto threshold = static_cast<float>(this->parameter_output_grid.remove_cells_scalar) * this->input_grid.spacing.head(is_2d ? 2 : 3).norm();
 
             // Find good choice for Gauss parameter
             if (this->parameter_precompute.compute_gauss)
@@ -333,8 +334,6 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
                     bool wellformed = true;
                     bool convex = true;
                     bool large = true;
-
-                    const bool is_2d = this->input_grid.dimension[2] == 1;
 
                     for (int z = 0; z < (is_2d ? 1 : (this->input_grid.dimension[2] - 1)) && good; ++z)
                     {
@@ -451,12 +450,12 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
                                                 convex_volume += delaunay.tetrahedron(it).volume();
                                             }
 
-                                            good &= convex &= std::abs(convex_volume - volume) < 0.01f * this->input_grid.spacing.norm();
+                                            good &= convex &= std::abs(convex_volume - volume) < 0.01f * this->input_grid.spacing.head(is_2d ? 2 : 3).norm();
 
                                             // Check volume
                                             if (this->parameter_precompute.check_volume)
                                             {
-                                                large &= volume > this->parameter_precompute.volume_percentage * this->input_grid.spacing.prod();
+                                                large &= volume > this->parameter_precompute.volume_percentage * this->input_grid.spacing.head(is_2d ? 2 : 3).prod();
                                             }
                                         }
                                     }
@@ -492,7 +491,7 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
                                                 0.5 * vector_3.norm() * (vector_1 - (t1 * vector_3)).norm() +
                                                 0.5 * vector_3.norm() * (vector_2 - (t2 * vector_3)).norm();
 
-                                            large &= area > this->parameter_precompute.volume_percentage * this->input_grid.spacing.prod();
+                                            large &= area > this->parameter_precompute.volume_percentage * this->input_grid.spacing.head(is_2d ? 2 : 3).prod();
                                         }
                                     }
 
@@ -1277,10 +1276,6 @@ void feature_deformation::cache_input_grid(vtkInformationVector* input_grid_vect
             this->input_grid.origin << static_cast<float>(origin_data[0]), static_cast<float>(origin_data[1]), static_cast<float>(origin_data[2]);
             this->input_grid.spacing << static_cast<float>(spacing_data[0]), static_cast<float>(spacing_data[1]), static_cast<float>(spacing_data[2]);
 
-            if (this->input_grid.spacing[0] == 0.0f) this->input_grid.spacing[0] = 1.0f;
-            if (this->input_grid.spacing[1] == 0.0f) this->input_grid.spacing[1] = 1.0f;
-            if (this->input_grid.spacing[2] == 0.0f) this->input_grid.spacing[2] = 1.0f;
-
             this->input_grid.origin += Eigen::Vector3f(this->input_grid.extent[0], this->input_grid.extent[2],
                 this->input_grid.extent[4]).cwiseProduct(this->input_grid.spacing);
 
@@ -1560,7 +1555,8 @@ void feature_deformation::create_undeformed_grid(vtkPointSet* output_deformed_gr
 void feature_deformation::create_cells(vtkUnstructuredGrid* output_deformed_grid, vtkUnstructuredGrid* output_deformed_grid_removed,
     const std::array<int, 3>& dimension, const Eigen::Vector3f& spacing) const
 {
-    const auto threshold = static_cast<float>(this->parameter_output_grid.remove_cells_scalar) * spacing.norm();
+    const auto is_2d = dimension[2] == 1;
+    const auto threshold = static_cast<float>(this->parameter_output_grid.remove_cells_scalar) * spacing.head(is_2d ? 2 : 3).norm();
 
     // Create cells
     output_deformed_grid->Allocate((dimension[0] - 1) * (dimension[1] - 1) * (dimension[2] - 1));
@@ -1570,8 +1566,6 @@ void feature_deformation::create_cells(vtkUnstructuredGrid* output_deformed_grid
     handedness->SetNumberOfComponents(1);
     handedness->Allocate((dimension[0] - 1) * (dimension[1] - 1) * (dimension[2] - 1));
     handedness->SetName("Handedness");
-
-    const bool is_2d = dimension[2] == 1;
 
     for (int z = 0; z < (is_2d ? 1 : (dimension[2] - 1)); ++z)
     {
