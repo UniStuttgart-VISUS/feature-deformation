@@ -76,6 +76,9 @@ public:
     vtkGetMacro(ComputeGauss, int);
     vtkSetMacro(ComputeGauss, int);
 
+    vtkGetMacro(GaussSubdivisions, int);
+    vtkSetMacro(GaussSubdivisions, int);
+
     vtkGetMacro(ComputeTearing, int);
     vtkSetMacro(ComputeTearing, int);
 
@@ -186,6 +189,7 @@ private:
 
     /// Pre-computation options
     int ComputeGauss;
+    int GaussSubdivisions;
     int ComputeTearing;
 
     /// Output options

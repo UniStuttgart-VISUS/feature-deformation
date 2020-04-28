@@ -297,10 +297,9 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
                 std::cout << "  initial guess: " << this->GaussParameter;
 
                 // Iteratively improve parameter
-                const auto num_iterations = 10;
                 float last_good_epsilon = 0.0f;
 
-                for (int i = 0; i < num_iterations; ++i)
+                for (int i = 0; i < this->GaussSubdivisions; ++i)
                 {
                     // Deform grid
                     if ((this->parameter_displacement.method == cuda::displacement::method_t::b_spline ||
@@ -426,7 +425,7 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
 
                     std::cout << " (" << (good ? "good" : "bad") << ")" << std::endl;
 
-                    if (i < num_iterations - 1)
+                    if (i < this->GaussSubdivisions - 1)
                     {
                         epsilon = (min_epsilon + max_epsilon) / 2.0f;
 
@@ -435,14 +434,14 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
 
                         std::cout << "  improved parameter: " << this->GaussParameter;
                     }
-                    else if (i == num_iterations - 1 && !good && last_good_epsilon == 0.0f)
+                    else if (i == this->GaussSubdivisions - 1 && !good && last_good_epsilon == 0.0f)
                     {
                         this->GaussParameter = 0.0f;
                         cache_parameter_displacement();
 
                         std::cout << "  unable to find good parameter, using: 0.0" << std::endl;
                     }
-                    else if (i == num_iterations - 1 && !good)
+                    else if (i == this->GaussSubdivisions - 1 && !good)
                     {
                         this->GaussParameter = last_good_epsilon;
                         cache_parameter_displacement();

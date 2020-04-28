@@ -134,10 +134,13 @@
             <DoubleVectorProperty name="GaussParameter" label="Gauss kernel parameter" command="SetGaussParameter" number_of_elements="1" default_values="0.1">
                 <Hints>
                     <PropertyWidgetDecorator type="CompositeDecorator">
-                        <Expression type="or">
-                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Weight" value="2" />
-                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Weight" value="3" />
-                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Weight" value="4" />
+                        <Expression type="and">
+                            <Expression type="or">
+                                <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Weight" value="2" />
+                                <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Weight" value="3" />
+                                <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Weight" value="4" />
+                            </Expression>
+                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="ComputeGauss" value="0" />
                         </Expression>
                     </PropertyWidgetDecorator>
                 </Hints>
@@ -155,6 +158,11 @@
 
             <IntVectorProperty name="ComputeGauss" label="Compute Gauss parameter epsilon" command="SetComputeGauss" number_of_elements="1" default_values="0">
                 <BooleanDomain name="bool"/>
+            </IntVectorProperty>
+            <IntVectorProperty name="GaussSubdivisions" label="Number of subdivisions" command="SetGaussSubdivisions" number_of_elements="1" default_values="10">
+                <Hints>
+                    <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="ComputeGauss" value="1" />
+                </Hints>
             </IntVectorProperty>
             <IntVectorProperty name="ComputeTearing" label="Compute tearing regions" command="SetComputeTearing" number_of_elements="1" default_values="0">
                 <BooleanDomain name="bool"/>
@@ -232,6 +240,7 @@
 
             <PropertyGroup label="Pre-computation">
                 <Property name="ComputeGauss" />
+                <Property name="GaussSubdivisions" />
                 <Property name="ComputeTearing" />
             </PropertyGroup>
 
