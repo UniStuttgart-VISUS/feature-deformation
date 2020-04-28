@@ -1277,6 +1277,10 @@ void feature_deformation::cache_input_grid(vtkInformationVector* input_grid_vect
             this->input_grid.origin << static_cast<float>(origin_data[0]), static_cast<float>(origin_data[1]), static_cast<float>(origin_data[2]);
             this->input_grid.spacing << static_cast<float>(spacing_data[0]), static_cast<float>(spacing_data[1]), static_cast<float>(spacing_data[2]);
 
+            if (this->input_grid.spacing[0] == 0.0f) this->input_grid.spacing[0] = 1.0f;
+            if (this->input_grid.spacing[1] == 0.0f) this->input_grid.spacing[1] = 1.0f;
+            if (this->input_grid.spacing[2] == 0.0f) this->input_grid.spacing[2] = 1.0f;
+
             this->input_grid.origin += Eigen::Vector3f(this->input_grid.extent[0], this->input_grid.extent[2],
                 this->input_grid.extent[4]).cwiseProduct(this->input_grid.spacing);
 
