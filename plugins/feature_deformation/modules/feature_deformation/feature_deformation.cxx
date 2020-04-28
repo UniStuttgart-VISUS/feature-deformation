@@ -30,6 +30,13 @@
 
 #include "Eigen/Dense"
 
+#include <CGAL/convex_hull_3.h>
+#include <CGAL/Delaunay_triangulation_3.h>
+#include <CGAL/Exact_predicates_inexact_constructions_kernel.h>
+#include <CGAL/Plane_3.h>
+#include <CGAL/Polyhedron_3.h>
+#include <CGAL/Tetrahedron_3.h>
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -397,16 +404,60 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
                                         // Calculate handedness
                                         handedness = static_cast<float>(vector_1.cross(vector_2).dot(vector_3));
 
-                                        // Check convexity
+                                        // Create cell polyhedron
                                         if (this->parameter_precompute.check_convexity)
                                         {
-                                            // todo
-                                        }
+                                            using kernel_t = CGAL::Exact_predicates_inexact_constructions_kernel;
 
-                                        // Calculate volume
-                                        if (this->parameter_precompute.check_volume)
-                                        {
-                                            // todo
+                                            using delaunay_t = CGAL::Delaunay_triangulation_3<kernel_t>;
+                                            using polyhedron_t = CGAL::Polyhedron_3<kernel_t>;
+                                            using tetrahedron_t = CGAL::Tetrahedron_3<kernel_t>;
+
+                                            std::array<CGAL::Point_3<kernel_t>, 8> points{
+                                                CGAL::Point_3<kernel_t>(displaced_positions[point0][0], displaced_positions[point0][1], displaced_positions[point0][2]),
+                                                CGAL::Point_3<kernel_t>(displaced_positions[point1][0], displaced_positions[point1][1], displaced_positions[point1][2]),
+                                                CGAL::Point_3<kernel_t>(displaced_positions[point2][0], displaced_positions[point2][1], displaced_positions[point2][2]),
+                                                CGAL::Point_3<kernel_t>(displaced_positions[point3][0], displaced_positions[point3][1], displaced_positions[point3][2]),
+                                                CGAL::Point_3<kernel_t>(displaced_positions[point4][0], displaced_positions[point4][1], displaced_positions[point4][2]),
+                                                CGAL::Point_3<kernel_t>(displaced_positions[point5][0], displaced_positions[point5][1], displaced_positions[point5][2]),
+                                                CGAL::Point_3<kernel_t>(displaced_positions[point6][0], displaced_positions[point6][1], displaced_positions[point6][2]),
+                                                CGAL::Point_3<kernel_t>(displaced_positions[point7][0], displaced_positions[point7][1], displaced_positions[point7][2])
+                                            };
+
+                                            std::array<tetrahedron_t, 6> cell{
+                                                tetrahedron_t(points[0], points[2], points[3], points[7]),
+                                                tetrahedron_t(points[0], points[1], points[3], points[7]),
+                                                tetrahedron_t(points[0], points[1], points[5], points[7]),
+                                                tetrahedron_t(points[0], points[4], points[5], points[7]),
+                                                tetrahedron_t(points[0], points[2], points[6], points[7]),
+                                                tetrahedron_t(points[0], points[4], points[6], points[7])
+                                            };
+
+                                            const auto volume =
+                                                std::abs(cell[0].volume()) + std::abs(cell[1].volume()) + std::abs(cell[2].volume()) +
+                                                std::abs(cell[3].volume()) + std::abs(cell[4].volume()) + std::abs(cell[5].volume());
+
+                                            // Check convexity
+                                            polyhedron_t hull;
+                                            CGAL::convex_hull_3(points.begin(), points.end(), hull);
+
+                                            delaunay_t delaunay;
+                                            delaunay.insert(hull.points_begin(), hull.points_end());
+
+                                            double convex_volume = 0.0;
+
+                                            for (auto it = delaunay.finite_cells_begin(); it != delaunay.finite_cells_end(); ++it)
+                                            {
+                                                convex_volume += delaunay.tetrahedron(it).volume();
+                                            }
+
+                                            good &= convex &= std::abs(convex_volume - volume) < 0.01f * this->input_grid.spacing.norm();
+
+                                            // Check volume
+                                            if (this->parameter_precompute.check_volume)
+                                            {
+                                                large &= volume > this->parameter_precompute.volume_percentage * this->input_grid.spacing.prod();
+                                            }
                                         }
                                     }
                                     else

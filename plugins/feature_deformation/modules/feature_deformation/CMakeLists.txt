@@ -25,6 +25,18 @@ endif()
 
 target_link_libraries(${feature_deformation_target} PUBLIC Eigen3::Eigen)
 
+# Find and link CGAL
+find_package(CGAL REQUIRED)
+
+if(NOT TARGET CGAL::CGAL)
+  message(FATAL_ERROR "Target for CGAL not found")
+endif()
+
+set_target_properties(CGAL PROPERTIES MAP_IMPORTED_CONFIG_MINSIZEREL Release)
+set_target_properties(CGAL PROPERTIES MAP_IMPORTED_CONFIG_RELWITHDEBINFO Release)
+
+target_link_libraries(${feature_deformation_target} PUBLIC CGAL::CGAL)
+
 # Configure CUDA
 set_target_properties(${feature_deformation_target} PROPERTIES CUDA_STANDARD 14)
 target_include_directories(${feature_deformation_target} PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
