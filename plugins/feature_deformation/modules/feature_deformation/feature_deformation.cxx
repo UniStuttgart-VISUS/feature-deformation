@@ -513,13 +513,18 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
 
                 // Use region growing to detect and label connected tearing regions
                 int next_region = 0;
-                std::unordered_set<vtkIdType> todo;
 
-                for (int z = (is_2d ? 0 : 1); z < (is_2d ? 1 : (this->input_grid.dimension[2] - 1)); ++z)
+                auto hasher = [this](const std::tuple<int, int, int>& key) -> std::size_t {
+                    return std::hash<int>()(calc_index_point(this->input_grid.dimension, std::get<0>(key), std::get<1>(key), std::get<2>(key)));
+                };
+
+                std::unordered_set<std::tuple<int, int, int>, decltype(hasher)> todo(29, hasher);
+
+                for (int z = 0; z < this->input_grid.dimension[2]; ++z)
                 {
-                    for (int y = 1; y < this->input_grid.dimension[1] - 1; ++y)
+                    for (int y = 0; y < this->input_grid.dimension[1]; ++y)
                     {
-                        for (int x = 1; x < this->input_grid.dimension[0] - 1; ++x)
+                        for (int x = 0; x < this->input_grid.dimension[0]; ++x)
                         {
                             const auto index = calc_index_point(this->input_grid.dimension, x, y, z);
 
@@ -530,13 +535,18 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
                             {
                                 const auto current_region = next_region++;
 
-                                todo.insert(index);
+                                todo.insert({x, y, z});
 
                                 // Take first item, process it, and put unprocessed neighbors on the ToDo list
                                 while (!todo.empty())
                                 {
-                                    const auto current_index = *todo.cbegin();
-                                    todo.erase(current_index);
+                                    const auto current_coords = *todo.cbegin();
+                                    todo.erase(current_coords);
+
+                                    const auto current_x = std::get<0>(current_coords);
+                                    const auto current_y = std::get<1>(current_coords);
+                                    const auto current_z = std::get<2>(current_coords);
+                                    const auto current_index = calc_index_point(this->input_grid.dimension, current_x, current_y, current_z);
 
                                     precompute_tearing.removed_cells->SetTypedComponent(current_index, 1, current_region);
 
@@ -549,14 +559,22 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
                                             {
                                                 if (i != 0 || j != 0 || k != 0)
                                                 {
-                                                    const auto neighbor_index = current_index + i + this->input_grid.dimension[0] * (j + this->input_grid.dimension[1] * k);
+                                                    const auto neighbor_x = current_x + i;
+                                                    const auto neighbor_y = current_y + j;
+                                                    const auto neighbor_z = current_z + k;
+                                                    const auto neighbor_index = calc_index_point(this->input_grid.dimension, neighbor_x, neighbor_y, neighbor_z);
 
-                                                    std::array<vtkIdType, 2> value;
-                                                    precompute_tearing.removed_cells->GetTypedTuple(neighbor_index, value.data());
-
-                                                    if (value[0] == 1 && value[1] == -1)
+                                                    if (neighbor_x >= 0 && neighbor_x < this->input_grid.dimension[0] &&
+                                                        neighbor_y >= 0 && neighbor_y < this->input_grid.dimension[1] &&
+                                                        neighbor_z >= 0 && neighbor_z < this->input_grid.dimension[2])
                                                     {
-                                                        todo.insert(neighbor_index);
+                                                        std::array<vtkIdType, 2> value;
+                                                        precompute_tearing.removed_cells->GetTypedTuple(neighbor_index, value.data());
+
+                                                        if (value[0] == 1 && value[1] == -1)
+                                                        {
+                                                            todo.insert({ neighbor_x, neighbor_y, neighbor_z });
+                                                        }
                                                     }
                                                 }
                                             }
