@@ -76,6 +76,18 @@ public:
     vtkGetMacro(ComputeGauss, int);
     vtkSetMacro(ComputeGauss, int);
 
+    vtkGetMacro(CheckHandedness, int);
+    vtkSetMacro(CheckHandedness, int);
+
+    vtkGetMacro(CheckConvexity, int);
+    vtkSetMacro(CheckConvexity, int);
+
+    vtkGetMacro(CheckVolume, int);
+    vtkSetMacro(CheckVolume, int);
+
+    vtkGetMacro(VolumePercentage, double);
+    vtkSetMacro(VolumePercentage, double);
+
     vtkGetMacro(GaussSubdivisions, int);
     vtkSetMacro(GaussSubdivisions, int);
 
@@ -189,6 +201,10 @@ private:
 
     /// Pre-computation options
     int ComputeGauss;
+    int CheckHandedness;
+    int CheckConvexity;
+    int CheckVolume;
+    double VolumePercentage;
     int GaussSubdivisions;
     int ComputeTearing;
 
@@ -248,6 +264,11 @@ private:
     struct cache_parameter_precompute_t : public cache_t
     {
         bool compute_gauss;
+        bool check_handedness;
+        bool check_convexity;
+        bool check_volume;
+        double volume_percentage;
+        int num_subdivisions;
         bool compute_tearing;
 
     } parameter_precompute;

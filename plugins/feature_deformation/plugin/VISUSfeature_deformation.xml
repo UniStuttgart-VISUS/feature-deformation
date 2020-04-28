@@ -159,6 +159,47 @@
             <IntVectorProperty name="ComputeGauss" label="Compute Gauss parameter epsilon" command="SetComputeGauss" number_of_elements="1" default_values="0">
                 <BooleanDomain name="bool"/>
             </IntVectorProperty>
+            <IntVectorProperty name="CheckHandedness" label="Check handedness" command="SetCheckHandedness" number_of_elements="1" default_values="1">
+                <BooleanDomain name="bool"/>
+                <Hints>
+                    <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="ComputeGauss" value="1" />
+                </Hints>
+            </IntVectorProperty>
+            <IntVectorProperty name="CheckConvexity" label="Check convexity" command="SetCheckConvexity" number_of_elements="1" default_values="1">
+                <BooleanDomain name="bool"/>
+                <Hints>
+                    <PropertyWidgetDecorator type="CompositeDecorator">
+                        <Expression type="and">
+                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="ComputeGauss" value="1" />
+                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="CheckHandedness" value="1" />
+                        </Expression>
+                    </PropertyWidgetDecorator>
+                </Hints>
+            </IntVectorProperty>
+            <IntVectorProperty name="CheckVolume" label="Check volume" command="SetCheckVolume" number_of_elements="1" default_values="0">
+                <BooleanDomain name="bool"/>
+                <Hints>
+                    <PropertyWidgetDecorator type="CompositeDecorator">
+                        <Expression type="and">
+                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="ComputeGauss" value="1" />
+                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="CheckHandedness" value="1" />
+                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="CheckConvexity" value="1" />
+                        </Expression>
+                    </PropertyWidgetDecorator>
+                </Hints>
+            </IntVectorProperty>
+            <DoubleVectorProperty name="VolumePercentage" label="Volume percentage" command="SetVolumePercentage" number_of_elements="1" default_values="0.2">
+                <Hints>
+                    <PropertyWidgetDecorator type="CompositeDecorator">
+                        <Expression type="and">
+                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="ComputeGauss" value="1" />
+                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="CheckHandedness" value="1" />
+                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="CheckConvexity" value="1" />
+                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="CheckVolume" value="1" />
+                        </Expression>
+                    </PropertyWidgetDecorator>
+                </Hints>
+            </DoubleVectorProperty>
             <IntVectorProperty name="GaussSubdivisions" label="Number of subdivisions" command="SetGaussSubdivisions" number_of_elements="1" default_values="10">
                 <Hints>
                     <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="ComputeGauss" value="1" />
@@ -240,6 +281,10 @@
 
             <PropertyGroup label="Pre-computation">
                 <Property name="ComputeGauss" />
+                <Property name="CheckHandedness" />
+                <Property name="CheckConvexity" />
+                <Property name="CheckVolume" />
+                <Property name="VolumePercentage" />
                 <Property name="GaussSubdivisions" />
                 <Property name="ComputeTearing" />
             </PropertyGroup>

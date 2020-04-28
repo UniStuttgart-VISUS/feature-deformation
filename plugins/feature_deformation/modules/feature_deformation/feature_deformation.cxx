@@ -70,6 +70,11 @@ namespace
 
         return (z * (dimension[1] - 1) + y) * (dimension[0] - 1) + x;
     }
+
+    float project_point_onto_line(const Eigen::Vector3d& point, const Eigen::Vector3d& line_point)
+    {
+        return point.dot(line_point) / line_point.squaredNorm();
+    }
 }
 
 vtkStandardNewMacro(feature_deformation);
@@ -298,8 +303,9 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
 
                 // Iteratively improve parameter
                 float last_good_epsilon = 0.0f;
+                float last_good_small_epsilon = 0.0f;
 
-                for (int i = 0; i < this->GaussSubdivisions; ++i)
+                for (int i = 0; i < this->parameter_precompute.num_subdivisions; ++i)
                 {
                     // Deform grid
                     if ((this->parameter_displacement.method == cuda::displacement::method_t::b_spline ||
@@ -316,13 +322,18 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
                     auto min_handedness = std::numeric_limits<float>::max();
                     auto max_handedness = std::numeric_limits<float>::min();
 
+                    bool good = true;
+                    bool wellformed = true;
+                    bool convex = true;
+                    bool large = true;
+
                     const bool is_2d = this->input_grid.dimension[2] == 1;
 
-                    for (int z = 0; z < (is_2d ? 1 : (this->input_grid.dimension[2] - 1)); ++z)
+                    for (int z = 0; z < (is_2d ? 1 : (this->input_grid.dimension[2] - 1)) && good; ++z)
                     {
-                        for (int y = 0; y < this->input_grid.dimension[1] - 1; ++y)
+                        for (int y = 0; y < this->input_grid.dimension[1] - 1 && good; ++y)
                         {
-                            for (int x = 0; x < this->input_grid.dimension[0] - 1; ++x)
+                            for (int x = 0; x < this->input_grid.dimension[0] - 1 && good; ++x)
                             {
                                 // Create point IDs
                                 const auto point0 = calc_index_point(this->input_grid.dimension, x + 0, y + 0, z + 0);
@@ -365,14 +376,13 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
                                     }
                                 }
 
-                                // Create cell faces
+                                // Check handedness, convexity, and cell volumes
                                 if (!discard_cell)
                                 {
                                     float handedness;
 
                                     if (!is_2d)
                                     {
-                                        // Calculate handedness
                                         std::array<Eigen::Vector3d, 4> points{
                                             Eigen::Vector3d(displaced_positions[point0][0], displaced_positions[point0][1], displaced_positions[point0][2]),
                                             Eigen::Vector3d(displaced_positions[point1][0], displaced_positions[point1][1], displaced_positions[point1][2]),
@@ -384,69 +394,131 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
                                         const auto vector_2 = points[2] - points[0];
                                         const auto vector_3 = points[3] - points[0];
 
+                                        // Calculate handedness
                                         handedness = static_cast<float>(vector_1.cross(vector_2).dot(vector_3));
+
+                                        // Check convexity
+                                        if (this->parameter_precompute.check_convexity)
+                                        {
+                                            // todo
+                                        }
+
+                                        // Calculate volume
+                                        if (this->parameter_precompute.check_volume)
+                                        {
+                                            // todo
+                                        }
                                     }
                                     else
                                     {
-                                        // Calculate handedness
                                         std::array<Eigen::Vector3d, 4> points{
                                             Eigen::Vector3d(displaced_positions[point0][0], displaced_positions[point0][1], displaced_positions[point0][2]),
                                             Eigen::Vector3d(displaced_positions[point1][0], displaced_positions[point1][1], displaced_positions[point1][2]),
-                                            Eigen::Vector3d(displaced_positions[point2][0], displaced_positions[point2][1], displaced_positions[point2][2])
+                                            Eigen::Vector3d(displaced_positions[point2][0], displaced_positions[point2][1], displaced_positions[point2][2]),
+                                            Eigen::Vector3d(displaced_positions[point3][0], displaced_positions[point3][1], displaced_positions[point3][2])
                                         };
 
                                         const auto vector_1 = points[1] - points[0];
                                         const auto vector_2 = points[2] - points[0];
+                                        const auto vector_3 = points[3] - points[0];
 
+                                        // Calculate handedness
                                         handedness = static_cast<float>(vector_1.cross(vector_2)[2]);
+
+                                        // Check convexity
+                                        if (this->parameter_precompute.check_convexity)
+                                        {
+                                            good &= convex &= std::signbit(vector_3.cross(vector_1)[2]) != std::signbit(vector_3.cross(vector_2)[2]);
+                                        }
+
+                                        // Calculate area
+                                        if (this->parameter_precompute.check_volume)
+                                        {
+                                            const auto t1 = project_point_onto_line(vector_1, vector_3);
+                                            const auto t2 = project_point_onto_line(vector_2, vector_3);
+
+                                            const auto area =
+                                                0.5 * vector_3.norm() * (vector_1 - (t1 * vector_3)).norm() +
+                                                0.5 * vector_3.norm() * (vector_2 - (t2 * vector_3)).norm();
+
+                                            large &= area > this->parameter_precompute.volume_percentage * this->input_grid.spacing.prod();
+                                        }
                                     }
 
-                                    min_handedness = std::min(min_handedness, handedness);
-                                    max_handedness = std::max(max_handedness, handedness);
+                                    // Apply handedness criterion
+                                    if (this->parameter_precompute.check_handedness)
+                                    {
+                                        min_handedness = std::min(min_handedness, handedness);
+                                        max_handedness = std::max(max_handedness, handedness);
+
+                                        good &= wellformed &= std::signbit(min_handedness) == std::signbit(max_handedness);
+                                    }
                                 }
                             }
                         }
                     }
 
                     // Set new influence
-                    bool good;
-
-                    if (std::signbit(min_handedness) != std::signbit(max_handedness))
+                    if (!good || !large)
                     {
-                        good = false;
                         max_epsilon = epsilon;
                     }
                     else
                     {
-                        good = true;
                         min_epsilon = epsilon;
+                    }
+
+                    if (good && !large)
+                    {
+                        last_good_small_epsilon = epsilon;
+                    }
+                    else if (good && large)
+                    {
                         last_good_epsilon = epsilon;
                     }
 
-                    std::cout << " (" << (good ? "good" : "bad") << ")" << std::endl;
+                    std::cout << " (" << (good && large ? "good" : (wellformed ? (convex ? (large ? "" : "small") : "concave") : "ill-formed")) << ")" << std::endl;
 
-                    if (i < this->GaussSubdivisions - 1)
+                    if (i < this->parameter_precompute.num_subdivisions - 1)
                     {
                         epsilon = (min_epsilon + max_epsilon) / 2.0f;
 
                         this->GaussParameter = epsilon;
                         cache_parameter_displacement();
 
-                        std::cout << "  improved parameter: " << this->GaussParameter;
+                        std::cout << "  checked parameter: " << this->GaussParameter;
                     }
-                    else if (i == this->GaussSubdivisions - 1 && !good && last_good_epsilon == 0.0f)
+                    else
                     {
-                        this->GaussParameter = 0.0f;
-                        cache_parameter_displacement();
+                        if (good && large)
+                        {
+                            std::cout << "  found good parameter: " << epsilon << std::endl;
+                        }
+                        else if (last_good_epsilon != 0.0f)
+                        {
+                            this->GaussParameter = last_good_epsilon;
+                            cache_parameter_displacement();
 
-                        std::cout << "  unable to find good parameter, using: 0.0" << std::endl;
-                    }
-                    else if (i == this->GaussSubdivisions - 1 && !good)
-                    {
-                        this->GaussParameter = last_good_epsilon;
-                        cache_parameter_displacement();
+                            std::cout << "  found good parameter: " << last_good_epsilon << std::endl;
+                        }
+                        else if (good && !large)
+                        {
+                            std::cout << "  found good parameter, but cells may be small: " << epsilon << std::endl;
+                        }
+                        else if (last_good_small_epsilon != 0.0f)
+                        {
+                            this->GaussParameter = last_good_small_epsilon;
+                            cache_parameter_displacement();
 
-                        std::cout << "  using last good parameter: " << last_good_epsilon << std::endl;
+                            std::cout << "  found good parameter, but cells may be small: " << epsilon << std::endl;
+                        }
+                        else
+                        {
+                            this->GaussParameter = 0.0f;
+                            cache_parameter_displacement();
+
+                            std::cout << "  unable to find good parameter, using: 0.0" << std::endl;
+                        }
                     }
                 }
             }
@@ -1065,10 +1137,21 @@ void feature_deformation::cache_parameter_displacement()
 void feature_deformation::cache_parameter_precompute()
 {
     if (this->parameter_precompute.compute_gauss != (this->ComputeGauss != 0) ||
+        this->parameter_precompute.check_handedness != (this->CheckHandedness != 0) ||
+        this->parameter_precompute.check_convexity != (this->CheckConvexity != 0) ||
+        this->parameter_precompute.check_volume != (this->CheckVolume != 0) ||
+        this->parameter_precompute.volume_percentage != this->VolumePercentage ||
+        this->parameter_precompute.num_subdivisions != this->GaussSubdivisions ||
         this->parameter_precompute.compute_tearing != (this->ComputeTearing != 0))
     {
         // Set cached parameters
         this->parameter_precompute.compute_gauss = (this->ComputeGauss != 0);
+        this->parameter_precompute.check_handedness = (this->CheckHandedness != 0);
+        this->parameter_precompute.check_convexity = (this->CheckConvexity != 0);
+        this->parameter_precompute.check_volume = (this->CheckVolume != 0);
+        this->parameter_precompute.volume_percentage = this->VolumePercentage;
+        this->parameter_precompute.num_subdivisions = this->GaussSubdivisions;
+
         this->parameter_precompute.compute_tearing = (this->ComputeTearing != 0);
 
         // Parameters have been modified
