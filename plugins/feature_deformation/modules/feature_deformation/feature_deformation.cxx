@@ -275,23 +275,32 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
                     }
                 );
 
-                auto min_influence = Eigen::Vector3f((*max_displacement)[0], (*max_displacement)[1], (*max_displacement)[2]).norm();
-                auto max_influence = 2.0f * (min_influence + Eigen::Vector3f(this->input_grid.spacing[0] * this->input_grid.dimension[0],
-                    this->input_grid.spacing[1] * this->input_grid.dimension[1], this->input_grid.spacing[2] * this->input_grid.dimension[2]).norm());
+                float min_epsilon, max_epsilon;
+                const auto min_influence = Eigen::Vector3f((*max_displacement)[0], (*max_displacement)[1], (*max_displacement)[2]).norm();
+
+                if (min_influence == 0.0f)
+                {
+                    min_epsilon = max_epsilon = 0.0f;
+                }
+                else
+                {
+                    min_epsilon = 0.0f;
+                    max_epsilon = 2.0f / min_influence;
+                }
 
                 // Initial guess
-                auto influence = (min_influence + max_influence) / 2.0f;
+                auto epsilon = (min_epsilon + max_epsilon) / 2.0f;
 
-                this->GaussParameter = 2.0f / influence;
+                this->GaussParameter = epsilon;
                 cache_parameter_displacement();
 
                 std::cout << "  initial guess: " << this->GaussParameter;
 
                 // Iteratively improve parameter
                 const auto num_iterations = 10;
-                bool good = false;
+                float last_good_epsilon = 0.0f;
 
-                for (int i = 0; i < num_iterations || !good; ++i)
+                for (int i = 0; i < num_iterations; ++i)
                 {
                     // Deform grid
                     if ((this->parameter_displacement.method == cuda::displacement::method_t::b_spline ||
@@ -401,27 +410,44 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
                     }
 
                     // Set new influence
+                    bool good;
+
                     if (std::signbit(min_handedness) != std::signbit(max_handedness))
                     {
                         good = false;
-                        min_influence = influence;
+                        max_epsilon = epsilon;
                     }
                     else
                     {
                         good = true;
-                        max_influence = influence;
+                        min_epsilon = epsilon;
+                        last_good_epsilon = epsilon;
                     }
 
                     std::cout << " (" << (good ? "good" : "bad") << ")" << std::endl;
 
-                    if (i < num_iterations - 1 || !good)
+                    if (i < num_iterations - 1)
                     {
-                        influence = (min_influence + max_influence) / 2.0f;
+                        epsilon = (min_epsilon + max_epsilon) / 2.0f;
 
-                        this->GaussParameter = 2.0f / influence;
+                        this->GaussParameter = epsilon;
                         cache_parameter_displacement();
 
                         std::cout << "  improved parameter: " << this->GaussParameter;
+                    }
+                    else if (i == num_iterations - 1 && !good && last_good_epsilon == 0.0f)
+                    {
+                        this->GaussParameter = 0.0f;
+                        cache_parameter_displacement();
+
+                        std::cout << "  unable to find good parameter, using: 0.0" << std::endl;
+                    }
+                    else if (i == num_iterations - 1 && !good)
+                    {
+                        this->GaussParameter = last_good_epsilon;
+                        cache_parameter_displacement();
+
+                        std::cout << "  using last good parameter: " << last_good_epsilon << std::endl;
                     }
                 }
             }
