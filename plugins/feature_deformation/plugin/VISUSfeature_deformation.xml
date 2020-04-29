@@ -20,7 +20,7 @@
                     <Group name="filters"/>
                 </ProxyGroupDomain>
             </InputProperty>
-            <InputProperty name="Geometry" command="AddInputConnection" clean_command="RemoveAllInputs" multiple_input="1" port_index="2">
+            <InputProperty name="Geometry" command="SetInputConnection" clean_command="RemoveAllInputs" multiple_input="1" port_index="2">
                 <ProxyGroupDomain name="groups">
                     <Group name="sources"/>
                     <Group name="filters"/>
