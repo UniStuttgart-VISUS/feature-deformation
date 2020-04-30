@@ -7,6 +7,7 @@
 #include <vector_types.h>
 
 #include <array>
+#include <iostream>
 #include <sstream>
 #include <stdexcept>
 #include <vector>
@@ -1169,9 +1170,9 @@ void cuda::displacement::displace(const method_t method, const parameter_t param
         // Destroy resources
         cudaDestroyTextureObject(cuda_tex_knot_vector);
         cudaFree(cuda_res_knot_vector);
-    }
 
         break;
+    }
     case method_t::b_spline_joints:
     {
         // Create knot vector, compute displaced positions, and compute B-Spline derivatives
@@ -1222,9 +1223,9 @@ void cuda::displacement::displace(const method_t method, const parameter_t param
 
         cudaDestroyTextureObject(cuda_tex_displaced_first_derivative);
         cudaFree(cuda_res_displaced_first_derivative);
-    }
 
         break;
+    }
     }
 
     // Destroy resources

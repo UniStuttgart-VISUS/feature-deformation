@@ -30,12 +30,15 @@
 
 #include "Eigen/Dense"
 
+#define __cgal
+#ifdef __cgal
 #include <CGAL/convex_hull_3.h>
 #include <CGAL/Delaunay_triangulation_3.h>
 #include <CGAL/Exact_predicates_inexact_constructions_kernel.h>
 #include <CGAL/Plane_3.h>
 #include <CGAL/Polyhedron_3.h>
 #include <CGAL/Tetrahedron_3.h>
+#endif
 
 #include <algorithm>
 #include <array>
@@ -403,6 +406,7 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
                                         // Calculate handedness
                                         handedness = static_cast<float>(vector_1.cross(vector_2).dot(vector_3));
 
+#ifdef __cgal
                                         // Create cell polyhedron
                                         if (this->parameter_precompute.check_convexity)
                                         {
@@ -458,6 +462,7 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
                                                 large &= volume > this->parameter_precompute.volume_percentage * this->input_grid.spacing.head(is_2d ? 2 : 3).prod();
                                             }
                                         }
+#endif
                                     }
                                     else
                                     {
