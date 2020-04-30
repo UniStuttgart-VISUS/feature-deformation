@@ -1025,6 +1025,26 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
 
         for (unsigned int block_index = 0; block_index < output_deformed_geometry->GetNumberOfBlocks(); ++block_index)
         {
+            // Create displacement field
+            auto displacement_map = vtkSmartPointer<vtkDoubleArray>::New();
+            displacement_map->SetNumberOfComponents(3);
+            displacement_map->SetNumberOfTuples(vtkPointSet::SafeDownCast(output_deformed_geometry->GetBlock(block_index))->GetPoints()->GetNumberOfPoints());
+            displacement_map->SetName("Displacement Map");
+
+            #pragma omp parallel for
+            for (vtkIdType p = 0; p < vtkPointSet::SafeDownCast(output_deformed_geometry->GetBlock(block_index))->GetPoints()->GetNumberOfPoints(); ++p)
+            {
+                Eigen::Vector3d displaced_point;
+                vtkPointSet::SafeDownCast(output_deformed_geometry->GetBlock(block_index))->GetPoints()->GetPoint(p, displaced_point.data());
+
+                displacement_map->SetTuple(p, displaced_point.data());
+            }
+
+            vtkPointSet::SafeDownCast(output_deformed_geometry->GetBlock(block_index))->GetPointData()->AddArray(displacement_map);
+        }
+
+        for (unsigned int block_index = 0; block_index < output_deformed_geometry->GetNumberOfBlocks(); ++block_index)
+        {
             output_deformed_geometry->GetBlock(block_index)->GetInformation()->Set(vtkDataObject::DATA_TIME_STEP(), time);
         }
 
