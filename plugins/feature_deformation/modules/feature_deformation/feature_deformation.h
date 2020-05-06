@@ -112,6 +112,8 @@ public:
     vtkGetMacro(RemoveCellsScalar, double);
     vtkSetMacro(RemoveCellsScalar, double);
 
+    void RemoveAllGeometryInputs();
+
 protected:
     feature_deformation();
     ~feature_deformation();

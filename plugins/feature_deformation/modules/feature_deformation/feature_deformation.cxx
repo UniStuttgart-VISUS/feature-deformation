@@ -206,6 +206,11 @@ int feature_deformation::FillOutputPortInformation(int port, vtkInformation* inf
     return 1;
 }
 
+void feature_deformation::RemoveAllGeometryInputs()
+{
+    this->SetInputConnection(2, nullptr);
+}
+
 int feature_deformation::RequestUpdateExtent(vtkInformation*, vtkInformationVector**, vtkInformationVector* output_vector)
 {
     return 1;
