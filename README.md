@@ -32,7 +32,7 @@ In this paper, we present an approach that helps investigation and understanding
 | Line ID                   | ID of the feature line that is straightened. All other provided lines are deformed accordingly.   | 0             |
 | Vectors                   | Input velocity field that is adjusted for the deformed grid.                                      |               |
 
-*Smoothing:*
+**Smoothing:**
 
 | Parameter                 | Description                                                                                       | Default value         |
 |---------------------------|---------------------------------------------------------------------------------------------------|-----------------------|
@@ -50,7 +50,7 @@ Additionally, the endpoints are treated accoring to these two variants:
 - *Fixed endpoints*: The location of the endpoints is fixed
 - *Growing*: The endpoints are allowed to move freely as long as their distance increases. Afterwards their location is fixed for the remaining smoothing steps.
 
-*Animation:*
+**Animation:**
 
 | Parameter                 | Description                                                                           | Default value |
 |---------------------------|---------------------------------------------------------------------------------------|---------------|
@@ -58,7 +58,7 @@ Additionally, the endpoints are treated accoring to these two variants:
 | Duration                  | Duration of the animation (in seconds) when triggered using the python script.        | 5             |
 | Inverse                   | Invert animation playback.                                                            | no            |
 
-*Deformation:*
+**Deformation:**
 
 | Parameter                             | Description                                                                                   | Default value     |
 |---------------------------------------|-----------------------------------------------------------------------------------------------|-------------------|
@@ -77,7 +77,7 @@ There are six different deformation methods implemented:
 - *B-Spline:* The closest point on the B-spline is determined and the translation defined as displacement between the original and the deformed B-spline.
 - *B-Spline Joints:* The closest point on the B-spline is determined, and the translation and rotation defined as transformation of the original onto the deformed B-spline.
 
-*Pre-computation:*
+**Pre-computation:**
 
 | Parameter                             | Description                                                                                                           | Default value     |
 |---------------------------------------|-----------------------------------------------------------------------------------------------------------------------|-------------------|
@@ -89,7 +89,7 @@ There are six different deformation methods implemented:
 | Number of subdivisions                | Number of iterations of binary search to find an adequate Gauss parameter.                                            | 10                |
 | Identify tearing regions              | Pre-compute tearing regions, by marking points of removed cells in the last time step.                                | no                |
 
-*Output:*
+**Output:**
 
 | Parameter                         | Description                                                                           | Default value |
 |-----------------------------------|---------------------------------------------------------------------------------------|---------------|
@@ -104,7 +104,7 @@ There are six different deformation methods implemented:
 
 Example for a generated, synthetic Spiral Vortex dataset. The vortex core line (dark green) and the close streamlines (light green) are shown for the original (left), and for the deformed (right) space. The deformed grid was partly torn apart due to strong deformation.
 
-![Original and deformed vortex](feature_deformation.png)
+![Original and deformed vortex](plugins/feature_deformation/modules/feature_deformation/feature_deformation.png)
 
 ## Usage
 
