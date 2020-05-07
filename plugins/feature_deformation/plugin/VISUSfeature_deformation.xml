@@ -8,26 +8,51 @@
 
         -->
         <SourceProxy name="Feature Deformation" class="feature_deformation" label="Feature Deformation">
+            <Documentation>
+                Deform a feature and its surrounding space.
+            </Documentation>
+
             <InputProperty name="Feature" command="SetInputConnection" port_index="1">
                 <ProxyGroupDomain name="groups">
                     <Group name="sources"/>
                     <Group name="filters"/>
                 </ProxyGroupDomain>
+                <DataTypeDomain name="input_type">
+                    <DataType value="vtkPolyData"/>
+                </DataTypeDomain>
+                <Documentation>
+                    Feature that is straightened and used as reference for the space deformation.
+                </Documentation>
             </InputProperty>
-            <InputProperty name="Grid" command="SetInputConnection" port_index="0">
+            <InputProperty name="Grid" command="SetInputConnection" clean_command="RemoveAllInputs" port_index="0">
                 <ProxyGroupDomain name="groups">
                     <Group name="sources"/>
                     <Group name="filters"/>
                 </ProxyGroupDomain>
+                <DataTypeDomain name="input_type">
+                    <DataType value="vtkImageData"/>
+                </DataTypeDomain>
+                <Documentation>
+                    The underlying grid that is deformed.
+                </Documentation>
             </InputProperty>
             <InputProperty name="Geometry" command="AddInputConnection" clean_command="RemoveAllGeometryInputs" multiple_input="1" port_index="2">
                 <ProxyGroupDomain name="groups">
                     <Group name="sources"/>
                     <Group name="filters"/>
                 </ProxyGroupDomain>
+                <DataTypeDomain name="input_type">
+                    <DataType value="vtkPointSet"/>
+                </DataTypeDomain>
+                <Documentation>
+                    Additional geometry that is deformed.
+                </Documentation>
             </InputProperty>
 
             <IntVectorProperty name="LineID" label="Line ID" command="SetLineID" number_of_elements="1" default_values="0">
+                <Documentation>
+                    ID of the feature line that is straightened. All other provided lines are deformed accordingly.
+                </Documentation>
             </IntVectorProperty>
             <StringVectorProperty name="SelectInputVectors" label="Vectors" command="SetInputArrayToProcess" number_of_elements="5" element_types="0 0 0 0 2" animateable="0">
                 <ArrayListDomain name="array_list" attribute_type="Vectors" input_domain_name="inputs_array">
@@ -35,6 +60,9 @@
                         <Property name="Grid" function="Input" />
                     </RequiredProperties>
                 </ArrayListDomain>
+                <Documentation>
+                    Input velocity field that is adjusted for the deformed grid.
+                </Documentation>
             </StringVectorProperty>
 
             <IntVectorProperty name="Method" command="SetMethod" label="Method" number_of_elements="1" default_values="1">
@@ -43,6 +71,9 @@
                     <Entry value="1" text="Iterative smoothing"/>
                     <Entry value="2" text="Time-local (z-plane-wise)"/>
                 </EnumerationDomain>
+                <Documentation>
+                    Method for straightening the feature line.
+                </Documentation>
             </IntVectorProperty>
             <IntVectorProperty name="Variant" label="Variant" command="SetVariant" number_of_elements="1" default_values="1">
                 <EnumerationDomain name="enum">
@@ -57,16 +88,26 @@
                         </Expression>
                     </PropertyWidgetDecorator>
                 </Hints>
+                <Documentation>
+                    Variant for treating the endpoints of the feature line, where growing means that the endpoints are fixed only when the distance between them is decreasing.
+                </Documentation>
             </IntVectorProperty>
             <IntVectorProperty name="MaxNumIterations" label="Number of iterations" command="SetMaxNumIterations" number_of_elements="1" default_values="1000">
                 <Hints>
                     <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Method" value="1" />
                 </Hints>
+                <Documentation>
+                    Number of smoothing iterations.
+                </Documentation>
             </IntVectorProperty>
             <DoubleVectorProperty name="Lambda" label="Smoothing factor" command="SetLambda" number_of_elements="1" default_values="0.7">
+                <DoubleRangeDomain name="lambda_range" min="0.00001" max="1.0" />
                 <Hints>
                     <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Method" value="1" />
                 </Hints>
+                <Documentation>
+                    Smoothing factor between 0 (no smoothing) and 1 (strong smoothing).
+                </Documentation>
             </DoubleVectorProperty>
 
             <IntVectorProperty name="Interpolator" label="Interpolator" command="SetInterpolator" number_of_elements="1" default_values="1">
@@ -77,17 +118,26 @@
                 <Hints>
                     <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Method" value="1" />
                 </Hints>
+                <Documentation>
+                    Mapping of real time onto the smoothing iteration step. As the smoothing has a larger effect in the beginning and a very low effect in the end, exponential mapping can be used.
+                </Documentation>
             </IntVectorProperty>
             <IntVectorProperty name="Duration" label="Duration (s)" command="SetDuration" number_of_elements="1" default_values="5">
                 <Hints>
                     <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Method" value="1" />
                 </Hints>
+                <Documentation>
+                    Duration of the animation when triggered using the python script. Does not have any effect otherwise.
+                </Documentation>
             </IntVectorProperty>
             <IntVectorProperty name="Inverse" label="Inverse" command="SetInverse" number_of_elements="1" default_values="0">
                 <BooleanDomain name="bool"/>
                 <Hints>
                     <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Method" value="1" />
                 </Hints>
+                <Documentation>
+                    Invert animation playback.
+                </Documentation>
             </IntVectorProperty>
 
             <IntVectorProperty name="Weight" command="SetWeight" label="Weight" number_of_elements="1" default_values="4">
@@ -99,6 +149,9 @@
                     <Entry value="3" text="B-Spline"/>
                     <Entry value="4" text="B-Spline Joints"/>
                 </EnumerationDomain>
+                <Documentation>
+                    Method used for deforming the space around the feature line. **Greedy:** Inverse distance weighting to all feature line points. **Greedy Joints:** Like "greedy", but additionally include rotation. **Voronoi:** Inverse distance weighting to closest feature line point and its neighbors. **Projection:** Find closest point on the feature line and linear interpolate between the adjacent line points, using Gauss function for decreased influence with distance. **B-Spline:** Use feature line points as de Boor points and find closest point on the B-spline for interpolation, using Gauss function for decreased influence with distance. **B-Spline Joints:** Like "B-spline", but additionally include rotation.
+                </Documentation>
             </IntVectorProperty>
             <DoubleVectorProperty name="EpsilonScalar" label="Inverse distance weighting exponent" command="SetEpsilonScalar" number_of_elements="1" default_values="5.0">
                 <Hints>
@@ -110,16 +163,17 @@
                         </Expression>
                     </PropertyWidgetDecorator>
                 </Hints>
+                <Documentation>
+                    Exponent for the inverse distance weighting.
+                </Documentation>
             </DoubleVectorProperty>
             <IntVectorProperty name="VoronoiDistance" label="Voronoi distance" command="SetVoronoiDistance" number_of_elements="1" default_values="1">
                 <Hints>
-                    <PropertyWidgetDecorator type="CompositeDecorator">
-                        <Expression type="or">
-                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Weight" value="0" />
-                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Weight" value="1" />
-                        </Expression>
-                    </PropertyWidgetDecorator>
+                    <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Weight" value="1" />
                 </Hints>
+                <Documentation>
+                    Number of neighbors to closest feature line point included for inverse distance weighting.
+                </Documentation>
             </IntVectorProperty>
             <IntVectorProperty name="SplineDegree" label="B-Spline degree" command="SetSplineDegree" number_of_elements="1" default_values="3">
                 <Hints>
@@ -130,6 +184,9 @@
                         </Expression>
                     </PropertyWidgetDecorator>
                 </Hints>
+                <Documentation>
+                    Degree of the B-spline.
+                </Documentation>
             </IntVectorProperty>
             <DoubleVectorProperty name="GaussParameter" label="Gauss kernel parameter" command="SetGaussParameter" number_of_elements="1" default_values="0.1">
                 <Hints>
@@ -144,6 +201,9 @@
                         </Expression>
                     </PropertyWidgetDecorator>
                 </Hints>
+                <Documentation>
+                    Parameter for the Gauss function, defining the region of influence. Large values lead to local deformation, smaller values increase the region of deformation. A value of 0 means infinite region, as if no Gauss function was applied.
+                </Documentation>
             </DoubleVectorProperty>
             <IntVectorProperty name="Subdivisions" label="Number of subdivisions" command="SetSubdivisions" number_of_elements="1" default_values="10">
                 <Hints>
@@ -154,16 +214,25 @@
                         </Expression>
                     </PropertyWidgetDecorator>
                 </Hints>
+                <Documentation>
+                    Number of iterations for binary search of the closest point on the B-spline.
+                </Documentation>
             </IntVectorProperty>
 
             <IntVectorProperty name="ComputeGauss" label="Compute Gauss parameter epsilon" command="SetComputeGauss" number_of_elements="1" default_values="0">
                 <BooleanDomain name="bool"/>
+                <Documentation>
+                    Compute Gauss parameter instead of setting it manually. This is only possible if a grid was provided as input. The following options influence this computation, where the largest possible Gauss parameter should be found.
+                </Documentation>
             </IntVectorProperty>
             <IntVectorProperty name="CheckHandedness" label="Check handedness" command="SetCheckHandedness" number_of_elements="1" default_values="1">
                 <BooleanDomain name="bool"/>
                 <Hints>
                     <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="ComputeGauss" value="1" />
                 </Hints>
+                <Documentation>
+                    Only right-handed cells are allowed, preventing self-penetration of cells.
+                </Documentation>
             </IntVectorProperty>
             <IntVectorProperty name="CheckConvexity" label="Check convexity" command="SetCheckConvexity" number_of_elements="1" default_values="1">
                 <BooleanDomain name="bool"/>
@@ -175,6 +244,9 @@
                         </Expression>
                     </PropertyWidgetDecorator>
                 </Hints>
+                <Documentation>
+                    Only convex cells are allowed.
+                </Documentation>
             </IntVectorProperty>
             <IntVectorProperty name="CheckVolume" label="Check volume" command="SetCheckVolume" number_of_elements="1" default_values="0">
                 <BooleanDomain name="bool"/>
@@ -187,8 +259,12 @@
                         </Expression>
                     </PropertyWidgetDecorator>
                 </Hints>
+                <Documentation>
+                    Check area (in 2D) or volume (in 3D) of the cells and require them to be sufficiently large.
+                </Documentation>
             </IntVectorProperty>
             <DoubleVectorProperty name="VolumePercentage" label="Volume percentage" command="SetVolumePercentage" number_of_elements="1" default_values="0.2">
+                <DoubleRangeDomain name="volume_range" min="0.0" max="1.0" />
                 <Hints>
                     <PropertyWidgetDecorator type="CompositeDecorator">
                         <Expression type="and">
@@ -199,27 +275,45 @@
                         </Expression>
                     </PropertyWidgetDecorator>
                 </Hints>
+                <Documentation>
+                    Minimum area (in 2D) or volume (in 3D) necessary, compared to the original cell size.
+                </Documentation>
             </DoubleVectorProperty>
             <IntVectorProperty name="GaussSubdivisions" label="Number of subdivisions" command="SetGaussSubdivisions" number_of_elements="1" default_values="10">
                 <Hints>
                     <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="ComputeGauss" value="1" />
                 </Hints>
+                <Documentation>
+                    Number of iterations of binary search to find an adequate Gauss parameter. If no parameter was found that meets the previously set requirements, the parameter is set to zero.
+                </Documentation>
             </IntVectorProperty>
             <IntVectorProperty name="ComputeTearing" label="Compute tearing regions" command="SetComputeTearing" number_of_elements="1" default_values="0">
                 <BooleanDomain name="bool"/>
+                <Documentation>
+                    Pre-compute tearing regions, by marking points of removed cells in the last time step.
+                </Documentation>
             </IntVectorProperty>
 
             <IntVectorProperty name="OutputBSplineDistance" label="Output B-spline distance" command="SetOutputBSplineDistance" number_of_elements="1" default_values="0">
                 <BooleanDomain name="bool"/>
+                <Documentation>
+                    Compute and output distance of neighboring points mapped onto the B-spline. This is only valid for line input.
+                </Documentation>
             </IntVectorProperty>
             <IntVectorProperty name="OutputDeformedGrid" label="Output deformed grid" command="SetOutputDeformedGrid" number_of_elements="1" default_values="0">
                 <BooleanDomain name="bool"/>
+                <Documentation>
+                    Output the deformed grid.
+                </Documentation>
             </IntVectorProperty>
             <IntVectorProperty name="OutputVectorField" label="Output vector field" command="SetOutputVectorField" number_of_elements="1" default_values="0">
                 <BooleanDomain name="bool"/>
                 <Hints>
                     <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="OutputDeformedGrid" value="1" />
                 </Hints>
+                <Documentation>
+                    Output adjusted vector field as attribute of the deformed grid.
+                </Documentation>
             </IntVectorProperty>
             <IntVectorProperty name="OutputResampledGrid" label="Output resampled grid" command="SetOutputResampledGrid" number_of_elements="1" default_values="0">
                 <BooleanDomain name="bool"/>
@@ -231,12 +325,18 @@
                         </Expression>
                     </PropertyWidgetDecorator>
                 </Hints>
+                <Documentation>
+                    Resample deformed velocities on the original grid.
+                </Documentation>
             </IntVectorProperty>
             <IntVectorProperty name="RemoveCells" label="Remove elongated cells" command="SetRemoveCells" number_of_elements="1" default_values="0">
                 <BooleanDomain name="bool"/>
                 <Hints>
                     <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="OutputDeformedGrid" value="1" />
                 </Hints>
+                <Documentation>
+                    Remove cells that are too large and therefore unreliable for computations.
+                </Documentation>
             </IntVectorProperty>
             <DoubleVectorProperty name="RemoveCellsScalar" label="Scalar determining cell removal" command="SetRemoveCellsScalar" number_of_elements="1" default_values="2.0">
                 <Hints>
@@ -247,6 +347,9 @@
                         </Expression>
                     </PropertyWidgetDecorator>
                 </Hints>
+                <Documentation>
+                    Factor determining the threshold for cell removal. E.g., a value of two means that cells are discared whose edge length exceeds two times the original cell's diagonal.
+                </Documentation>
             </DoubleVectorProperty>
 
             <DoubleVectorProperty information_only="1" name="TimestepValues" repeatable="1">
@@ -298,10 +401,26 @@
                 <Property name="RemoveCellsScalar" />
             </PropertyGroup>
 
-            <OutputPort name="Deformed Lines" index="0" id="lines"/>
-            <OutputPort name="Deformed Geometry" index="1" id="geometry"/>
-            <OutputPort name="Deformed Grid" index="2" id="grid" />
-            <OutputPort name="Resampled Grid" index="3" id="resampled"/>
+            <OutputPort name="Deformed Lines" index="0" id="lines">
+                <Documentation>
+                    Straightened feature line and correspondingly deformed lines.
+                </Documentation>
+            </OutputPort>
+            <OutputPort name="Deformed Geometry" index="1" id="geometry">
+                <Documentation>
+                    Deformed geometry, only translating the points, leaving the cells as they are.
+                </Documentation>
+            </OutputPort>
+            <OutputPort name="Deformed Grid" index="2" id="grid">
+                <Documentation>
+                    Deformed grid.
+                </Documentation>
+            </OutputPort>
+            <OutputPort name="Resampled Grid" index="3" id="resampled">
+                <Documentation>
+                    Grid with resampled deformed velocities.
+                </Documentation>
+            </OutputPort>
 
             <Hints>
                 <ShowInMenu category="VISUS Feature Deformation"/>
