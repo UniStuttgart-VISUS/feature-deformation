@@ -5,7 +5,13 @@ set(sources
   b-spline.h b-spline.cxx
   displacement.h displacement.cu
   hash.h
-  smoothing.h smoothing.cxx)
+  smoothing.h smoothing.cxx
+  algorithm.h algorithm.inl
+  algorithm_geometry_input.h algorithm_geometry_input.cxx
+  algorithm_grid_input.h algorithm_grid_input.cxx
+  algorithm_line_input.h algorithm_line_input.cxx
+  algorithm_smoothing.h algorithm_smoothing.cxx
+  algorithm_vectorfield_input.h algorithm_vectorfield_input.cxx)
 
 pv_module(feature_deformation ${PROJECT_NAME} "${sources}" feature_deformation_target)
 

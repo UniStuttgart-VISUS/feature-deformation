@@ -2,6 +2,11 @@
 
 #include "vtkAlgorithm.h"
 
+#include "algorithm_geometry_input.h"
+#include "algorithm_grid_input.h"
+#include "algorithm_line_input.h"
+#include "algorithm_smoothing.h"
+
 #include "displacement.h"
 #include "smoothing.h"
 
@@ -136,22 +141,7 @@ private:
     struct cache_output_geometry_t;
 
     /// Process parameters
-    void cache_parameter_lines();
-    void cache_parameter_smoothing(double time);
-    void cache_parameter_displacement();
-    void cache_parameter_precompute();
-    void cache_parameter_output_grid();
-
-    bool parameter_checks() const;
-
-    /// Get input
-    void cache_input_grid(vtkInformationVector* input_grid_vector);
-    void cache_input_lines(vtkInformationVector* input_lines_vector);
-    void cache_input_geometry(vtkInformationVector* input_geometry_vector);
-
-    /// Get positions and displacements
-    std::pair<std::vector<std::array<float, 4>>, std::vector<std::array<float, 4>>> get_displacements(
-        const std::vector<std::pair<Eigen::Vector3f, Eigen::Vector3f>>& displacement) const;
+    void process_parameters(double time);
 
     /// Create and manipulate grid
     void create_undeformed_grid(vtkPointSet* output_deformed_grid, const std::array<int, 6>& extent,
@@ -218,6 +208,58 @@ private:
     int RemoveCells;
     double RemoveCellsScalar;
 
+    // Processed parameters
+    struct parameter_t
+    {
+        int selected_line_id;
+
+        smoothing::method_t smoothing_method;
+        smoothing::variant_t variant;
+        float lambda;
+        int num_iterations;
+
+        cuda::displacement::method_t displacement_method;
+        cuda::displacement::parameter_t displacement_parameters;
+        cuda::displacement::inverse_distance_weighting_parameters_t idw_parameters;
+        cuda::displacement::projection_parameters_t projection_parameters;
+        cuda::displacement::b_spline_parameters_t bspline_parameters;
+
+        bool compute_gauss;
+        bool check_handedness;
+        bool check_convexity;
+        bool check_volume;
+        double volume_percentage;
+        int num_subdivisions;
+        bool compute_tearing;
+
+        bool output_deformed_grid;
+        bool output_vector_field;
+        bool output_resampled_grid;
+        bool remove_cells;
+        float remove_cells_scalar;
+
+    } parameters;
+
+    // Input algorithms
+    algorithm_grid_input alg_grid_input;
+    algorithm_line_input alg_line_input;
+    algorithm_geometry_input alg_geometry_input;
+
+    // Computation algorithms
+    algorithm_smoothing alg_smoothing;
+
+
+
+
+
+
+
+
+
+
+
+
+
     // Caching
     struct cache_t
     {
@@ -229,94 +271,6 @@ private:
         bool valid;
     };
 
-    // Parameter cache
-    struct cache_parameter_line_t : public cache_t
-    {
-        int selected_line_id;
-
-        smoothing::method_t method;
-
-    } parameter_lines;
-
-    struct cache_parameter_smoothing_t : public cache_t
-    {
-        smoothing::variant_t variant;
-
-        float lambda;
-        float mu;
-
-        int num_iterations;
-        int max_num_iterations;
-
-        bool modified_time;
-
-    } parameter_smoothing;
-
-    struct cache_parameter_displacement_t : public cache_t
-    {
-        cuda::displacement::method_t method;
-        cuda::displacement::parameter_t parameters;
-
-        cuda::displacement::inverse_distance_weighting_parameters_t idw_parameters;
-        cuda::displacement::projection_parameters_t projection_parameters;
-        cuda::displacement::b_spline_parameters_t bspline_parameters;
-
-    } parameter_displacement;
-
-    struct cache_parameter_precompute_t : public cache_t
-    {
-        bool compute_gauss;
-        bool check_handedness;
-        bool check_convexity;
-        bool check_volume;
-        double volume_percentage;
-        int num_subdivisions;
-        bool compute_tearing;
-
-    } parameter_precompute;
-
-    struct cache_parameter_output_grid_t : public cache_t
-    {
-        bool output_deformed_grid;
-        bool output_vector_field;
-        bool output_resampled_grid;
-
-        bool remove_cells;
-        float remove_cells_scalar;
-
-    } parameter_output_grid;
-
-    // Input caches
-    struct cache_input_grid_t : public cache_t
-    {
-        vtkImageData* grid;
-
-        struct cache_input_data_t : public cache_t
-        {
-            vtkDataArray* data;
-
-        } input_data;
-
-        std::array<int, 6> extent;
-        std::array<int, 3> dimension;
-        Eigen::Vector3f origin;
-        Eigen::Vector3f spacing;
-
-    } input_grid;
-
-    struct cache_input_lines_t : public cache_t
-    {
-        std::vector<std::array<float, 3>> lines;
-        std::vector<Eigen::Vector3f> selected_line;
-
-    } input_lines;
-
-    struct cache_input_geometry_t : public cache_t
-    {
-        std::vector<std::array<float, 3>> geometry;
-
-    } input_geometry;
-
     // Precomputation caches
     struct cache_precompute_tearing_t : public cache_t
     {
@@ -325,13 +279,6 @@ private:
     } precompute_tearing;
 
     // Results caches
-    struct cache_results_smoothing_t : public cache_t
-    {
-        std::vector<std::array<float, 4>> positions;
-        std::vector<std::array<float, 4>> displacements;
-
-    } results_smoothing;
-
     struct cache_results_displacement_t : public cache_t
     {
         std::shared_ptr<cuda::displacement> displacement;

@@ -226,29 +226,38 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
     const auto time = output_vector->GetInformationObject(0)->Get(vtkStreamingDemandDrivenPipeline::UPDATE_TIME_STEP());
 
     // Get parameters
-    cache_parameter_lines();
-    cache_parameter_smoothing(time);
-    cache_parameter_displacement();
-    cache_parameter_precompute();
-    cache_parameter_output_grid();
+    process_parameters(time);
 
-    if (this->parameter_lines.method == smoothing::method_t::smoothing)
+    if (this->parameters.smoothing_method == smoothing::method_t::smoothing)
     {
         std::cout << "Time: " << time << std::endl << std::endl;
     }
 
     // Get input
-    cache_input_grid(input_vector[0]);
-    cache_input_lines(input_vector[1]);
-    cache_input_geometry(input_vector[2]);
-
-    std::cout << std::endl;
-
-    // Sanity checks
-    if (!this->input_lines.valid || !parameter_checks())
+    if (!this->alg_line_input.run(vtkPolyData::SafeDownCast(input_vector[1]->GetInformationObject(0)->Get(vtkDataObject::DATA_OBJECT())), this->parameters.selected_line_id))
     {
         return 0;
     }
+
+    if (input_vector[0] != nullptr && input_vector[0]->GetInformationObject(0) != nullptr &&
+        (this->parameters.output_deformed_grid || this->parameters.compute_gauss))
+    {
+        this->alg_grid_input.run(vtkImageData::SafeDownCast(input_vector[0]->GetInformationObject(0)->Get(vtkDataObject::DATA_OBJECT())));
+    }
+
+    if (input_vector[2] != nullptr)
+    {
+        std::vector<vtkPointSet*> geometry_sets;
+
+        for (vtkIdType i = 0; i < input_vector[2]->GetNumberOfInformationObjects(); ++i)
+        {
+            geometry_sets.push_back(vtkPointSet::SafeDownCast(input_vector[2]->GetInformationObject(i)->Get(vtkDataObject::DATA_OBJECT())));
+        }
+
+        this->alg_geometry_input.run(geometry_sets);
+    }
+
+    std::cout << std::endl;
 
     // Compute Gauss parameter epsilon and tearing
     const bool is_2d = this->input_grid.dimension[2] == 1;
@@ -750,36 +759,9 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
         }
     }
 
-    // Smooth line and store results in cache
-    if (this->parameter_lines.modified || this->parameter_smoothing.modified || this->parameter_smoothing.modified_time || this->input_lines.modified)
+    // Smooth line
+    if (!this->alg_smoothing.run(this->alg_line_input, this->parameters.smoothing_method, this->parameters.variant, this->parameters.lambda, this->parameters.num_iterations))
     {
-        std::cout << "Smoothing line" << std::endl;
-
-        // Create smoother
-        smoothing smoother(this->input_lines.selected_line, this->parameter_lines.method, this->parameter_smoothing.variant,
-            this->parameter_smoothing.lambda, this->parameter_smoothing.num_iterations);
-
-        // Straighten the selected line
-        while (smoother.has_step())
-        {
-            // Perform smoothing step
-            smoother.next_step();
-        }
-
-        // Store results in cache
-        std::tie(this->results_smoothing.positions, this->results_smoothing.displacements) = get_displacements(smoother.get_displacement());
-
-        this->results_smoothing.valid = true;
-        this->results_smoothing.modified = true;
-    }
-    else
-    {
-        std::cout << "Loading smoothed line from cache" << std::endl;
-    }
-
-    if (!this->results_smoothing.valid)
-    {
-        std::cerr << "Smoothing results not valid" << std::endl;
         return 0;
     }
 
@@ -1071,19 +1053,6 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
     std::cout << "------------------------------------------------------" << std::endl;
 
     // Set modification to false for the next run
-    this->parameter_lines.modified = false;
-    this->parameter_smoothing.modified = false;
-    this->parameter_smoothing.modified_time = false;
-    this->parameter_displacement.modified = false;
-    this->parameter_precompute.modified = false;
-    this->parameter_output_grid.modified = false;
-
-    this->input_grid.modified = false;
-    this->input_grid.input_data.modified = false;
-    this->input_lines.modified = false;
-    this->input_geometry.modified = false;
-
-    this->results_smoothing.modified = false;
     this->results_grid_displacement.modified = false;
     this->results_line_displacement.modified = false;
     this->results_geometry_displacement.modified = false;
@@ -1094,27 +1063,18 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
 
 /// Parameters
 
-void feature_deformation::cache_parameter_lines()
+void feature_deformation::process_parameters(double time)
 {
-    if (this->parameter_lines.selected_line_id != this->LineID ||
-        this->parameter_lines.method != static_cast<smoothing::method_t>(this->Method))
-    {
-        // Set cached parameters
-        this->parameter_lines.selected_line_id = this->LineID;
+    // Line parameters
+    this->parameters.selected_line_id = this->LineID;
 
-        this->parameter_lines.method = static_cast<smoothing::method_t>(this->Method);
+    // Smoothing parameters
+    this->parameters.smoothing_method = static_cast<smoothing::method_t>(this->Method);
+    this->parameters.variant = static_cast<smoothing::variant_t>(this->Variant);
+    this->parameters.lambda = static_cast<float>(this->Lambda);
+    this->parameters.num_iterations = this->MaxNumIterations;
 
-        // Parameters have been modified
-        this->parameter_lines.modified = true;
-    }
-}
-
-void feature_deformation::cache_parameter_smoothing(double time)
-{
-    // In case of animation, set modified number of iterations
-    int num_iterations = this->MaxNumIterations;
-
-    if (this->parameter_lines.method == smoothing::method_t::smoothing)
+    if (this->parameters.smoothing_method == smoothing::method_t::smoothing)
     {
         if (this->Inverse)
         {
@@ -1124,426 +1084,72 @@ void feature_deformation::cache_parameter_smoothing(double time)
         if (this->Interpolator == 0)
         {
             // Linear
-            num_iterations *= std::min(time, 1.0);
+            this->parameters.num_iterations *= std::min(time, 1.0);
         }
         else
         {
             // Exponential
             if (time == 0.0)
             {
-                num_iterations = 0;
+                this->parameters.num_iterations = 0;
             }
             else if (time < 1.0)
             {
-                num_iterations = std::pow(2.0, time * std::log2(num_iterations + 1)) - 1;
+                this->parameters.num_iterations = std::pow(2.0, time * std::log2(this->parameters.num_iterations + 1)) - 1;
             }
         }
     }
 
-    if (this->parameter_smoothing.variant != static_cast<smoothing::variant_t>(this->Variant) ||
-        this->parameter_smoothing.lambda != static_cast<float>(this->Lambda) ||
-        this->parameter_smoothing.max_num_iterations != this->MaxNumIterations)
+    // Displacement parameters
+    this->parameters.displacement_method = static_cast<cuda::displacement::method_t>(this->Weight);
+
+    switch (this->parameters.displacement_method)
     {
-        // Set cached parameters
-        this->parameter_smoothing.variant = static_cast<smoothing::variant_t>(this->Variant);
+    case cuda::displacement::method_t::greedy:
+    case cuda::displacement::method_t::voronoi:
+        this->parameters.displacement_parameters.inverse_distance_weighting.exponent = static_cast<float>(this->EpsilonScalar);
+        this->parameters.displacement_parameters.inverse_distance_weighting.neighborhood = this->VoronoiDistance;
 
-        this->parameter_smoothing.lambda = static_cast<float>(this->Lambda);
-        this->parameter_smoothing.max_num_iterations = this->MaxNumIterations;
+        break;
+    case cuda::displacement::method_t::greedy_joints:
+        this->parameters.displacement_parameters.inverse_distance_weighting.exponent = static_cast<float>(this->EpsilonScalar);
 
-        // Parameters have been modified
-        this->parameter_smoothing.modified = true;
+        break;
+    case cuda::displacement::method_t::projection:
+        this->parameters.displacement_parameters.projection.gauss_parameter = static_cast<float>(this->GaussParameter);
+
+        break;
+    case cuda::displacement::method_t::b_spline:
+    case cuda::displacement::method_t::b_spline_joints:
+        this->parameters.displacement_parameters.b_spline.degree = this->SplineDegree;
+        this->parameters.displacement_parameters.b_spline.gauss_parameter = static_cast<float>(this->GaussParameter);
+        this->parameters.displacement_parameters.b_spline.iterations = this->Subdivisions;
+
+        break;
     }
 
-    // Track time-dependant parameter separately
-    if (this->parameter_smoothing.num_iterations != num_iterations)
-    {
-        this->parameter_smoothing.num_iterations = num_iterations;
-
-        this->parameter_smoothing.modified_time = true;
-    }
-}
-
-void feature_deformation::cache_parameter_displacement()
-{
-    if (this->parameter_displacement.method != static_cast<cuda::displacement::method_t>(this->Weight) ||
-        this->parameter_displacement.idw_parameters.exponent != static_cast<float>(this->EpsilonScalar) ||
-        this->parameter_displacement.idw_parameters.neighborhood != static_cast<float>(this->VoronoiDistance) ||
-        this->parameter_displacement.projection_parameters.gauss_parameter != static_cast<float>(this->GaussParameter) ||
-        this->parameter_displacement.bspline_parameters.degree != this->SplineDegree ||
-        this->parameter_displacement.bspline_parameters.gauss_parameter != static_cast<float>(this->GaussParameter) ||
-        this->parameter_displacement.bspline_parameters.iterations != this->Subdivisions)
-    {
-        // Set cached parameters
-        this->parameter_displacement.method = static_cast<cuda::displacement::method_t>(this->Weight);
-
-        switch (this->parameter_displacement.method)
-        {
-        case cuda::displacement::method_t::greedy:
-        case cuda::displacement::method_t::voronoi:
-            this->parameter_displacement.parameters.inverse_distance_weighting.exponent = static_cast<float>(this->EpsilonScalar);
-            this->parameter_displacement.parameters.inverse_distance_weighting.neighborhood = this->VoronoiDistance;
-
-            break;
-        case cuda::displacement::method_t::greedy_joints:
-            this->parameter_displacement.parameters.inverse_distance_weighting.exponent = static_cast<float>(this->EpsilonScalar);
-
-            break;
-        case cuda::displacement::method_t::projection:
-            this->parameter_displacement.parameters.projection.gauss_parameter = static_cast<float>(this->GaussParameter);
-
-            break;
-        case cuda::displacement::method_t::b_spline:
-        case cuda::displacement::method_t::b_spline_joints:
-            this->parameter_displacement.parameters.b_spline.degree = this->SplineDegree;
-            this->parameter_displacement.parameters.b_spline.gauss_parameter = static_cast<float>(this->GaussParameter);
-            this->parameter_displacement.parameters.b_spline.iterations = this->Subdivisions;
-
-            break;
-        }
-
-        // Store parameters separately
-        this->parameter_displacement.idw_parameters.exponent = static_cast<float>(this->EpsilonScalar);
-        this->parameter_displacement.idw_parameters.neighborhood = this->VoronoiDistance;
-        this->parameter_displacement.projection_parameters.gauss_parameter = static_cast<float>(this->GaussParameter);
-        this->parameter_displacement.bspline_parameters.degree = this->SplineDegree;
-        this->parameter_displacement.bspline_parameters.gauss_parameter = static_cast<float>(this->GaussParameter);
-        this->parameter_displacement.bspline_parameters.iterations = this->Subdivisions;
-
-        // Parameters have been modified
-        this->parameter_displacement.modified = true;
-    }
-}
-
-void feature_deformation::cache_parameter_precompute()
-{
-    if (this->parameter_precompute.compute_gauss != (this->ComputeGauss != 0) ||
-        this->parameter_precompute.check_handedness != (this->CheckHandedness != 0) ||
-        this->parameter_precompute.check_convexity != (this->CheckConvexity != 0) ||
-        this->parameter_precompute.check_volume != (this->CheckVolume != 0) ||
-        this->parameter_precompute.volume_percentage != this->VolumePercentage ||
-        this->parameter_precompute.num_subdivisions != this->GaussSubdivisions ||
-        this->parameter_precompute.compute_tearing != (this->ComputeTearing != 0))
-    {
-        // Set cached parameters
-        this->parameter_precompute.compute_gauss = (this->ComputeGauss != 0);
-        this->parameter_precompute.check_handedness = (this->CheckHandedness != 0);
-        this->parameter_precompute.check_convexity = (this->CheckConvexity != 0);
-        this->parameter_precompute.check_volume = (this->CheckVolume != 0);
-        this->parameter_precompute.volume_percentage = this->VolumePercentage;
-        this->parameter_precompute.num_subdivisions = this->GaussSubdivisions;
-
-        this->parameter_precompute.compute_tearing = (this->ComputeTearing != 0);
-
-        // Parameters have been modified
-        this->parameter_precompute.modified = true;
-    }
-}
-
-void feature_deformation::cache_parameter_output_grid()
-{
-    if (this->parameter_output_grid.output_deformed_grid != (this->OutputDeformedGrid != 0) ||
-        this->parameter_output_grid.output_vector_field != (this->OutputVectorField != 0) ||
-        this->parameter_output_grid.output_resampled_grid != (this->OutputResampledGrid != 0) ||
-        this->parameter_output_grid.remove_cells != (this->RemoveCells != 0) ||
-        this->parameter_output_grid.remove_cells_scalar != static_cast<float>(this->RemoveCellsScalar))
-    {
-        // Set cached parameters
-        this->parameter_output_grid.output_deformed_grid = (this->OutputDeformedGrid != 0);
-        this->parameter_output_grid.output_vector_field = (this->OutputVectorField != 0);
-        this->parameter_output_grid.output_resampled_grid = (this->OutputResampledGrid != 0);
-
-        this->parameter_output_grid.remove_cells = (this->RemoveCells != 0);
-        this->parameter_output_grid.remove_cells_scalar = static_cast<float>(this->RemoveCellsScalar);
-
-        // Parameters have been modified
-        this->parameter_output_grid.modified = true;
-    }
-}
-
-bool feature_deformation::parameter_checks() const
-{
-    if (this->Method == 1)
-    {
-        if (this->Lambda <= 0.0)
-        {
-            std::cerr << "Lambda must be larger than zero to achieve smoothing." << std::endl;
-            return false;
-        }
-    }
-
-    return true;
-}
-
-
-/// Input
-
-void feature_deformation::cache_input_grid(vtkInformationVector* input_grid_vector)
-{
-    if ((input_grid_vector == nullptr || input_grid_vector->GetInformationObject(0) == nullptr) && this->parameter_output_grid.output_deformed_grid)
-    {
-        std::cout << "Warning: Cannot show output grid because there is no input" << std::endl;
-        this->parameter_output_grid.output_deformed_grid = false;
-    }
-
-    if (input_grid_vector != nullptr && input_grid_vector->GetInformationObject(0) != nullptr && this->parameter_output_grid.output_deformed_grid)
-    {
-        // Get grid
-        this->input_grid.grid = vtkImageData::SafeDownCast(input_grid_vector->GetInformationObject(0)->Get(vtkDataObject::DATA_OBJECT()));
-
-        if (this->input_grid.grid != nullptr)
-        {
-            // Get extents
-            this->input_grid.grid->GetExtent(this->input_grid.extent.data());
-            this->input_grid.grid->GetDimensions(this->input_grid.dimension.data());
-
-            // Get origin and spacing
-            std::array<double, 3> origin_data;
-            std::array<double, 3> spacing_data;
-
-            this->input_grid.grid->GetOrigin(origin_data.data());
-            this->input_grid.grid->GetSpacing(spacing_data.data());
-
-            this->input_grid.origin << static_cast<float>(origin_data[0]), static_cast<float>(origin_data[1]), static_cast<float>(origin_data[2]);
-            this->input_grid.spacing << static_cast<float>(spacing_data[0]), static_cast<float>(spacing_data[1]), static_cast<float>(spacing_data[2]);
-
-            this->input_grid.origin += Eigen::Vector3f(this->input_grid.extent[0], this->input_grid.extent[2],
-                this->input_grid.extent[4]).cwiseProduct(this->input_grid.spacing);
-
-            // Compute hash
-            const auto new_hash = hash(this->input_grid.dimension[0], this->input_grid.dimension[1], this->input_grid.dimension[2],
-                origin_data[0], origin_data[1], origin_data[2], spacing_data[0], spacing_data[1], spacing_data[2]);
-
-            if (this->input_grid.hash != new_hash)
-            {
-                std::cout << "Loading input grid" << std::endl;
-
-                // Input has been modified
-                this->input_grid.hash = new_hash;
-                this->input_grid.modified = true;
-            }
-            else
-            {
-                std::cout << "Loading input grid from cache" << std::endl;
-            }
-
-            this->input_grid.valid = true;
-        }
-        else
-        {
-            this->input_grid.valid = false;
-        }
-
-        // Get data array
-        this->input_grid.input_data.data = this->GetInputArrayToProcess(0, &input_grid_vector);
-
-        if (this->input_grid.input_data.data != nullptr && this->parameter_output_grid.output_vector_field &&
-            this->input_grid.input_data.hash != this->GetInputArrayToProcess(0, &input_grid_vector)->GetMTime())
-        {
-            std::cout << "Loading input vector field" << std::endl;
-
-            // Input has been modified
-            this->input_grid.input_data.hash = this->GetInputArrayToProcess(0, &input_grid_vector)->GetMTime();
-            this->input_grid.input_data.modified = true;
-
-            // Input is now (preliminarily) valid
-            this->input_grid.input_data.valid = true;
-
-            // Sanity check
-            if (this->input_grid.input_data.data->GetNumberOfComponents() != 3)
-            {
-                std::cerr << "Input array must be a vector field" << std::endl;
-
-                this->input_grid.input_data.valid = false;
-            }
-        }
-        else if (this->input_grid.input_data.data != nullptr && this->parameter_output_grid.output_vector_field)
-        {
-            std::cout << "Loading input vector field from cache" << std::endl;
-        }
-        else
-        {
-            this->input_grid.input_data.valid = false;
-        }
-    }
-}
-
-void feature_deformation::cache_input_lines(vtkInformationVector* input_lines_vector)
-{
-    // Get lines
-    auto vtk_input_lines = vtkPolyData::SafeDownCast(input_lines_vector->GetInformationObject(0)->Get(vtkDataObject::DATA_OBJECT()));
-
-    if (vtk_input_lines != nullptr)
-    {
-        // Calculate hash
-        std::array<double, 6> bounds;
-        vtk_input_lines->GetBounds(bounds.data());
-
-        const auto new_hash = hash(vtk_input_lines->GetNumberOfCells(), vtk_input_lines->GetNumberOfPoints(),
-            bounds[0], bounds[1], bounds[2], bounds[3], bounds[4], bounds[5]);
-
-        if (this->input_lines.hash != new_hash || this->parameter_lines.modified)
-        {
-            std::cout << "Loading input lines" << std::endl;
-
-            // Input has been modified
-            this->input_lines.hash = new_hash;
-            this->input_lines.modified = true;
-
-            // Input is now valid
-            this->input_lines.valid = true;
-
-            // Get lines
-            this->input_lines.lines.resize(vtk_input_lines->GetNumberOfPoints());
-
-            #pragma omp parallel for
-            for (vtkIdType p = 0; p < vtk_input_lines->GetNumberOfPoints(); ++p)
-            {
-                std::array<double, 3> point;
-                vtk_input_lines->GetPoints()->GetPoint(p, point.data());
-
-                this->input_lines.lines[p] = { static_cast<float>(point[0]), static_cast<float>(point[1]), static_cast<float>(point[2]) };
-            }
-
-            // Extract selected line
-            auto point_list = vtkSmartPointer<vtkIdList>::New();
-            std::size_t line_index = 0;
-
-            vtk_input_lines->GetLines()->InitTraversal();
-            while (vtk_input_lines->GetLines()->GetNextCell(point_list))
-            {
-                if (line_index == this->parameter_lines.selected_line_id)
-                {
-                    this->input_lines.selected_line.resize(point_list->GetNumberOfIds());
-
-                    #pragma omp parallel for
-                    for (vtkIdType point_index = 0; point_index < point_list->GetNumberOfIds(); ++point_index)
-                    {
-                        std::array<double, 3> point;
-                        vtk_input_lines->GetPoints()->GetPoint(point_list->GetId(point_index), point.data());
-
-                        this->input_lines.selected_line[point_index] << static_cast<float>(point[0]), static_cast<float>(point[1]), static_cast<float>(point[2]);
-                    }
-                }
-
-                ++line_index;
-            }
-
-            if (this->input_lines.selected_line.size() < 3)
-            {
-                std::cout << "Line consists only of one segment -- nothing to do" << std::endl;
-
-                this->input_lines.valid = false;
-                return;
-            }
-        }
-        else
-        {
-            std::cout << "Loading input lines from cache" << std::endl;
-        }
-    }
-    else
-    {
-        this->input_lines.valid = false;
-    }
-}
-
-void feature_deformation::cache_input_geometry(vtkInformationVector* input_geometry_vector)
-{
-    if (input_geometry_vector != nullptr && input_geometry_vector->GetInformationObject(0) != nullptr)
-    {
-        // Calculate hash
-        uint32_t new_hash = input_geometry_vector->GetNumberOfInformationObjects();
-
-        vtkIdType num_points = 0;
-
-        this->input_geometry.valid = true;
-
-        for (int input_index = 0; input_index < input_geometry_vector->GetNumberOfInformationObjects(); ++input_index)
-        {
-            auto vtk_input_geometry = vtkPointSet::SafeDownCast(input_geometry_vector->GetInformationObject(input_index)->Get(vtkDataObject::DATA_OBJECT()));
-
-            if (vtk_input_geometry != nullptr)
-            {
-                std::array<double, 6> bounds;
-                vtk_input_geometry->GetBounds(bounds.data());
-
-                new_hash = hash(new_hash, vtk_input_geometry->GetNumberOfCells(), vtk_input_geometry->GetNumberOfPoints(),
-                    bounds[0], bounds[1], bounds[2], bounds[3], bounds[4], bounds[5]);
-
-                num_points += vtk_input_geometry->GetNumberOfPoints();
-            }
-            else
-            {
-                std::cerr << "Invalid geometry" << std::endl;
-
-                this->input_geometry.valid = false;
-            }
-        }
-
-        // Load geometry
-        this->input_geometry.geometry.resize(num_points);
-
-        std::size_t point_index = 0;
-
-        if (this->input_geometry.hash != new_hash && this->input_geometry.valid)
-        {
-            std::cout << "Loading input geometry" << (input_geometry_vector->GetNumberOfInformationObjects() > 1 ? "..." : "") << std::endl;
-
-            for (int input_index = 0; input_index < input_geometry_vector->GetNumberOfInformationObjects(); ++input_index)
-            {
-                if (input_geometry_vector->GetNumberOfInformationObjects() > 1)
-                {
-                    std::cout << "  input " << input_index << std::endl;
-                }
-
-                // Get geometry
-                auto vtk_input_geometry = vtkPointSet::SafeDownCast(input_geometry_vector->GetInformationObject(input_index)->Get(vtkDataObject::DATA_OBJECT()));
-
-                #pragma omp parallel for
-                for (vtkIdType p = 0; p < vtk_input_geometry->GetNumberOfPoints(); ++p)
-                {
-                    std::array<double, 3> point;
-                    vtk_input_geometry->GetPoints()->GetPoint(p, point.data());
-
-                    this->input_geometry.geometry[point_index + p] = { static_cast<float>(point[0]), static_cast<float>(point[1]), static_cast<float>(point[2]) };
-                }
-
-                point_index += vtk_input_geometry->GetNumberOfPoints();
-            }
-
-            // Input has been modified
-            this->input_geometry.hash = new_hash;
-            this->input_geometry.modified = true;
-        }
-        else if (this->input_geometry.valid)
-        {
-            std::cout << "Loading input geometry from cache" << std::endl;
-        }
-    }
-    else
-    {
-        this->input_geometry.valid = false;
-    }
-}
-
-
-/// Convenience
-
-std::pair<std::vector<std::array<float, 4>>, std::vector<std::array<float, 4>>> feature_deformation::get_displacements(
-    const std::vector<std::pair<Eigen::Vector3f, Eigen::Vector3f>>& displacement) const
-{
-    std::vector<std::array<float, 4>> positions, displacements;
-    positions.resize(displacement.size());
-    displacements.resize(displacement.size());
-
-    #pragma omp parallel for
-    for (long long i = 0; i < static_cast<long long>(displacements.size()); ++i)
-    {
-        positions[i] = { displacement[i].first[0], displacement[i].first[1], displacement[i].first[2], 1.0f };
-        displacements[i] = { displacement[i].second[0], displacement[i].second[1], displacement[i].second[2], 0.0f };
-    }
-
-    return std::make_pair(positions, displacements);
+    this->parameters.idw_parameters.exponent = static_cast<float>(this->EpsilonScalar);
+    this->parameters.idw_parameters.neighborhood = this->VoronoiDistance;
+    this->parameters.projection_parameters.gauss_parameter = static_cast<float>(this->GaussParameter);
+    this->parameters.bspline_parameters.degree = this->SplineDegree;
+    this->parameters.bspline_parameters.gauss_parameter = static_cast<float>(this->GaussParameter);
+    this->parameters.bspline_parameters.iterations = this->Subdivisions;
+
+    // Pre-computation parameters
+    this->parameters.compute_gauss = (this->ComputeGauss != 0);
+    this->parameters.check_handedness = (this->CheckHandedness != 0);
+    this->parameters.check_convexity = (this->CheckConvexity != 0);
+    this->parameters.check_volume = (this->CheckVolume != 0);
+    this->parameters.volume_percentage = this->VolumePercentage;
+    this->parameters.num_subdivisions = this->GaussSubdivisions;
+    this->parameters.compute_tearing = (this->ComputeTearing != 0);
+
+    // Output parameters
+    this->parameters.output_deformed_grid = (this->OutputDeformedGrid != 0);
+    this->parameters.output_vector_field = (this->OutputVectorField != 0);
+    this->parameters.output_resampled_grid = (this->OutputResampledGrid != 0);
+    this->parameters.remove_cells = (this->RemoveCells != 0);
+    this->parameters.remove_cells_scalar = static_cast<float>(this->RemoveCellsScalar);
 }
 
 

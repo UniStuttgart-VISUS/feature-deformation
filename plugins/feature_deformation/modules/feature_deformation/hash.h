@@ -9,7 +9,7 @@
 /// <param name="second">Second value to hash</param>
 /// <returns>Hash</returns>
 template <typename T, typename U = void*>
-uint32_t hash(const T& first, const U second = nullptr)
+uint32_t jenkins_hash(const T& first, const U second = nullptr)
 {
     const char* first_ptr = reinterpret_cast<const char*>(&first);
     const char* second_ptr = reinterpret_cast<const char*>(&second);
@@ -49,7 +49,7 @@ uint32_t hash(const T& first, const U second = nullptr)
 /// <param name="values">Additional values to hash</param>
 /// <returns>Hash</returns>
 template <typename T, typename U, typename... Targs>
-uint32_t hash(const T& first, const U& second, const Targs&... values)
+uint32_t jenkins_hash(const T& first, const U& second, const Targs&... values)
 {
-    return hash(first, hash(second, values...));
+    return jenkins_hash(first, jenkins_hash(second, values...));
 }
