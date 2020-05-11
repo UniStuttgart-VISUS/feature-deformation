@@ -7,11 +7,11 @@
 #include "displacement.h"
 
 #include <array>
-#include <type_traits>
+#include <memory>
 #include <vector>
 
-class algorithm_displacement_computation : public algorithm<const algorithm_displacement_creation&, const algorithm_smoothing&,
-    cuda::displacement::method_t, cuda::displacement::parameter_t>
+class algorithm_displacement_computation : public algorithm<std::shared_ptr<const algorithm_displacement_creation>,
+    std::shared_ptr<const algorithm_smoothing>, cuda::displacement::method_t, cuda::displacement::parameter_t>
 {
 public:
     /// Default constructor
@@ -20,8 +20,7 @@ public:
     /// Get results
     struct results_t
     {
-        std::vector<std::array<float, 4>> positions;
-        std::vector<std::array<float, 4>> displacements;
+        std::shared_ptr<cuda::displacement> displacements;
     };
 
     const results_t& get_results() const;
@@ -29,8 +28,8 @@ public:
 protected:
     /// Set input
     virtual void set_input(
-        const algorithm_displacement_creation& displacement,
-        const algorithm_smoothing& smoothing,
+        std::shared_ptr<const algorithm_displacement_creation> displacement,
+        std::shared_ptr<const algorithm_smoothing> smoothing,
         cuda::displacement::method_t method,
         cuda::displacement::parameter_t displacement_parameters
     ) override;
@@ -43,8 +42,8 @@ protected:
 
 private:
     /// Input
-    std::reference_wrapper<const algorithm_displacement_creation> displacement;
-    std::reference_wrapper<const algorithm_smoothing> smoothing;
+    std::shared_ptr<const algorithm_displacement_creation> displacement;
+    std::shared_ptr<const algorithm_smoothing> smoothing;
 
     /// Parameters
     cuda::displacement::method_t method;

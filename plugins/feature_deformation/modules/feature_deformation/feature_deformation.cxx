@@ -1,6 +1,8 @@
 #include "feature_deformation.h"
 
-#include "algorithm_input.h"
+#include "algorithm_displacement_computation.h"
+#include "algorithm_displacement_creation.h"
+#include "algorithm_displacement_precomputation.h"
 #include "algorithm_geometry_input.h"
 #include "algorithm_grid_input.h"
 #include "algorithm_line_input.h"
@@ -97,6 +99,24 @@ vtkStandardNewMacro(feature_deformation);
 
 feature_deformation::feature_deformation() : frames(0)
 {
+    alg_grid_input = std::make_shared<algorithm_grid_input>();
+    alg_line_input = std::make_shared<algorithm_line_input>();
+    alg_geometry_input = std::make_shared<algorithm_geometry_input>();
+
+    alg_smoothing = std::make_shared<algorithm_smoothing>();
+
+    alg_displacement_creation_lines = std::make_shared<algorithm_displacement_creation>();
+    alg_displacement_precomputation_lines = std::make_shared<algorithm_displacement_precomputation>();
+    alg_displacement_computation_lines = std::make_shared<algorithm_displacement_computation>();
+
+    alg_displacement_creation_grid = std::make_shared<algorithm_displacement_creation>();
+    alg_displacement_precomputation_grid = std::make_shared<algorithm_displacement_precomputation>();
+    alg_displacement_computation_grid = std::make_shared<algorithm_displacement_computation>();
+
+    alg_displacement_creation_geometry = std::make_shared<algorithm_displacement_creation>();
+    alg_displacement_precomputation_geometry = std::make_shared<algorithm_displacement_precomputation>();
+    alg_displacement_computation_geometry = std::make_shared<algorithm_displacement_computation>();
+
     this->SetNumberOfInputPorts(3);
     this->SetNumberOfOutputPorts(4);
 }
@@ -240,7 +260,7 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
     }
 
     // Get input
-    if (!this->alg_line_input.run(vtkPolyData::SafeDownCast(input_vector[1]->GetInformationObject(0)->Get(vtkDataObject::DATA_OBJECT())), this->parameters.selected_line_id))
+    if (!this->alg_line_input->run(vtkPolyData::SafeDownCast(input_vector[1]->GetInformationObject(0)->Get(vtkDataObject::DATA_OBJECT())), this->parameters.selected_line_id))
     {
         return 0;
     }
@@ -248,7 +268,7 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
     if (input_vector[0] != nullptr && input_vector[0]->GetInformationObject(0) != nullptr &&
         (this->parameters.output_deformed_grid || this->parameters.compute_gauss))
     {
-        this->alg_grid_input.run(vtkImageData::SafeDownCast(input_vector[0]->GetInformationObject(0)->Get(vtkDataObject::DATA_OBJECT())));
+        this->alg_grid_input->run(vtkImageData::SafeDownCast(input_vector[0]->GetInformationObject(0)->Get(vtkDataObject::DATA_OBJECT())));
     }
 
     if (input_vector[2] != nullptr)
@@ -260,7 +280,7 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
             geometry_sets.push_back(vtkPointSet::SafeDownCast(input_vector[2]->GetInformationObject(i)->Get(vtkDataObject::DATA_OBJECT())));
         }
 
-        this->alg_geometry_input.run(geometry_sets);
+        this->alg_geometry_input->run(geometry_sets);
     }
 
     std::cout << std::endl;
@@ -766,7 +786,7 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
 //    }
 
     // Smooth line
-    if (!this->alg_smoothing.run(this->alg_line_input, this->parameters.smoothing_method, this->parameters.variant, this->parameters.lambda, this->parameters.num_iterations))
+    if (!this->alg_smoothing->run(this->alg_line_input, this->parameters.smoothing_method, this->parameters.variant, this->parameters.lambda, this->parameters.num_iterations))
     {
         return 0;
     }
@@ -774,111 +794,118 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
     std::cout << std::endl;
 
     // Displace points
-    const std::array<std::pair<algorithm_input&, std::string>, 3> displacement_inputs{
-        std::make_pair(static_cast<algorithm_input&>(this->alg_line_input), "line"),
-        std::make_pair(static_cast<algorithm_input&>(this->alg_grid_input), "grid"),
-        std::make_pair(static_cast<algorithm_input&>(this->alg_geometry_input), "geometry")
+    const std::array<std::tuple<std::string, std::shared_ptr<algorithm_input>, std::shared_ptr<algorithm_displacement_creation>,
+        std::shared_ptr<algorithm_displacement_precomputation>, std::shared_ptr<algorithm_displacement_computation>>, 3> displacement_inputs{
+        std::make_tuple("line", std::static_pointer_cast<algorithm_input>(this->alg_line_input),
+            this->alg_displacement_creation_lines, this->alg_displacement_precomputation_lines, this->alg_displacement_computation_lines),
+        std::make_tuple("grid", std::static_pointer_cast<algorithm_input>(this->alg_grid_input),
+            this->alg_displacement_creation_grid, this->alg_displacement_precomputation_grid, this->alg_displacement_computation_grid),
+        std::make_tuple("geometry", std::static_pointer_cast<algorithm_input>(this->alg_geometry_input),
+            this->alg_displacement_creation_geometry, this->alg_displacement_precomputation_geometry, this->alg_displacement_computation_geometry),
     };
 
     for (const auto& displacement_input : displacement_inputs)
     {
-        std::cout << "Displacing " << displacement_input.second << " points..." << std::endl;
+        if (std::get<1>(displacement_input)->get_points().valid)
+        {
+            std::cout << "Displacing " << std::get<0>(displacement_input) << " points..." << std::endl;
 
-        this->alg_displacement_creation.run(displacement_input.first);
+            std::get<2>(displacement_input)->run(std::get<1>(displacement_input));
 
-        this->alg_displacement_precomputation.run(this->alg_displacement_creation, this->alg_smoothing, this->alg_line_input,
-            this->parameters.displacement_method, this->parameters.displacement_parameters, this->parameters.bspline_parameters);
+            std::get<3>(displacement_input)->run(std::get<2>(displacement_input), this->alg_smoothing, this->alg_line_input,
+                this->parameters.displacement_method, this->parameters.displacement_parameters, this->parameters.bspline_parameters);
 
-        this->alg_displacement_computation.run(this->alg_displacement_creation, this->alg_smoothing,
-            this->parameters.displacement_method, this->parameters.displacement_parameters);
+            std::get<4>(displacement_input)->run(std::get<2>(displacement_input), this->alg_smoothing,
+                this->parameters.displacement_method, this->parameters.displacement_parameters);
+        }
     }
 
     std::cout << std::endl;
 
     // Output grid
-    if (this->results_grid_displacement.valid && (this->results_grid_displacement.modified || this->parameter_output_grid.modified))
-    {
-        if (this->parameter_output_grid.output_deformed_grid)
-        {
-            std::cout << "Creating deformed grid output" << std::endl;
+    //if (this->results_grid_displacement.valid && (this->results_grid_displacement.modified || this->parameter_output_grid.modified))
+    //{
+    //    if (this->parameter_output_grid.output_deformed_grid)
+    //    {
+    //        std::cout << "Creating deformed grid output" << std::endl;
 
-            // Create structured or unstructured grid
-            auto out_deformed_grid_info = output_vector->GetInformationObject(2);
-            vtkSmartPointer<vtkPointSet> output_deformed_grid = nullptr;
+    //        // Create structured or unstructured grid
+    //        auto out_deformed_grid_info = output_vector->GetInformationObject(2);
+    //        vtkSmartPointer<vtkPointSet> output_deformed_grid = nullptr;
 
-            if (this->parameter_output_grid.remove_cells)
-            {
-                output_deformed_grid = vtkSmartPointer<vtkUnstructuredGrid>::New();
-            }
-            else
-            {
-                output_deformed_grid = vtkSmartPointer<vtkStructuredGrid>::New();
-                vtkStructuredGrid::SafeDownCast(output_deformed_grid)->SetExtent(this->input_grid.extent.data());
-            }
+    //        if (this->parameter_output_grid.remove_cells)
+    //        {
+    //            output_deformed_grid = vtkSmartPointer<vtkUnstructuredGrid>::New();
+    //        }
+    //        else
+    //        {
+    //            output_deformed_grid = vtkSmartPointer<vtkStructuredGrid>::New();
+    //            vtkStructuredGrid::SafeDownCast(output_deformed_grid)->SetExtent(this->input_grid.extent.data());
+    //        }
 
-            vtkMultiBlockDataSet::SafeDownCast(out_deformed_grid_info->Get(vtkDataObject::DATA_OBJECT()))->SetBlock(0u, output_deformed_grid);
-            vtkMultiBlockDataSet::SafeDownCast(out_deformed_grid_info->Get(vtkDataObject::DATA_OBJECT()))->GetMetaData(0u)->Set(vtkCompositeDataSet::NAME(), "Grid");
+    //        vtkMultiBlockDataSet::SafeDownCast(out_deformed_grid_info->Get(vtkDataObject::DATA_OBJECT()))->SetBlock(0u, output_deformed_grid);
+    //        vtkMultiBlockDataSet::SafeDownCast(out_deformed_grid_info->Get(vtkDataObject::DATA_OBJECT()))->GetMetaData(0u)->Set(vtkCompositeDataSet::NAME(), "Grid");
 
-            // Deform grid
-            create_undeformed_grid(output_deformed_grid, this->input_grid.extent, this->input_grid.dimension, this->input_grid.origin, this->input_grid.spacing);
-            set_output_deformed_grid(output_deformed_grid, *this->results_grid_displacement.displacement);
+    //        // Deform grid
+    //        create_undeformed_grid(output_deformed_grid, this->input_grid.extent, this->input_grid.dimension, this->input_grid.origin, this->input_grid.spacing);
+    //        set_output_deformed_grid(output_deformed_grid, *this->results_grid_displacement.displacement);
 
-            if (this->parameter_output_grid.remove_cells)
-            {
-                // Create second grid for the "removed" cells
-                auto output_deformed_grid_removed = vtkSmartPointer<vtkUnstructuredGrid>::New();
-                output_deformed_grid_removed->ShallowCopy(vtkUnstructuredGrid::SafeDownCast(output_deformed_grid));
+    //        if (this->parameter_output_grid.remove_cells)
+    //        {
+    //            // Create second grid for the "removed" cells
+    //            auto output_deformed_grid_removed = vtkSmartPointer<vtkUnstructuredGrid>::New();
+    //            output_deformed_grid_removed->ShallowCopy(vtkUnstructuredGrid::SafeDownCast(output_deformed_grid));
 
-                vtkMultiBlockDataSet::SafeDownCast(out_deformed_grid_info->Get(vtkDataObject::DATA_OBJECT()))->SetBlock(1u, output_deformed_grid_removed);
-                vtkMultiBlockDataSet::SafeDownCast(out_deformed_grid_info->Get(vtkDataObject::DATA_OBJECT()))->GetMetaData(1u)->Set(vtkCompositeDataSet::NAME(), "Removed Cells");
+    //            vtkMultiBlockDataSet::SafeDownCast(out_deformed_grid_info->Get(vtkDataObject::DATA_OBJECT()))->SetBlock(1u, output_deformed_grid_removed);
+    //            vtkMultiBlockDataSet::SafeDownCast(out_deformed_grid_info->Get(vtkDataObject::DATA_OBJECT()))->GetMetaData(1u)->Set(vtkCompositeDataSet::NAME(), "Removed Cells");
 
-                // Create cells
-                create_cells(vtkUnstructuredGrid::SafeDownCast(output_deformed_grid), output_deformed_grid_removed, this->input_grid.dimension, this->input_grid.spacing);
+    //            // Create cells
+    //            create_cells(vtkUnstructuredGrid::SafeDownCast(output_deformed_grid), output_deformed_grid_removed, this->input_grid.dimension, this->input_grid.spacing);
 
-                // Add tear array if possible
-                if (this->precompute_tearing.valid && this->precompute_tearing.removed_cells->GetNumberOfTuples() == output_deformed_grid->GetNumberOfPoints())
-                {
-                    output_deformed_grid->GetPointData()->AddArray(this->precompute_tearing.removed_cells);
-                }
-            }
+    //            // Add tear array if possible
+    //            if (this->precompute_tearing.valid && this->precompute_tearing.removed_cells->GetNumberOfTuples() == output_deformed_grid->GetNumberOfPoints())
+    //            {
+    //                output_deformed_grid->GetPointData()->AddArray(this->precompute_tearing.removed_cells);
+    //            }
+    //        }
 
-            // Create displacement field and use it to "deform" the velocities
-            create_displacement_field(output_deformed_grid);
+    //        // Create displacement field and use it to "deform" the velocities
+    //        create_displacement_field(output_deformed_grid);
 
-            if (this->input_grid.input_data.valid && this->parameter_output_grid.output_vector_field)
-            {
-                std::cout << "Calculating deformed velocities" << std::endl;
+    //        if (this->input_grid.input_data.valid && this->parameter_output_grid.output_vector_field)
+    //        {
+    //            std::cout << "Calculating deformed velocities" << std::endl;
 
-                deform_velocities(output_deformed_grid, this->input_grid.input_data.data, this->input_grid.dimension, this->input_grid.spacing);
+    //            deform_velocities(output_deformed_grid, this->input_grid.input_data.data, this->input_grid.dimension, this->input_grid.spacing);
 
-                // Resample the deformed grid on the original one
-                if (this->parameter_output_grid.output_resampled_grid)
-                {
-                    std::cout << "Creating resampled grid output" << std::endl;
+    //            // Resample the deformed grid on the original one
+    //            if (this->parameter_output_grid.output_resampled_grid)
+    //            {
+    //                std::cout << "Creating resampled grid output" << std::endl;
 
-                    auto out_resampled_grid_info = output_vector->GetInformationObject(3);
-                    auto output_resampled_grid = vtkImageData::SafeDownCast(out_resampled_grid_info->Get(vtkDataObject::DATA_OBJECT()));
+    //                auto out_resampled_grid_info = output_vector->GetInformationObject(3);
+    //                auto output_resampled_grid = vtkImageData::SafeDownCast(out_resampled_grid_info->Get(vtkDataObject::DATA_OBJECT()));
 
-                    output_resampled_grid->DeepCopy(this->input_grid.grid);
+    //                output_resampled_grid->DeepCopy(this->input_grid.grid);
 
-                    resample_grid(output_deformed_grid, output_resampled_grid, this->input_grid.input_data.data->GetName(),
-                        this->input_grid.dimension, this->input_grid.origin, this->input_grid.spacing);
+    //                resample_grid(output_deformed_grid, output_resampled_grid, this->input_grid.input_data.data->GetName(),
+    //                    this->input_grid.dimension, this->input_grid.origin, this->input_grid.spacing);
 
-                    out_resampled_grid_info->Set(vtkDataObject::DATA_TIME_STEP(), time);
-                }
-            }
+    //                out_resampled_grid_info->Set(vtkDataObject::DATA_TIME_STEP(), time);
+    //            }
+    //        }
 
-            out_deformed_grid_info->Set(vtkDataObject::DATA_TIME_STEP(), time);
-            this->Modified();
-        }
-    }
-    else if (this->parameter_output_grid.output_deformed_grid && !this->results_grid_displacement.modified)
-    {
-        std::cout << "Loading deformed grid output from cache" << std::endl;
-    }
+    //        out_deformed_grid_info->Set(vtkDataObject::DATA_TIME_STEP(), time);
+    //        this->Modified();
+    //    }
+    //}
+    //else if (this->parameter_output_grid.output_deformed_grid && !this->results_grid_displacement.modified)
+    //{
+    //    std::cout << "Loading deformed grid output from cache" << std::endl;
+    //}
 
     // Output lines
-    if (this->results_line_displacement.valid && this->results_line_displacement.modified)
+    /*if (this->results_line_displacement.valid && this->results_line_displacement.modified)
     {
         auto out_deformed_lines_info = output_vector->GetInformationObject(0);
         auto output_deformed_lines = vtkPolyData::SafeDownCast(out_deformed_lines_info->Get(vtkDataObject::DATA_OBJECT()));
@@ -892,56 +919,56 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
     else if (!this->results_line_displacement.modified)
     {
         std::cout << "Loading deformed line output from cache" << std::endl;
-    }
+    }*/
 
     // Output geometry
-    if (this->results_geometry_displacement.valid && this->results_geometry_displacement.modified)
-    {
-        auto out_deformed_geometry_info = output_vector->GetInformationObject(1);
-        auto output_deformed_geometry = vtkMultiBlockDataSet::SafeDownCast(out_deformed_geometry_info->Get(vtkDataObject::DATA_OBJECT()));
+    //if (this->results_geometry_displacement.valid && this->results_geometry_displacement.modified)
+    //{
+    //    auto out_deformed_geometry_info = output_vector->GetInformationObject(1);
+    //    auto output_deformed_geometry = vtkMultiBlockDataSet::SafeDownCast(out_deformed_geometry_info->Get(vtkDataObject::DATA_OBJECT()));
 
-        std::vector<vtkPointSet*> input_datasets(input_vector[2]->GetNumberOfInformationObjects());
+    //    std::vector<vtkPointSet*> input_datasets(input_vector[2]->GetNumberOfInformationObjects());
 
-        for (int input_index = 0; input_index < input_vector[2]->GetNumberOfInformationObjects(); ++input_index)
-        {
-            input_datasets[input_index] = vtkPointSet::SafeDownCast(input_vector[2]->GetInformationObject(input_index)->Get(vtkDataObject::DATA_OBJECT()));
-        }
+    //    for (int input_index = 0; input_index < input_vector[2]->GetNumberOfInformationObjects(); ++input_index)
+    //    {
+    //        input_datasets[input_index] = vtkPointSet::SafeDownCast(input_vector[2]->GetInformationObject(input_index)->Get(vtkDataObject::DATA_OBJECT()));
+    //    }
 
-        set_output_deformed_geometry(input_datasets, output_deformed_geometry,
-            *this->results_geometry_displacement.displacement, this->input_geometry.modified, this->output_geometry);
+    //    set_output_deformed_geometry(input_datasets, output_deformed_geometry,
+    //        *this->results_geometry_displacement.displacement, this->input_geometry.modified, this->output_geometry);
 
-        for (unsigned int block_index = 0; block_index < output_deformed_geometry->GetNumberOfBlocks(); ++block_index)
-        {
-            // Create displacement field
-            auto displacement_map = vtkSmartPointer<vtkDoubleArray>::New();
-            displacement_map->SetNumberOfComponents(3);
-            displacement_map->SetNumberOfTuples(vtkPointSet::SafeDownCast(output_deformed_geometry->GetBlock(block_index))->GetPoints()->GetNumberOfPoints());
-            displacement_map->SetName("Displacement Map");
+    //    for (unsigned int block_index = 0; block_index < output_deformed_geometry->GetNumberOfBlocks(); ++block_index)
+    //    {
+    //        // Create displacement field
+    //        auto displacement_map = vtkSmartPointer<vtkDoubleArray>::New();
+    //        displacement_map->SetNumberOfComponents(3);
+    //        displacement_map->SetNumberOfTuples(vtkPointSet::SafeDownCast(output_deformed_geometry->GetBlock(block_index))->GetPoints()->GetNumberOfPoints());
+    //        displacement_map->SetName("Displacement Map");
 
-            #pragma omp parallel for
-            for (vtkIdType p = 0; p < vtkPointSet::SafeDownCast(output_deformed_geometry->GetBlock(block_index))->GetPoints()->GetNumberOfPoints(); ++p)
-            {
-                Eigen::Vector3d displaced_point;
-                vtkPointSet::SafeDownCast(output_deformed_geometry->GetBlock(block_index))->GetPoints()->GetPoint(p, displaced_point.data());
+    //        #pragma omp parallel for
+    //        for (vtkIdType p = 0; p < vtkPointSet::SafeDownCast(output_deformed_geometry->GetBlock(block_index))->GetPoints()->GetNumberOfPoints(); ++p)
+    //        {
+    //            Eigen::Vector3d displaced_point;
+    //            vtkPointSet::SafeDownCast(output_deformed_geometry->GetBlock(block_index))->GetPoints()->GetPoint(p, displaced_point.data());
 
-                displacement_map->SetTuple(p, displaced_point.data());
-            }
+    //            displacement_map->SetTuple(p, displaced_point.data());
+    //        }
 
-            vtkPointSet::SafeDownCast(output_deformed_geometry->GetBlock(block_index))->GetPointData()->AddArray(displacement_map);
-        }
+    //        vtkPointSet::SafeDownCast(output_deformed_geometry->GetBlock(block_index))->GetPointData()->AddArray(displacement_map);
+    //    }
 
-        for (unsigned int block_index = 0; block_index < output_deformed_geometry->GetNumberOfBlocks(); ++block_index)
-        {
-            output_deformed_geometry->GetBlock(block_index)->GetInformation()->Set(vtkDataObject::DATA_TIME_STEP(), time);
-        }
+    //    for (unsigned int block_index = 0; block_index < output_deformed_geometry->GetNumberOfBlocks(); ++block_index)
+    //    {
+    //        output_deformed_geometry->GetBlock(block_index)->GetInformation()->Set(vtkDataObject::DATA_TIME_STEP(), time);
+    //    }
 
-        out_deformed_geometry_info->Set(vtkDataObject::DATA_TIME_STEP(), time);
-        this->Modified();
-    }
-    else if (!this->results_geometry_displacement.modified)
-    {
-        std::cout << "Loading deformed geometry output from cache" << std::endl;
-    }
+    //    out_deformed_geometry_info->Set(vtkDataObject::DATA_TIME_STEP(), time);
+    //    this->Modified();
+    //}
+    //else if (!this->results_geometry_displacement.modified)
+    //{
+    //    std::cout << "Loading deformed geometry output from cache" << std::endl;
+    //}
 
     // Output info
     std::cout << std::endl << "Finished deformation" << std::endl;
@@ -949,9 +976,6 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
 
     return 1;
 }
-
-
-/// Parameters
 
 void feature_deformation::process_parameters(double time)
 {
@@ -1044,646 +1068,646 @@ void feature_deformation::process_parameters(double time)
 
 
 /// Output
-
-void feature_deformation::create_undeformed_grid(vtkPointSet* output_deformed_grid, const std::array<int, 6>& extent,
-    const std::array<int, 3>& dimension, const Eigen::Vector3f& origin, const Eigen::Vector3f& spacing) const
-{
-    // Create point nodes
-    auto coords = vtkSmartPointer<vtkPoints>::New();
-    coords->SetNumberOfPoints(dimension[0] * dimension[1] * dimension[2]);
-
-    auto tex_coords = vtkSmartPointer<vtkFloatArray>::New();
-    tex_coords->SetNumberOfComponents(3);
-    tex_coords->SetNumberOfTuples(dimension[0] * dimension[1] * dimension[2]);
-    tex_coords->SetName("Original Coordinates");
-
-    vtkIdType index = 0;
-
-    #pragma omp parallel for
-    for (int z = 0; z < dimension[2]; ++z)
-    {
-        for (int y = 0; y < dimension[1]; ++y)
-        {
-            for (int x = 0; x < dimension[0]; ++x, ++index)
-            {
-                const Eigen::Vector3f point = origin + Eigen::Vector3f(x, y, z).cwiseProduct(spacing);
-
-                coords->SetPoint(index, point.data());
-                tex_coords->SetTuple(index, point.data());
-            }
-        }
-    }
-
-    output_deformed_grid->SetPoints(coords);
-    output_deformed_grid->GetPointData()->AddArray(tex_coords);
-}
-
-void feature_deformation::create_cells(vtkUnstructuredGrid* output_deformed_grid, vtkUnstructuredGrid* output_deformed_grid_removed,
-    const std::array<int, 3>& dimension, const Eigen::Vector3f& spacing) const
-{
-    const auto is_2d = dimension[2] == 1;
-    const auto threshold = static_cast<float>(this->parameter_output_grid.remove_cells_scalar) * spacing.head(is_2d ? 2 : 3).norm();
-
-    // Create cells
-    output_deformed_grid->Allocate((dimension[0] - 1) * (dimension[1] - 1) * (dimension[2] - 1));
-    output_deformed_grid_removed->Allocate((dimension[0] - 1) * (dimension[1] - 1) * (dimension[2] - 1));
-
-    auto handedness = vtkSmartPointer<vtkFloatArray>::New();
-    handedness->SetNumberOfComponents(1);
-    handedness->Allocate((dimension[0] - 1) * (dimension[1] - 1) * (dimension[2] - 1));
-    handedness->SetName("Handedness");
-
-    for (int z = 0; z < (is_2d ? 1 : (dimension[2] - 1)); ++z)
-    {
-        for (int y = 0; y < dimension[1] - 1; ++y)
-        {
-            for (int x = 0; x < dimension[0] - 1; ++x)
-            {
-                // Create point IDs
-                const auto point0 = calc_index_point(dimension, x + 0, y + 0, z + 0);
-                const auto point1 = calc_index_point(dimension, x + 1, y + 0, z + 0);
-                const auto point2 = calc_index_point(dimension, x + 0, y + 1, z + 0);
-                const auto point3 = calc_index_point(dimension, x + 1, y + 1, z + 0);
-                const auto point4 = calc_index_point(dimension, x + 0, y + 0, z + 1);
-                const auto point5 = calc_index_point(dimension, x + 1, y + 0, z + 1);
-                const auto point6 = calc_index_point(dimension, x + 0, y + 1, z + 1);
-                const auto point7 = calc_index_point(dimension, x + 1, y + 1, z + 1);
-
-                const std::array<vtkIdType, 8> point_ids{
-                    point0,
-                    point1,
-                    point2,
-                    point3,
-                    point4,
-                    point5,
-                    point6,
-                    point7
-                };
-
-                // Calculate distances between points and compare to threshold
-                bool discard_cell = false;
-
-                if (this->parameter_output_grid.remove_cells)
-                {
-                    // Get all cell points
-                    std::vector<Eigen::Vector3d> cell_points(is_2d ? 4 : 8);
-
-                    for (std::size_t point_index = 0; point_index < (is_2d ? 4 : 8); ++point_index)
-                    {
-                        output_deformed_grid->GetPoints()->GetPoint(point_ids[point_index], cell_points[point_index].data());
-                    }
-
-                    // Pairwise calculate the distance between all points and compare the result with the threshold
-                    for (std::size_t i = 0; i < cell_points.size() - 1; ++i)
-                    {
-                        for (std::size_t j = i + 1; j < cell_points.size(); ++j)
-                        {
-                            discard_cell |= (cell_points[i] - cell_points[j]).norm() > threshold;
-                        }
-                    }
-                }
-
-                // Create cell faces
-                if (!discard_cell)
-                {
-                    if (!is_2d)
-                    {
-                        auto faces = vtkSmartPointer<vtkCellArray>::New();
-
-                        vtkIdType face0[4] = { point0, point1, point3, point2 }; // front
-                        vtkIdType face1[4] = { point6, point7, point5, point4 }; // back
-                        vtkIdType face2[4] = { point4, point5, point1, point0 }; // bottom
-                        vtkIdType face3[4] = { point2, point3, point7, point6 }; // top
-                        vtkIdType face4[4] = { point0, point2, point6, point4 }; // left
-                        vtkIdType face5[4] = { point1, point5, point7, point3 }; // right
-
-                        faces->InsertNextCell(4, face0);
-                        faces->InsertNextCell(4, face1);
-                        faces->InsertNextCell(4, face2);
-                        faces->InsertNextCell(4, face3);
-                        faces->InsertNextCell(4, face4);
-                        faces->InsertNextCell(4, face5);
-
-                        output_deformed_grid->InsertNextCell(VTK_POLYHEDRON, 8, point_ids.data(), 6, faces->GetData()->GetPointer(0));
-
-                        // Calculate handedness
-                        std::array<Eigen::Vector3d, 4> points;
-                        output_deformed_grid->GetPoints()->GetPoint(point0, points[0].data());
-                        output_deformed_grid->GetPoints()->GetPoint(point1, points[1].data());
-                        output_deformed_grid->GetPoints()->GetPoint(point2, points[2].data());
-                        output_deformed_grid->GetPoints()->GetPoint(point4, points[3].data());
-
-                        const auto vector_1 = points[1] - points[0];
-                        const auto vector_2 = points[2] - points[0];
-                        const auto vector_3 = points[3] - points[0];
-
-                        handedness->InsertNextValue(static_cast<float>(vector_1.cross(vector_2).dot(vector_3)));
-                    }
-                    else
-                    {
-                        const std::array<vtkIdType, 8> point_ids{ point0, point1, point3, point2 };
-
-                        output_deformed_grid->InsertNextCell(VTK_QUAD, 4, point_ids.data());
-
-                        // Calculate handedness
-                        std::array<Eigen::Vector3d, 3> points;
-                        output_deformed_grid->GetPoints()->GetPoint(point0, points[0].data());
-                        output_deformed_grid->GetPoints()->GetPoint(point1, points[1].data());
-                        output_deformed_grid->GetPoints()->GetPoint(point2, points[2].data());
-
-                        const auto vector_1 = points[1] - points[0];
-                        const auto vector_2 = points[2] - points[0];
-
-                        handedness->InsertNextValue(static_cast<float>(vector_1.cross(vector_2)[2]));
-                    }
-                }
-                else
-                {
-                    if (!is_2d)
-                    {
-                        auto faces = vtkSmartPointer<vtkCellArray>::New();
-
-                        vtkIdType face0[4] = { point0, point1, point3, point2 }; // front
-                        vtkIdType face1[4] = { point6, point7, point5, point4 }; // back
-                        vtkIdType face2[4] = { point4, point5, point1, point0 }; // bottom
-                        vtkIdType face3[4] = { point2, point3, point7, point6 }; // top
-                        vtkIdType face4[4] = { point0, point2, point6, point4 }; // left
-                        vtkIdType face5[4] = { point1, point5, point7, point3 }; // right
-
-                        faces->InsertNextCell(4, face0);
-                        faces->InsertNextCell(4, face1);
-                        faces->InsertNextCell(4, face2);
-                        faces->InsertNextCell(4, face3);
-                        faces->InsertNextCell(4, face4);
-                        faces->InsertNextCell(4, face5);
-
-                        output_deformed_grid_removed->InsertNextCell(VTK_POLYHEDRON, 8, point_ids.data(), 6, faces->GetData()->GetPointer(0));
-                    }
-                    else
-                    {
-                        const std::array<vtkIdType, 8> point_ids{ point0, point1, point3, point2 };
-
-                        output_deformed_grid_removed->InsertNextCell(VTK_QUAD, 4, point_ids.data());
-                    }
-                }
-            }
-        }
-    }
-
-    output_deformed_grid->GetCellData()->AddArray(handedness);
-    output_deformed_grid->BuildLinks();
-
-    output_deformed_grid_removed->BuildLinks();
-}
-
-void feature_deformation::set_output_deformed_grid(vtkPointSet* output_deformed_grid, const cuda::displacement& grid_displacement) const
-{
-    // Set displaced points
-    const auto& displaced_grid = grid_displacement.get_results();
-
-    #pragma omp parallel for
-    for (vtkIdType i = 0; i < output_deformed_grid->GetNumberOfPoints(); ++i)
-    {
-        output_deformed_grid->GetPoints()->SetPoint(i, displaced_grid[i].data());
-    }
-
-    // Create displacement ID array
-    const auto& displacement_ids = grid_displacement.get_displacement_info();
-
-    auto displacement_id_array = vtkSmartPointer<vtkFloatArray>::New();
-    displacement_id_array->SetNumberOfComponents(4);
-    displacement_id_array->SetNumberOfTuples(displacement_ids.size());
-    displacement_id_array->SetName("Displacement Information");
-
-    std::memcpy(displacement_id_array->GetPointer(0), displacement_ids.data(), displacement_ids.size() * sizeof(float4));
-
-    output_deformed_grid->GetPointData()->AddArray(displacement_id_array);
-}
-
-void feature_deformation::set_output_deformed_lines(vtkPolyData* input_lines, vtkPolyData* output_deformed_lines, const cuda::displacement& line_displacement,
-    const bool modified, cache_output_lines_t& output_lines) const
-{
-    // Create output geometry
-    if (modified || !output_lines.valid)
-    {
-        std::cout << "Creating deformed lines output" << std::endl;
-
-        output_lines.data = vtkSmartPointer<vtkPolyData>::New();
-        output_lines.data->DeepCopy(input_lines);
-        output_lines.valid = true;
-
-        auto displacement_id_array = vtkSmartPointer<vtkFloatArray>::New();
-        displacement_id_array->SetNumberOfComponents(4);
-        displacement_id_array->SetNumberOfTuples(output_lines.data->GetNumberOfPoints());
-        displacement_id_array->SetName("Displacement Information");
-        displacement_id_array->FillValue(0.0f);
-
-        auto displacement_distance_array = vtkSmartPointer<vtkFloatArray>::New();
-        displacement_distance_array->SetNumberOfComponents(1);
-        displacement_distance_array->SetNumberOfTuples(output_lines.data->GetNumberOfPoints());
-        displacement_distance_array->SetName("B-Spline Distance");
-        displacement_distance_array->FillValue(0.0f);
-
-        output_lines.data->GetPointData()->AddArray(displacement_id_array);
-        output_lines.data->GetPointData()->AddArray(displacement_distance_array);
-    }
-    else
-    {
-        std::cout << "Updating deformed lines output" << std::endl;
-    }
-
-    // Set displaced points
-    const auto& displaced_lines = line_displacement.get_results();
-
-    #pragma omp parallel for
-    for (vtkIdType i = 0; i < output_lines.data->GetNumberOfPoints(); ++i)
-    {
-        output_lines.data->GetPoints()->SetPoint(i, displaced_lines[i].data());
-    }
-
-    // Set displacement ID array
-    const auto& displacement_ids = line_displacement.get_displacement_info();
-
-    std::memcpy(vtkFloatArray::SafeDownCast(output_lines.data->GetPointData()->GetArray("Displacement Information"))->GetPointer(0),
-        displacement_ids.data(), displacement_ids.size() * sizeof(float4));
-
-    // In case of the B-Spline, store distance on B-Spline for neighboring points
-    if ((this->parameter_displacement.method == cuda::displacement::method_t::b_spline ||
-        this->parameter_displacement.method == cuda::displacement::method_t::b_spline_joints) &&
-        this->OutputBSplineDistance)
-    {
-        auto displacement_distance_array = vtkFloatArray::SafeDownCast(output_lines.data->GetPointData()->GetArray("B-Spline Distance"));
-
-        vtkIdType index = 0;
-        vtkIdType cell_index = 0;
-
-        for (vtkIdType l = 0; l < output_lines.data->GetLines()->GetNumberOfCells(); ++l)
-        {
-            const auto num_points = output_lines.data->GetLines()->GetData()->GetValue(cell_index);
-
-            displacement_distance_array->SetValue(index, std::abs(displacement_ids[index].w - displacement_ids[index + 1].w));
-
-            for (vtkIdType i = 1; i < num_points - 1; ++i)
-            {
-                displacement_distance_array->SetValue(index + i, 0.5f * (std::abs(displacement_ids[index + i - 1].w - displacement_ids[index + i].w)
-                    + std::abs(displacement_ids[index + i].w - displacement_ids[index + i + 1].w)));
-            }
-
-            displacement_distance_array->SetValue(index + num_points - 1, std::abs(displacement_ids[index + num_points - 2].w - displacement_ids[index + num_points - 1].w));
-
-            index += num_points;
-            cell_index += num_points + 1;
-        }
-    }
-
-    // Cache output
-    output_deformed_lines->DeepCopy(output_lines.data);
-}
-
-void feature_deformation::set_output_deformed_geometry(const std::vector<vtkPointSet*>& input_geometry, vtkMultiBlockDataSet* output_deformed_geometry,
-    const cuda::displacement& geometry_displacement, bool modified, cache_output_geometry_t& output_geometry) const
-{
-    // Create output geometry
-    if (modified || !output_geometry.valid)
-    {
-        std::cout << "Creating deformed geometry output" << std::endl;
-
-        output_geometry.data = vtkSmartPointer<vtkMultiBlockDataSet>::New();
-
-        for (unsigned int block_index = 0; block_index < static_cast<unsigned int>(input_geometry.size()); ++block_index)
-        {
-            output_geometry.data->SetBlock(block_index, vtkDataObjectTypes::NewDataObject(input_geometry[block_index]->GetClassName()));
-            output_geometry.data->GetBlock(block_index)->DeepCopy(input_geometry[block_index]);
-
-            auto displacement_id_array = vtkSmartPointer<vtkFloatArray>::New();
-            displacement_id_array->SetNumberOfComponents(4);
-            displacement_id_array->SetNumberOfTuples(input_geometry[block_index]->GetNumberOfPoints());
-            displacement_id_array->SetName("Displacement Information");
-            displacement_id_array->FillValue(0.0f);
-
-            auto displacement_distance_array = vtkSmartPointer<vtkFloatArray>::New();
-            displacement_distance_array->SetNumberOfComponents(1);
-            displacement_distance_array->SetNumberOfTuples(input_geometry[block_index]->GetNumberOfPoints());
-            displacement_distance_array->SetName("B-Spline Distance");
-            displacement_distance_array->FillValue(0.0f);
-
-            vtkPointSet::SafeDownCast(output_geometry.data->GetBlock(block_index))->GetPointData()->AddArray(displacement_id_array);
-            vtkPointSet::SafeDownCast(output_geometry.data->GetBlock(block_index))->GetPointData()->AddArray(displacement_distance_array);
-        }
-
-        output_geometry.valid = true;
-    }
-    else
-    {
-        std::cout << "Updating deformed geometry output" << std::endl;
-    }
-
-    // Set displaced points
-    const auto& displaced_geometry = geometry_displacement.get_results();
-
-    std::size_t global_id = 0;
-
-    for (unsigned int block_index = 0; block_index < output_geometry.data->GetNumberOfBlocks(); ++block_index)
-    {
-        auto block = vtkPointSet::SafeDownCast(output_geometry.data->GetBlock(block_index));
-
-        for (vtkIdType i = 0; i < block->GetNumberOfPoints(); ++i, ++global_id)
-        {
-            block->GetPoints()->SetPoint(i, displaced_geometry[global_id].data());
-        }
-    }
-
-    // Set displacement ID arrays
-    const auto& displacement_ids = geometry_displacement.get_displacement_info();
-
-    std::size_t global_data_index = 0;
-
-    for (unsigned int block_index = 0; block_index < output_geometry.data->GetNumberOfBlocks(); ++block_index)
-    {
-        auto block = vtkPointSet::SafeDownCast(output_geometry.data->GetBlock(block_index));
-        auto data_array = vtkFloatArray::SafeDownCast(block->GetPointData()->GetArray("Displacement Information"));
-
-        std::memcpy(data_array->GetPointer(0), &displacement_ids[global_data_index], data_array->GetNumberOfTuples() * sizeof(float4));
-
-        global_data_index += data_array->GetNumberOfTuples();
-    }
-
-    // In case of the B-Spline, store distance on B-Spline for neighboring points
-    if ((this->parameter_displacement.method == cuda::displacement::method_t::b_spline ||
-        this->parameter_displacement.method == cuda::displacement::method_t::b_spline_joints) &&
-        this->OutputBSplineDistance)
-    {
-        for (unsigned int block_index = 0; block_index < output_geometry.data->GetNumberOfBlocks(); ++block_index)
-        {
-            auto block = vtkPointSet::SafeDownCast(output_geometry.data->GetBlock(block_index));
-            auto displacement_distance_array = vtkFloatArray::SafeDownCast(block->GetPointData()->GetArray("B-Spline Distance"));
-
-            if (vtkPolyData::SafeDownCast(block) != nullptr)
-            {
-                auto poly_block = vtkPolyData::SafeDownCast(block);
-
-                vtkIdType index = 0;
-                vtkIdType cell_index = 0;
-
-                for (vtkIdType l = 0; l < poly_block->GetLines()->GetNumberOfCells(); ++l)
-                {
-                    const auto num_points = poly_block->GetLines()->GetData()->GetValue(cell_index);
-
-                    displacement_distance_array->SetValue(index, std::abs(displacement_ids[index].w - displacement_ids[index + 1].w));
-
-                    for (vtkIdType i = 1; i < num_points - 1; ++i)
-                    {
-                        displacement_distance_array->SetValue(index + i, 0.5f * (std::abs(displacement_ids[index + i - 1].w - displacement_ids[index + i].w)
-                            + std::abs(displacement_ids[index + i].w - displacement_ids[index + i + 1].w)));
-                    }
-
-                    displacement_distance_array->SetValue(index + num_points - 1, std::abs(displacement_ids[index + num_points - 2].w - displacement_ids[index + num_points - 1].w));
-
-                    index += num_points;
-                    cell_index += num_points + 1;
-                }
-            }
-        }
-    }
-
-    // Cache output
-    output_deformed_geometry->DeepCopy(output_geometry.data);
-}
-
-void feature_deformation::create_displacement_field(vtkPointSet* output_deformed_grid) const
-{
-    // Create displacement field
-    auto displacement_map = vtkSmartPointer<vtkDoubleArray>::New();
-    displacement_map->SetNumberOfComponents(3);
-    displacement_map->SetNumberOfTuples(output_deformed_grid->GetPoints()->GetNumberOfPoints());
-    displacement_map->SetName("Displacement Map");
-
-    #pragma omp parallel for
-    for (vtkIdType p = 0; p < output_deformed_grid->GetPoints()->GetNumberOfPoints(); ++p)
-    {
-        Eigen::Vector3d displaced_point;
-        output_deformed_grid->GetPoints()->GetPoint(p, displaced_point.data());
-
-        displacement_map->SetTuple(p, displaced_point.data());
-    }
-
-    output_deformed_grid->GetPointData()->AddArray(displacement_map);
-}
-
-void feature_deformation::deform_velocities(vtkPointSet* output_deformed_grid, vtkDataArray* data_array,
-    const std::array<int, 3>& dimension, const Eigen::Vector3f& spacing) const
-{
-    // Setup velocity interpolation for support of point and cell data
-    std::function<Eigen::Vector3d(int, int, int)> get_velocity;
-
-    if (data_array->GetNumberOfTuples() == dimension[0] * dimension[1] * dimension[2])
-    {
-        get_velocity = [&dimension, &data_array](const int x, const int y, const int z) -> Eigen::Vector3d
-        {
-            Eigen::Vector3d velocity;
-            data_array->GetTuple(calc_index_point(dimension, x, y, z), velocity.data());
-
-            return velocity;
-        };
-    }
-    else
-    {
-        get_velocity = [&dimension, &data_array](const int x, const int y, const int z) -> Eigen::Vector3d
-        {
-            std::array<Eigen::Vector3d, 8> velocities;
-            data_array->GetTuple(calc_index_cell(dimension, x - 1, y - 1, z - 1), velocities[0].data());
-            data_array->GetTuple(calc_index_cell(dimension, x - 0, y - 1, z - 1), velocities[1].data());
-            data_array->GetTuple(calc_index_cell(dimension, x - 1, y - 0, z - 1), velocities[2].data());
-            data_array->GetTuple(calc_index_cell(dimension, x - 0, y - 0, z - 1), velocities[3].data());
-            data_array->GetTuple(calc_index_cell(dimension, x - 1, y - 1, z - 0), velocities[4].data());
-            data_array->GetTuple(calc_index_cell(dimension, x - 0, y - 1, z - 0), velocities[5].data());
-            data_array->GetTuple(calc_index_cell(dimension, x - 1, y - 0, z - 0), velocities[6].data());
-            data_array->GetTuple(calc_index_cell(dimension, x - 0, y - 0, z - 0), velocities[7].data());
-
-            return 0.125 * (velocities[0] + velocities[1] + velocities[2] + velocities[3] + velocities[4] + velocities[5] + velocities[6] + velocities[7]);
-        };
-    }
-
-    // Setup finite differences for the calculation of the Jacobian
-    auto displacement_map = vtkDoubleArray::SafeDownCast(output_deformed_grid->GetPointData()->GetArray("Displacement Map"));
-
-    auto calc_jacobian = [displacement_map](const int center, const int index, const int max, const int component, double h, const int offset) -> double
-    {
-        double left, right;
-
-        if (center == 0) // Forward difference
-        {
-            left = displacement_map->GetComponent(index, component);
-            right = displacement_map->GetComponent(index + offset, component);
-        }
-        else if (center == max) // Backward difference
-        {
-            left = displacement_map->GetComponent(index - offset, component);
-            right = displacement_map->GetComponent(index, component);
-        }
-        else // Central difference
-        {
-            left = displacement_map->GetComponent(index - offset, component);
-            right = displacement_map->GetComponent(index + offset, component);
-
-            h *= 2.0;
-        }
-
-        return (right - left) / h;
-    };
-
-    // Calculate Jacobian and use it to calculate the velocities at the deformed grid
-    auto jacobian = vtkSmartPointer<vtkDoubleArray>::New();
-    jacobian->SetNumberOfComponents(9);
-    jacobian->SetNumberOfTuples(dimension[0] * dimension[1] * dimension[2]);
-    jacobian->SetName("Jacobian");
-
-    // ... at the point nodes
-    auto velocities_p = vtkSmartPointer<vtkDoubleArray>::New();
-    velocities_p->SetNumberOfComponents(3);
-    velocities_p->SetNumberOfTuples(dimension[0] * dimension[1] * dimension[2]);
-    velocities_p->SetName(data_array->GetName());
-
-    #pragma omp parallel for
-    for (int z = 0; z < dimension[2]; ++z)
-    {
-        for (int y = 0; y < dimension[1]; ++y)
-        {
-            for (int x = 0; x < dimension[0]; ++x)
-            {
-                const auto index_p = calc_index_point(dimension, x, y, z);
-
-                // Calculate Jacobian
-                const auto Jxdx = calc_jacobian(x, index_p, dimension[0] - 1, 0, spacing[0], 1);
-                const auto Jxdy = calc_jacobian(y, index_p, dimension[1] - 1, 0, spacing[1], dimension[0]);
-                const auto Jxdz = calc_jacobian(z, index_p, dimension[2] - 1, 0, spacing[2], dimension[0] * dimension[1]);
-                const auto Jydx = calc_jacobian(x, index_p, dimension[0] - 1, 1, spacing[0], 1);
-                const auto Jydy = calc_jacobian(y, index_p, dimension[1] - 1, 1, spacing[1], dimension[0]);
-                const auto Jydz = calc_jacobian(z, index_p, dimension[2] - 1, 1, spacing[2], dimension[0] * dimension[1]);
-                const auto Jzdx = calc_jacobian(x, index_p, dimension[0] - 1, 2, spacing[0], 1);
-                const auto Jzdy = calc_jacobian(y, index_p, dimension[1] - 1, 2, spacing[1], dimension[0]);
-                const auto Jzdz = calc_jacobian(z, index_p, dimension[2] - 1, 2, spacing[2], dimension[0] * dimension[1]);
-
-                Eigen::Matrix3d Jacobian;
-                Jacobian << Jxdx, Jxdy, Jxdz, Jydx, Jydy, Jydz, Jzdx, Jzdy, Jzdz;
-
-                jacobian->SetTuple(index_p, Jacobian.data());
-
-                // Calculate velocities
-                auto velocity = get_velocity(x, y, z);
-                velocity = (Jacobian / Jacobian.determinant()) * velocity;
-
-                velocities_p->SetTuple(index_p, velocity.data());
-            }
-        }
-    }
-
-    output_deformed_grid->GetPointData()->AddArray(jacobian);
-    output_deformed_grid->GetPointData()->AddArray(velocities_p);
-
-    // ... at the cell centers
-    auto velocities_c = vtkSmartPointer<vtkDoubleArray>::New();
-    velocities_c->SetNumberOfComponents(3);
-    velocities_c->SetNumberOfTuples((dimension[0] - 1) * (dimension[1] - 1) * (dimension[2] - 1));
-    velocities_c->SetName(data_array->GetName());
-
-    #pragma omp parallel for
-    for (int z = 0; z < dimension[2] - 1; ++z)
-    {
-        for (int y = 0; y < dimension[1] - 1; ++y)
-        {
-            for (int x = 0; x < dimension[0] - 1; ++x)
-            {
-                const auto index_c = calc_index_cell(dimension, x, y, z);
-
-                std::array<Eigen::Vector3d, 8> velocities;
-                velocities_p->GetTuple(calc_index_point(dimension, x + 0, y + 0, z + 0), velocities[0].data());
-                velocities_p->GetTuple(calc_index_point(dimension, x + 1, y + 0, z + 0), velocities[1].data());
-                velocities_p->GetTuple(calc_index_point(dimension, x + 0, y + 1, z + 0), velocities[2].data());
-                velocities_p->GetTuple(calc_index_point(dimension, x + 1, y + 1, z + 0), velocities[3].data());
-                velocities_p->GetTuple(calc_index_point(dimension, x + 0, y + 0, z + 1), velocities[4].data());
-                velocities_p->GetTuple(calc_index_point(dimension, x + 1, y + 0, z + 1), velocities[5].data());
-                velocities_p->GetTuple(calc_index_point(dimension, x + 0, y + 1, z + 1), velocities[6].data());
-                velocities_p->GetTuple(calc_index_point(dimension, x + 1, y + 1, z + 1), velocities[7].data());
-
-                const Eigen::Vector3d velocity = 0.125 * (velocities[0] + velocities[1] + velocities[2]
-                    + velocities[3] + velocities[4] + velocities[5] + velocities[6] + velocities[7]);
-
-                velocities_c->SetTuple(index_c, velocity.data());
-            }
-        }
-    }
-
-    output_deformed_grid->GetCellData()->AddArray(velocities_c);
-}
-
-void feature_deformation::resample_grid(vtkPointSet* output_deformed_grid, vtkImageData* output_resampled_grid, const std::string& velocity_name,
-    const std::array<int, 3>& dimension, const Eigen::Vector3f& origin, const Eigen::Vector3f& spacing) const
-{
-    // Resample original grid
-    auto velocities_deformed = vtkDoubleArray::SafeDownCast(output_deformed_grid->GetPointData()->GetArray(velocity_name.c_str()));
-
-    auto velocities_resampled = vtkSmartPointer<vtkDoubleArray>::New();
-    velocities_resampled->SetNumberOfComponents(3);
-    velocities_resampled->SetNumberOfTuples(velocities_deformed->GetNumberOfTuples());
-    velocities_resampled->SetName(velocities_deformed->GetName());
-
-    const Eigen::Vector3d origin_d(static_cast<double>(origin[0]), static_cast<double>(origin[1]), static_cast<double>(origin[2]));
-    const Eigen::Vector3d spacing_d(static_cast<double>(spacing[0]), static_cast<double>(spacing[1]), static_cast<double>(spacing[2]));
-
-    for (int z = 0; z < dimension[2]; ++z)
-    {
-        for (int y = 0; y < dimension[1]; ++y)
-        {
-            vtkCell* cell = nullptr;
-
-            for (int x = 0; x < dimension[0]; ++x)
-            {
-                Eigen::Vector3d point = origin_d + Eigen::Vector3d(x, y, z).cwiseProduct(spacing_d);
-
-                // Find cell of the deformed grid, in which the point lies
-                int subID;
-                Eigen::Vector3d pcoords;
-                std::array<double, 8> weights;
-
-                cell = output_deformed_grid->FindAndGetCell(point.data(), cell, 0, 0.0, subID, pcoords.data(), weights.data());
-
-                // Use weights to interpolate the velocity
-                if (cell != nullptr)
-                {
-                    if (cell->GetNumberOfPoints() == 8)
-                    {
-                        auto point_ids = cell->GetPointIds();
-
-                        Eigen::Vector3d velocity_sum{ 0.0, 0.0, 0.0 };
-                        double weight_sum = 0.0;
-
-                        for (vtkIdType i = 0; i < point_ids->GetNumberOfIds(); ++i)
-                        {
-                            Eigen::Vector3d velocity;
-                            velocities_deformed->GetTuple(point_ids->GetId(i), velocity.data());
-
-                            velocity_sum += weights[i] * velocity;
-                            weight_sum += weights[i];
-                        }
-
-                        const Eigen::Vector3d velocity = velocity_sum / weight_sum;
-
-                        velocities_resampled->SetTuple(calc_index_point(dimension, x, y, z), velocity.data());
-                    }
-                    else
-                    {
-                        std::clog << cell->GetNumberOfPoints() << std::endl;
-                        velocities_resampled->SetTuple3(calc_index_point(dimension, x, y, z), 0.0, 0.0, 0.0);
-                    }
-                }
-                else
-                {
-                    velocities_resampled->SetTuple3(calc_index_point(dimension, x, y, z), 0.0, 0.0, 0.0);
-                }
-            }
-        }
-    }
-
-    output_resampled_grid->GetPointData()->AddArray(velocities_resampled);
-}
+//
+//void feature_deformation::create_undeformed_grid(vtkPointSet* output_deformed_grid, const std::array<int, 6>& extent,
+//    const std::array<int, 3>& dimension, const Eigen::Vector3f& origin, const Eigen::Vector3f& spacing) const
+//{
+//    // Create point nodes
+//    auto coords = vtkSmartPointer<vtkPoints>::New();
+//    coords->SetNumberOfPoints(dimension[0] * dimension[1] * dimension[2]);
+//
+//    auto tex_coords = vtkSmartPointer<vtkFloatArray>::New();
+//    tex_coords->SetNumberOfComponents(3);
+//    tex_coords->SetNumberOfTuples(dimension[0] * dimension[1] * dimension[2]);
+//    tex_coords->SetName("Original Coordinates");
+//
+//    vtkIdType index = 0;
+//
+//    #pragma omp parallel for
+//    for (int z = 0; z < dimension[2]; ++z)
+//    {
+//        for (int y = 0; y < dimension[1]; ++y)
+//        {
+//            for (int x = 0; x < dimension[0]; ++x, ++index)
+//            {
+//                const Eigen::Vector3f point = origin + Eigen::Vector3f(x, y, z).cwiseProduct(spacing);
+//
+//                coords->SetPoint(index, point.data());
+//                tex_coords->SetTuple(index, point.data());
+//            }
+//        }
+//    }
+//
+//    output_deformed_grid->SetPoints(coords);
+//    output_deformed_grid->GetPointData()->AddArray(tex_coords);
+//}
+//
+//void feature_deformation::create_cells(vtkUnstructuredGrid* output_deformed_grid, vtkUnstructuredGrid* output_deformed_grid_removed,
+//    const std::array<int, 3>& dimension, const Eigen::Vector3f& spacing) const
+//{
+//    const auto is_2d = dimension[2] == 1;
+//    const auto threshold = static_cast<float>(this->parameter_output_grid.remove_cells_scalar) * spacing.head(is_2d ? 2 : 3).norm();
+//
+//    // Create cells
+//    output_deformed_grid->Allocate((dimension[0] - 1) * (dimension[1] - 1) * (dimension[2] - 1));
+//    output_deformed_grid_removed->Allocate((dimension[0] - 1) * (dimension[1] - 1) * (dimension[2] - 1));
+//
+//    auto handedness = vtkSmartPointer<vtkFloatArray>::New();
+//    handedness->SetNumberOfComponents(1);
+//    handedness->Allocate((dimension[0] - 1) * (dimension[1] - 1) * (dimension[2] - 1));
+//    handedness->SetName("Handedness");
+//
+//    for (int z = 0; z < (is_2d ? 1 : (dimension[2] - 1)); ++z)
+//    {
+//        for (int y = 0; y < dimension[1] - 1; ++y)
+//        {
+//            for (int x = 0; x < dimension[0] - 1; ++x)
+//            {
+//                // Create point IDs
+//                const auto point0 = calc_index_point(dimension, x + 0, y + 0, z + 0);
+//                const auto point1 = calc_index_point(dimension, x + 1, y + 0, z + 0);
+//                const auto point2 = calc_index_point(dimension, x + 0, y + 1, z + 0);
+//                const auto point3 = calc_index_point(dimension, x + 1, y + 1, z + 0);
+//                const auto point4 = calc_index_point(dimension, x + 0, y + 0, z + 1);
+//                const auto point5 = calc_index_point(dimension, x + 1, y + 0, z + 1);
+//                const auto point6 = calc_index_point(dimension, x + 0, y + 1, z + 1);
+//                const auto point7 = calc_index_point(dimension, x + 1, y + 1, z + 1);
+//
+//                const std::array<vtkIdType, 8> point_ids{
+//                    point0,
+//                    point1,
+//                    point2,
+//                    point3,
+//                    point4,
+//                    point5,
+//                    point6,
+//                    point7
+//                };
+//
+//                // Calculate distances between points and compare to threshold
+//                bool discard_cell = false;
+//
+//                if (this->parameter_output_grid.remove_cells)
+//                {
+//                    // Get all cell points
+//                    std::vector<Eigen::Vector3d> cell_points(is_2d ? 4 : 8);
+//
+//                    for (std::size_t point_index = 0; point_index < (is_2d ? 4 : 8); ++point_index)
+//                    {
+//                        output_deformed_grid->GetPoints()->GetPoint(point_ids[point_index], cell_points[point_index].data());
+//                    }
+//
+//                    // Pairwise calculate the distance between all points and compare the result with the threshold
+//                    for (std::size_t i = 0; i < cell_points.size() - 1; ++i)
+//                    {
+//                        for (std::size_t j = i + 1; j < cell_points.size(); ++j)
+//                        {
+//                            discard_cell |= (cell_points[i] - cell_points[j]).norm() > threshold;
+//                        }
+//                    }
+//                }
+//
+//                // Create cell faces
+//                if (!discard_cell)
+//                {
+//                    if (!is_2d)
+//                    {
+//                        auto faces = vtkSmartPointer<vtkCellArray>::New();
+//
+//                        vtkIdType face0[4] = { point0, point1, point3, point2 }; // front
+//                        vtkIdType face1[4] = { point6, point7, point5, point4 }; // back
+//                        vtkIdType face2[4] = { point4, point5, point1, point0 }; // bottom
+//                        vtkIdType face3[4] = { point2, point3, point7, point6 }; // top
+//                        vtkIdType face4[4] = { point0, point2, point6, point4 }; // left
+//                        vtkIdType face5[4] = { point1, point5, point7, point3 }; // right
+//
+//                        faces->InsertNextCell(4, face0);
+//                        faces->InsertNextCell(4, face1);
+//                        faces->InsertNextCell(4, face2);
+//                        faces->InsertNextCell(4, face3);
+//                        faces->InsertNextCell(4, face4);
+//                        faces->InsertNextCell(4, face5);
+//
+//                        output_deformed_grid->InsertNextCell(VTK_POLYHEDRON, 8, point_ids.data(), 6, faces->GetData()->GetPointer(0));
+//
+//                        // Calculate handedness
+//                        std::array<Eigen::Vector3d, 4> points;
+//                        output_deformed_grid->GetPoints()->GetPoint(point0, points[0].data());
+//                        output_deformed_grid->GetPoints()->GetPoint(point1, points[1].data());
+//                        output_deformed_grid->GetPoints()->GetPoint(point2, points[2].data());
+//                        output_deformed_grid->GetPoints()->GetPoint(point4, points[3].data());
+//
+//                        const auto vector_1 = points[1] - points[0];
+//                        const auto vector_2 = points[2] - points[0];
+//                        const auto vector_3 = points[3] - points[0];
+//
+//                        handedness->InsertNextValue(static_cast<float>(vector_1.cross(vector_2).dot(vector_3)));
+//                    }
+//                    else
+//                    {
+//                        const std::array<vtkIdType, 8> point_ids{ point0, point1, point3, point2 };
+//
+//                        output_deformed_grid->InsertNextCell(VTK_QUAD, 4, point_ids.data());
+//
+//                        // Calculate handedness
+//                        std::array<Eigen::Vector3d, 3> points;
+//                        output_deformed_grid->GetPoints()->GetPoint(point0, points[0].data());
+//                        output_deformed_grid->GetPoints()->GetPoint(point1, points[1].data());
+//                        output_deformed_grid->GetPoints()->GetPoint(point2, points[2].data());
+//
+//                        const auto vector_1 = points[1] - points[0];
+//                        const auto vector_2 = points[2] - points[0];
+//
+//                        handedness->InsertNextValue(static_cast<float>(vector_1.cross(vector_2)[2]));
+//                    }
+//                }
+//                else
+//                {
+//                    if (!is_2d)
+//                    {
+//                        auto faces = vtkSmartPointer<vtkCellArray>::New();
+//
+//                        vtkIdType face0[4] = { point0, point1, point3, point2 }; // front
+//                        vtkIdType face1[4] = { point6, point7, point5, point4 }; // back
+//                        vtkIdType face2[4] = { point4, point5, point1, point0 }; // bottom
+//                        vtkIdType face3[4] = { point2, point3, point7, point6 }; // top
+//                        vtkIdType face4[4] = { point0, point2, point6, point4 }; // left
+//                        vtkIdType face5[4] = { point1, point5, point7, point3 }; // right
+//
+//                        faces->InsertNextCell(4, face0);
+//                        faces->InsertNextCell(4, face1);
+//                        faces->InsertNextCell(4, face2);
+//                        faces->InsertNextCell(4, face3);
+//                        faces->InsertNextCell(4, face4);
+//                        faces->InsertNextCell(4, face5);
+//
+//                        output_deformed_grid_removed->InsertNextCell(VTK_POLYHEDRON, 8, point_ids.data(), 6, faces->GetData()->GetPointer(0));
+//                    }
+//                    else
+//                    {
+//                        const std::array<vtkIdType, 8> point_ids{ point0, point1, point3, point2 };
+//
+//                        output_deformed_grid_removed->InsertNextCell(VTK_QUAD, 4, point_ids.data());
+//                    }
+//                }
+//            }
+//        }
+//    }
+//
+//    output_deformed_grid->GetCellData()->AddArray(handedness);
+//    output_deformed_grid->BuildLinks();
+//
+//    output_deformed_grid_removed->BuildLinks();
+//}
+//
+//void feature_deformation::set_output_deformed_grid(vtkPointSet* output_deformed_grid, const cuda::displacement& grid_displacement) const
+//{
+//    // Set displaced points
+//    const auto& displaced_grid = grid_displacement.get_results();
+//
+//    #pragma omp parallel for
+//    for (vtkIdType i = 0; i < output_deformed_grid->GetNumberOfPoints(); ++i)
+//    {
+//        output_deformed_grid->GetPoints()->SetPoint(i, displaced_grid[i].data());
+//    }
+//
+//    // Create displacement ID array
+//    const auto& displacement_ids = grid_displacement.get_displacement_info();
+//
+//    auto displacement_id_array = vtkSmartPointer<vtkFloatArray>::New();
+//    displacement_id_array->SetNumberOfComponents(4);
+//    displacement_id_array->SetNumberOfTuples(displacement_ids.size());
+//    displacement_id_array->SetName("Displacement Information");
+//
+//    std::memcpy(displacement_id_array->GetPointer(0), displacement_ids.data(), displacement_ids.size() * sizeof(float4));
+//
+//    output_deformed_grid->GetPointData()->AddArray(displacement_id_array);
+//}
+//
+//void feature_deformation::set_output_deformed_lines(vtkPolyData* input_lines, vtkPolyData* output_deformed_lines, const cuda::displacement& line_displacement,
+//    const bool modified, cache_output_lines_t& output_lines) const
+//{
+//    // Create output geometry
+//    if (modified || !output_lines.valid)
+//    {
+//        std::cout << "Creating deformed lines output" << std::endl;
+//
+//        output_lines.data = vtkSmartPointer<vtkPolyData>::New();
+//        output_lines.data->DeepCopy(input_lines);
+//        output_lines.valid = true;
+//
+//        auto displacement_id_array = vtkSmartPointer<vtkFloatArray>::New();
+//        displacement_id_array->SetNumberOfComponents(4);
+//        displacement_id_array->SetNumberOfTuples(output_lines.data->GetNumberOfPoints());
+//        displacement_id_array->SetName("Displacement Information");
+//        displacement_id_array->FillValue(0.0f);
+//
+//        auto displacement_distance_array = vtkSmartPointer<vtkFloatArray>::New();
+//        displacement_distance_array->SetNumberOfComponents(1);
+//        displacement_distance_array->SetNumberOfTuples(output_lines.data->GetNumberOfPoints());
+//        displacement_distance_array->SetName("B-Spline Distance");
+//        displacement_distance_array->FillValue(0.0f);
+//
+//        output_lines.data->GetPointData()->AddArray(displacement_id_array);
+//        output_lines.data->GetPointData()->AddArray(displacement_distance_array);
+//    }
+//    else
+//    {
+//        std::cout << "Updating deformed lines output" << std::endl;
+//    }
+//
+//    // Set displaced points
+//    const auto& displaced_lines = line_displacement.get_results();
+//
+//    #pragma omp parallel for
+//    for (vtkIdType i = 0; i < output_lines.data->GetNumberOfPoints(); ++i)
+//    {
+//        output_lines.data->GetPoints()->SetPoint(i, displaced_lines[i].data());
+//    }
+//
+//    // Set displacement ID array
+//    const auto& displacement_ids = line_displacement.get_displacement_info();
+//
+//    std::memcpy(vtkFloatArray::SafeDownCast(output_lines.data->GetPointData()->GetArray("Displacement Information"))->GetPointer(0),
+//        displacement_ids.data(), displacement_ids.size() * sizeof(float4));
+//
+//    // In case of the B-Spline, store distance on B-Spline for neighboring points
+//    if ((this->parameter_displacement.method == cuda::displacement::method_t::b_spline ||
+//        this->parameter_displacement.method == cuda::displacement::method_t::b_spline_joints) &&
+//        this->OutputBSplineDistance)
+//    {
+//        auto displacement_distance_array = vtkFloatArray::SafeDownCast(output_lines.data->GetPointData()->GetArray("B-Spline Distance"));
+//
+//        vtkIdType index = 0;
+//        vtkIdType cell_index = 0;
+//
+//        for (vtkIdType l = 0; l < output_lines.data->GetLines()->GetNumberOfCells(); ++l)
+//        {
+//            const auto num_points = output_lines.data->GetLines()->GetData()->GetValue(cell_index);
+//
+//            displacement_distance_array->SetValue(index, std::abs(displacement_ids[index].w - displacement_ids[index + 1].w));
+//
+//            for (vtkIdType i = 1; i < num_points - 1; ++i)
+//            {
+//                displacement_distance_array->SetValue(index + i, 0.5f * (std::abs(displacement_ids[index + i - 1].w - displacement_ids[index + i].w)
+//                    + std::abs(displacement_ids[index + i].w - displacement_ids[index + i + 1].w)));
+//            }
+//
+//            displacement_distance_array->SetValue(index + num_points - 1, std::abs(displacement_ids[index + num_points - 2].w - displacement_ids[index + num_points - 1].w));
+//
+//            index += num_points;
+//            cell_index += num_points + 1;
+//        }
+//    }
+//
+//    // Cache output
+//    output_deformed_lines->DeepCopy(output_lines.data);
+//}
+//
+//void feature_deformation::set_output_deformed_geometry(const std::vector<vtkPointSet*>& input_geometry, vtkMultiBlockDataSet* output_deformed_geometry,
+//    const cuda::displacement& geometry_displacement, bool modified, cache_output_geometry_t& output_geometry) const
+//{
+//    // Create output geometry
+//    if (modified || !output_geometry.valid)
+//    {
+//        std::cout << "Creating deformed geometry output" << std::endl;
+//
+//        output_geometry.data = vtkSmartPointer<vtkMultiBlockDataSet>::New();
+//
+//        for (unsigned int block_index = 0; block_index < static_cast<unsigned int>(input_geometry.size()); ++block_index)
+//        {
+//            output_geometry.data->SetBlock(block_index, vtkDataObjectTypes::NewDataObject(input_geometry[block_index]->GetClassName()));
+//            output_geometry.data->GetBlock(block_index)->DeepCopy(input_geometry[block_index]);
+//
+//            auto displacement_id_array = vtkSmartPointer<vtkFloatArray>::New();
+//            displacement_id_array->SetNumberOfComponents(4);
+//            displacement_id_array->SetNumberOfTuples(input_geometry[block_index]->GetNumberOfPoints());
+//            displacement_id_array->SetName("Displacement Information");
+//            displacement_id_array->FillValue(0.0f);
+//
+//            auto displacement_distance_array = vtkSmartPointer<vtkFloatArray>::New();
+//            displacement_distance_array->SetNumberOfComponents(1);
+//            displacement_distance_array->SetNumberOfTuples(input_geometry[block_index]->GetNumberOfPoints());
+//            displacement_distance_array->SetName("B-Spline Distance");
+//            displacement_distance_array->FillValue(0.0f);
+//
+//            vtkPointSet::SafeDownCast(output_geometry.data->GetBlock(block_index))->GetPointData()->AddArray(displacement_id_array);
+//            vtkPointSet::SafeDownCast(output_geometry.data->GetBlock(block_index))->GetPointData()->AddArray(displacement_distance_array);
+//        }
+//
+//        output_geometry.valid = true;
+//    }
+//    else
+//    {
+//        std::cout << "Updating deformed geometry output" << std::endl;
+//    }
+//
+//    // Set displaced points
+//    const auto& displaced_geometry = geometry_displacement.get_results();
+//
+//    std::size_t global_id = 0;
+//
+//    for (unsigned int block_index = 0; block_index < output_geometry.data->GetNumberOfBlocks(); ++block_index)
+//    {
+//        auto block = vtkPointSet::SafeDownCast(output_geometry.data->GetBlock(block_index));
+//
+//        for (vtkIdType i = 0; i < block->GetNumberOfPoints(); ++i, ++global_id)
+//        {
+//            block->GetPoints()->SetPoint(i, displaced_geometry[global_id].data());
+//        }
+//    }
+//
+//    // Set displacement ID arrays
+//    const auto& displacement_ids = geometry_displacement.get_displacement_info();
+//
+//    std::size_t global_data_index = 0;
+//
+//    for (unsigned int block_index = 0; block_index < output_geometry.data->GetNumberOfBlocks(); ++block_index)
+//    {
+//        auto block = vtkPointSet::SafeDownCast(output_geometry.data->GetBlock(block_index));
+//        auto data_array = vtkFloatArray::SafeDownCast(block->GetPointData()->GetArray("Displacement Information"));
+//
+//        std::memcpy(data_array->GetPointer(0), &displacement_ids[global_data_index], data_array->GetNumberOfTuples() * sizeof(float4));
+//
+//        global_data_index += data_array->GetNumberOfTuples();
+//    }
+//
+//    // In case of the B-Spline, store distance on B-Spline for neighboring points
+//    if ((this->parameter_displacement.method == cuda::displacement::method_t::b_spline ||
+//        this->parameter_displacement.method == cuda::displacement::method_t::b_spline_joints) &&
+//        this->OutputBSplineDistance)
+//    {
+//        for (unsigned int block_index = 0; block_index < output_geometry.data->GetNumberOfBlocks(); ++block_index)
+//        {
+//            auto block = vtkPointSet::SafeDownCast(output_geometry.data->GetBlock(block_index));
+//            auto displacement_distance_array = vtkFloatArray::SafeDownCast(block->GetPointData()->GetArray("B-Spline Distance"));
+//
+//            if (vtkPolyData::SafeDownCast(block) != nullptr)
+//            {
+//                auto poly_block = vtkPolyData::SafeDownCast(block);
+//
+//                vtkIdType index = 0;
+//                vtkIdType cell_index = 0;
+//
+//                for (vtkIdType l = 0; l < poly_block->GetLines()->GetNumberOfCells(); ++l)
+//                {
+//                    const auto num_points = poly_block->GetLines()->GetData()->GetValue(cell_index);
+//
+//                    displacement_distance_array->SetValue(index, std::abs(displacement_ids[index].w - displacement_ids[index + 1].w));
+//
+//                    for (vtkIdType i = 1; i < num_points - 1; ++i)
+//                    {
+//                        displacement_distance_array->SetValue(index + i, 0.5f * (std::abs(displacement_ids[index + i - 1].w - displacement_ids[index + i].w)
+//                            + std::abs(displacement_ids[index + i].w - displacement_ids[index + i + 1].w)));
+//                    }
+//
+//                    displacement_distance_array->SetValue(index + num_points - 1, std::abs(displacement_ids[index + num_points - 2].w - displacement_ids[index + num_points - 1].w));
+//
+//                    index += num_points;
+//                    cell_index += num_points + 1;
+//                }
+//            }
+//        }
+//    }
+//
+//    // Cache output
+//    output_deformed_geometry->DeepCopy(output_geometry.data);
+//}
+//
+//void feature_deformation::create_displacement_field(vtkPointSet* output_deformed_grid) const
+//{
+//    // Create displacement field
+//    auto displacement_map = vtkSmartPointer<vtkDoubleArray>::New();
+//    displacement_map->SetNumberOfComponents(3);
+//    displacement_map->SetNumberOfTuples(output_deformed_grid->GetPoints()->GetNumberOfPoints());
+//    displacement_map->SetName("Displacement Map");
+//
+//    #pragma omp parallel for
+//    for (vtkIdType p = 0; p < output_deformed_grid->GetPoints()->GetNumberOfPoints(); ++p)
+//    {
+//        Eigen::Vector3d displaced_point;
+//        output_deformed_grid->GetPoints()->GetPoint(p, displaced_point.data());
+//
+//        displacement_map->SetTuple(p, displaced_point.data());
+//    }
+//
+//    output_deformed_grid->GetPointData()->AddArray(displacement_map);
+//}
+//
+//void feature_deformation::deform_velocities(vtkPointSet* output_deformed_grid, vtkDataArray* data_array,
+//    const std::array<int, 3>& dimension, const Eigen::Vector3f& spacing) const
+//{
+//    // Setup velocity interpolation for support of point and cell data
+//    std::function<Eigen::Vector3d(int, int, int)> get_velocity;
+//
+//    if (data_array->GetNumberOfTuples() == dimension[0] * dimension[1] * dimension[2])
+//    {
+//        get_velocity = [&dimension, &data_array](const int x, const int y, const int z) -> Eigen::Vector3d
+//        {
+//            Eigen::Vector3d velocity;
+//            data_array->GetTuple(calc_index_point(dimension, x, y, z), velocity.data());
+//
+//            return velocity;
+//        };
+//    }
+//    else
+//    {
+//        get_velocity = [&dimension, &data_array](const int x, const int y, const int z) -> Eigen::Vector3d
+//        {
+//            std::array<Eigen::Vector3d, 8> velocities;
+//            data_array->GetTuple(calc_index_cell(dimension, x - 1, y - 1, z - 1), velocities[0].data());
+//            data_array->GetTuple(calc_index_cell(dimension, x - 0, y - 1, z - 1), velocities[1].data());
+//            data_array->GetTuple(calc_index_cell(dimension, x - 1, y - 0, z - 1), velocities[2].data());
+//            data_array->GetTuple(calc_index_cell(dimension, x - 0, y - 0, z - 1), velocities[3].data());
+//            data_array->GetTuple(calc_index_cell(dimension, x - 1, y - 1, z - 0), velocities[4].data());
+//            data_array->GetTuple(calc_index_cell(dimension, x - 0, y - 1, z - 0), velocities[5].data());
+//            data_array->GetTuple(calc_index_cell(dimension, x - 1, y - 0, z - 0), velocities[6].data());
+//            data_array->GetTuple(calc_index_cell(dimension, x - 0, y - 0, z - 0), velocities[7].data());
+//
+//            return 0.125 * (velocities[0] + velocities[1] + velocities[2] + velocities[3] + velocities[4] + velocities[5] + velocities[6] + velocities[7]);
+//        };
+//    }
+//
+//    // Setup finite differences for the calculation of the Jacobian
+//    auto displacement_map = vtkDoubleArray::SafeDownCast(output_deformed_grid->GetPointData()->GetArray("Displacement Map"));
+//
+//    auto calc_jacobian = [displacement_map](const int center, const int index, const int max, const int component, double h, const int offset) -> double
+//    {
+//        double left, right;
+//
+//        if (center == 0) // Forward difference
+//        {
+//            left = displacement_map->GetComponent(index, component);
+//            right = displacement_map->GetComponent(index + offset, component);
+//        }
+//        else if (center == max) // Backward difference
+//        {
+//            left = displacement_map->GetComponent(index - offset, component);
+//            right = displacement_map->GetComponent(index, component);
+//        }
+//        else // Central difference
+//        {
+//            left = displacement_map->GetComponent(index - offset, component);
+//            right = displacement_map->GetComponent(index + offset, component);
+//
+//            h *= 2.0;
+//        }
+//
+//        return (right - left) / h;
+//    };
+//
+//    // Calculate Jacobian and use it to calculate the velocities at the deformed grid
+//    auto jacobian = vtkSmartPointer<vtkDoubleArray>::New();
+//    jacobian->SetNumberOfComponents(9);
+//    jacobian->SetNumberOfTuples(dimension[0] * dimension[1] * dimension[2]);
+//    jacobian->SetName("Jacobian");
+//
+//    // ... at the point nodes
+//    auto velocities_p = vtkSmartPointer<vtkDoubleArray>::New();
+//    velocities_p->SetNumberOfComponents(3);
+//    velocities_p->SetNumberOfTuples(dimension[0] * dimension[1] * dimension[2]);
+//    velocities_p->SetName(data_array->GetName());
+//
+//    #pragma omp parallel for
+//    for (int z = 0; z < dimension[2]; ++z)
+//    {
+//        for (int y = 0; y < dimension[1]; ++y)
+//        {
+//            for (int x = 0; x < dimension[0]; ++x)
+//            {
+//                const auto index_p = calc_index_point(dimension, x, y, z);
+//
+//                // Calculate Jacobian
+//                const auto Jxdx = calc_jacobian(x, index_p, dimension[0] - 1, 0, spacing[0], 1);
+//                const auto Jxdy = calc_jacobian(y, index_p, dimension[1] - 1, 0, spacing[1], dimension[0]);
+//                const auto Jxdz = calc_jacobian(z, index_p, dimension[2] - 1, 0, spacing[2], dimension[0] * dimension[1]);
+//                const auto Jydx = calc_jacobian(x, index_p, dimension[0] - 1, 1, spacing[0], 1);
+//                const auto Jydy = calc_jacobian(y, index_p, dimension[1] - 1, 1, spacing[1], dimension[0]);
+//                const auto Jydz = calc_jacobian(z, index_p, dimension[2] - 1, 1, spacing[2], dimension[0] * dimension[1]);
+//                const auto Jzdx = calc_jacobian(x, index_p, dimension[0] - 1, 2, spacing[0], 1);
+//                const auto Jzdy = calc_jacobian(y, index_p, dimension[1] - 1, 2, spacing[1], dimension[0]);
+//                const auto Jzdz = calc_jacobian(z, index_p, dimension[2] - 1, 2, spacing[2], dimension[0] * dimension[1]);
+//
+//                Eigen::Matrix3d Jacobian;
+//                Jacobian << Jxdx, Jxdy, Jxdz, Jydx, Jydy, Jydz, Jzdx, Jzdy, Jzdz;
+//
+//                jacobian->SetTuple(index_p, Jacobian.data());
+//
+//                // Calculate velocities
+//                auto velocity = get_velocity(x, y, z);
+//                velocity = (Jacobian / Jacobian.determinant()) * velocity;
+//
+//                velocities_p->SetTuple(index_p, velocity.data());
+//            }
+//        }
+//    }
+//
+//    output_deformed_grid->GetPointData()->AddArray(jacobian);
+//    output_deformed_grid->GetPointData()->AddArray(velocities_p);
+//
+//    // ... at the cell centers
+//    auto velocities_c = vtkSmartPointer<vtkDoubleArray>::New();
+//    velocities_c->SetNumberOfComponents(3);
+//    velocities_c->SetNumberOfTuples((dimension[0] - 1) * (dimension[1] - 1) * (dimension[2] - 1));
+//    velocities_c->SetName(data_array->GetName());
+//
+//    #pragma omp parallel for
+//    for (int z = 0; z < dimension[2] - 1; ++z)
+//    {
+//        for (int y = 0; y < dimension[1] - 1; ++y)
+//        {
+//            for (int x = 0; x < dimension[0] - 1; ++x)
+//            {
+//                const auto index_c = calc_index_cell(dimension, x, y, z);
+//
+//                std::array<Eigen::Vector3d, 8> velocities;
+//                velocities_p->GetTuple(calc_index_point(dimension, x + 0, y + 0, z + 0), velocities[0].data());
+//                velocities_p->GetTuple(calc_index_point(dimension, x + 1, y + 0, z + 0), velocities[1].data());
+//                velocities_p->GetTuple(calc_index_point(dimension, x + 0, y + 1, z + 0), velocities[2].data());
+//                velocities_p->GetTuple(calc_index_point(dimension, x + 1, y + 1, z + 0), velocities[3].data());
+//                velocities_p->GetTuple(calc_index_point(dimension, x + 0, y + 0, z + 1), velocities[4].data());
+//                velocities_p->GetTuple(calc_index_point(dimension, x + 1, y + 0, z + 1), velocities[5].data());
+//                velocities_p->GetTuple(calc_index_point(dimension, x + 0, y + 1, z + 1), velocities[6].data());
+//                velocities_p->GetTuple(calc_index_point(dimension, x + 1, y + 1, z + 1), velocities[7].data());
+//
+//                const Eigen::Vector3d velocity = 0.125 * (velocities[0] + velocities[1] + velocities[2]
+//                    + velocities[3] + velocities[4] + velocities[5] + velocities[6] + velocities[7]);
+//
+//                velocities_c->SetTuple(index_c, velocity.data());
+//            }
+//        }
+//    }
+//
+//    output_deformed_grid->GetCellData()->AddArray(velocities_c);
+//}
+//
+//void feature_deformation::resample_grid(vtkPointSet* output_deformed_grid, vtkImageData* output_resampled_grid, const std::string& velocity_name,
+//    const std::array<int, 3>& dimension, const Eigen::Vector3f& origin, const Eigen::Vector3f& spacing) const
+//{
+//    // Resample original grid
+//    auto velocities_deformed = vtkDoubleArray::SafeDownCast(output_deformed_grid->GetPointData()->GetArray(velocity_name.c_str()));
+//
+//    auto velocities_resampled = vtkSmartPointer<vtkDoubleArray>::New();
+//    velocities_resampled->SetNumberOfComponents(3);
+//    velocities_resampled->SetNumberOfTuples(velocities_deformed->GetNumberOfTuples());
+//    velocities_resampled->SetName(velocities_deformed->GetName());
+//
+//    const Eigen::Vector3d origin_d(static_cast<double>(origin[0]), static_cast<double>(origin[1]), static_cast<double>(origin[2]));
+//    const Eigen::Vector3d spacing_d(static_cast<double>(spacing[0]), static_cast<double>(spacing[1]), static_cast<double>(spacing[2]));
+//
+//    for (int z = 0; z < dimension[2]; ++z)
+//    {
+//        for (int y = 0; y < dimension[1]; ++y)
+//        {
+//            vtkCell* cell = nullptr;
+//
+//            for (int x = 0; x < dimension[0]; ++x)
+//            {
+//                Eigen::Vector3d point = origin_d + Eigen::Vector3d(x, y, z).cwiseProduct(spacing_d);
+//
+//                // Find cell of the deformed grid, in which the point lies
+//                int subID;
+//                Eigen::Vector3d pcoords;
+//                std::array<double, 8> weights;
+//
+//                cell = output_deformed_grid->FindAndGetCell(point.data(), cell, 0, 0.0, subID, pcoords.data(), weights.data());
+//
+//                // Use weights to interpolate the velocity
+//                if (cell != nullptr)
+//                {
+//                    if (cell->GetNumberOfPoints() == 8)
+//                    {
+//                        auto point_ids = cell->GetPointIds();
+//
+//                        Eigen::Vector3d velocity_sum{ 0.0, 0.0, 0.0 };
+//                        double weight_sum = 0.0;
+//
+//                        for (vtkIdType i = 0; i < point_ids->GetNumberOfIds(); ++i)
+//                        {
+//                            Eigen::Vector3d velocity;
+//                            velocities_deformed->GetTuple(point_ids->GetId(i), velocity.data());
+//
+//                            velocity_sum += weights[i] * velocity;
+//                            weight_sum += weights[i];
+//                        }
+//
+//                        const Eigen::Vector3d velocity = velocity_sum / weight_sum;
+//
+//                        velocities_resampled->SetTuple(calc_index_point(dimension, x, y, z), velocity.data());
+//                    }
+//                    else
+//                    {
+//                        std::clog << cell->GetNumberOfPoints() << std::endl;
+//                        velocities_resampled->SetTuple3(calc_index_point(dimension, x, y, z), 0.0, 0.0, 0.0);
+//                    }
+//                }
+//                else
+//                {
+//                    velocities_resampled->SetTuple3(calc_index_point(dimension, x, y, z), 0.0, 0.0, 0.0);
+//                }
+//            }
+//        }
+//    }
+//
+//    output_resampled_grid->GetPointData()->AddArray(velocities_resampled);
+//}

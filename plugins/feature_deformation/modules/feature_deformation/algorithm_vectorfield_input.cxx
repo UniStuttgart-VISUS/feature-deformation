@@ -29,7 +29,7 @@ bool algorithm_vectorfield_input::run_computation()
 
     this->results.vector_field = this->input_grid.get().get_results().grid->GetPointData()->GetArray(this->array_name.c_str());
 
-    if (this->results.vector_field->GetNumberOfComponents != 3)
+    if (this->results.vector_field->GetNumberOfComponents() != 3)
     {
         std::cerr << "The data dimension of the vector field has to be 3" << std::endl;
         return false;

@@ -6,21 +6,21 @@
 #include <iostream>
 #include <memory>
 
-void algorithm_displacement_creation::set_input(const algorithm_input& input)
+void algorithm_displacement_creation::set_input(std::shared_ptr<const algorithm_input> input)
 {
     this->input = input;
 }
 
 std::uint32_t algorithm_displacement_creation::calculate_hash() const
 {
-    return this->input.get().get_points().hash;
+    return this->input->get_points().hash;
 }
 
 bool algorithm_displacement_creation::run_computation()
 {
     std::cout << "  uploading points to the GPU" << std::endl;
 
-    this->results.displacements = std::make_shared<cuda::displacement>(this->input.get().get_points().points);
+    this->results.displacements = std::make_shared<cuda::displacement>(this->input->get_points().points);
 
     return true;
 }

@@ -6,9 +6,8 @@
 #include "displacement.h"
 
 #include <memory>
-#include <type_traits>
 
-class algorithm_displacement_creation : public algorithm<const algorithm_input&>
+class algorithm_displacement_creation : public algorithm< std::shared_ptr<const algorithm_input>>
 {
 public:
     /// Default constructor
@@ -25,7 +24,7 @@ public:
 protected:
     /// Set input
     virtual void set_input(
-        const algorithm_input& input
+        std::shared_ptr<const algorithm_input> input
     ) override;
 
     /// Calculate hash
@@ -36,7 +35,7 @@ protected:
 
 private:
     /// Input
-    std::reference_wrapper<const algorithm_input> input;
+    std::shared_ptr<const algorithm_input> input;
 
     /// Results
     results_t results;

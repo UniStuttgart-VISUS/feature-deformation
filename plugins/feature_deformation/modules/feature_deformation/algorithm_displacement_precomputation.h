@@ -6,10 +6,10 @@
 #include "algorithm_smoothing.h"
 #include "displacement.h"
 
-#include <type_traits>
+#include <memory>
 
-class algorithm_displacement_precomputation : public algorithm<const algorithm_displacement_creation&, const algorithm_smoothing&,
-    const algorithm_line_input&, cuda::displacement::method_t, cuda::displacement::parameter_t, cuda::displacement::b_spline_parameters_t>
+class algorithm_displacement_precomputation : public algorithm<std::shared_ptr<const algorithm_displacement_creation>, std::shared_ptr<const algorithm_smoothing>,
+    std::shared_ptr<const algorithm_line_input>, cuda::displacement::method_t, cuda::displacement::parameter_t, cuda::displacement::b_spline_parameters_t>
 {
 public:
     /// Default constructor
@@ -18,9 +18,9 @@ public:
 protected:
     /// Set input
     virtual void set_input(
-        const algorithm_displacement_creation& displacement,
-        const algorithm_smoothing& smoothing,
-        const algorithm_line_input& input_lines,
+        std::shared_ptr<const algorithm_displacement_creation> displacement,
+        std::shared_ptr<const algorithm_smoothing> smoothing,
+        std::shared_ptr<const algorithm_line_input> input_lines,
         cuda::displacement::method_t method,
         cuda::displacement::parameter_t displacement_parameters,
         cuda::displacement::b_spline_parameters_t bspline_parameters
@@ -34,11 +34,11 @@ protected:
 
 private:
     /// Input
-    std::reference_wrapper<const algorithm_displacement_creation> displacement;
-    std::reference_wrapper<const algorithm_smoothing> smoothing;
+    std::shared_ptr<const algorithm_displacement_creation> displacement;
+    std::shared_ptr<const algorithm_smoothing> smoothing;
 
     /// Parameters
-    std::reference_wrapper<const algorithm_line_input> input_lines;
+    std::shared_ptr<const algorithm_line_input> input_lines;
     cuda::displacement::method_t method;
     cuda::displacement::parameter_t displacement_parameters;
     cuda::displacement::b_spline_parameters_t bspline_parameters;

@@ -7,10 +7,10 @@
 #include "Eigen/Dense"
 
 #include <array>
-#include <type_traits>
+#include <memory>
 #include <vector>
 
-class algorithm_smoothing : public algorithm<const algorithm_line_input&, smoothing::method_t, smoothing::variant_t, float, int>
+class algorithm_smoothing : public algorithm<std::shared_ptr<const algorithm_line_input>, smoothing::method_t, smoothing::variant_t, float, int>
 {
 public:
     /// Default constructor
@@ -28,7 +28,7 @@ public:
 protected:
     /// Set input
     virtual void set_input(
-        const algorithm_line_input& line_input,
+        std::shared_ptr<const algorithm_line_input> line_input,
         smoothing::method_t method,
         smoothing::variant_t variant,
         float lambda,
@@ -46,7 +46,7 @@ protected:
 
 private:
     /// Input
-    std::reference_wrapper<const algorithm_line_input> line_input;
+    std::shared_ptr<const algorithm_line_input> line_input;
 
     /// Parameters
     smoothing::method_t method;

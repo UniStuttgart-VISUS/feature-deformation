@@ -29,6 +29,7 @@
 #include <array>
 #include <cstdint>
 #include <iostream>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -146,32 +147,6 @@ private:
     /// Process parameters
     void process_parameters(double time);
 
-    /// Create and manipulate grid
-    void create_undeformed_grid(vtkPointSet* output_deformed_grid, const std::array<int, 6>& extent,
-        const std::array<int, 3>& dimension, const Eigen::Vector3f& origin, const Eigen::Vector3f& spacing) const;
-
-    void create_cells(vtkUnstructuredGrid* output_deformed_grid, vtkUnstructuredGrid* output_deformed_grid_removed,
-        const std::array<int, 3>& dimension, const Eigen::Vector3f& spacing) const;
-
-    /// Set output
-    void set_output_deformed_grid(vtkPointSet* output_deformed_grid, const cuda::displacement& grid_displacement) const;
-
-    void set_output_deformed_lines(vtkPolyData* input_lines, vtkPolyData* output_deformed_lines, const cuda::displacement& line_displacement,
-        bool modified, cache_output_lines_t& output_lines) const;
-
-    void set_output_deformed_geometry(const std::vector<vtkPointSet*>& input_geometry, vtkMultiBlockDataSet* output_deformed_geometry,
-        const cuda::displacement& geometry_displacement, bool modified, cache_output_geometry_t& output_geometry) const;
-
-    /// Deform velocities using a displacement map
-    void create_displacement_field(vtkPointSet* output_deformed_grid) const;
-
-    void deform_velocities(vtkPointSet* output_deformed_grid, vtkDataArray* data_array,
-        const std::array<int, 3>& dimension, const Eigen::Vector3f& spacing) const;
-
-    /// Resample the deformed grid on the original one
-    void resample_grid(vtkPointSet* output_deformed_grid, vtkImageData* output_resampled_grid, const std::string& velocity_name,
-        const std::array<int, 3>& dimension, const Eigen::Vector3f& origin, const Eigen::Vector3f& spacing) const;
-
     /// ID of the polyline which defines the grid deformation
     int LineID;
 
@@ -244,58 +219,80 @@ private:
     } parameters;
 
     // Input algorithms
-    algorithm_grid_input alg_grid_input;
-    algorithm_line_input alg_line_input;
-    algorithm_geometry_input alg_geometry_input;
+    std::shared_ptr<algorithm_grid_input> alg_grid_input;
+    std::shared_ptr<algorithm_line_input> alg_line_input;
+    std::shared_ptr<algorithm_geometry_input> alg_geometry_input;
 
     // Computation algorithms
-    algorithm_smoothing alg_smoothing;
-    algorithm_displacement_creation alg_displacement_creation;
-    algorithm_displacement_precomputation alg_displacement_precomputation;
-    algorithm_displacement_computation alg_displacement_computation;
+    std::shared_ptr<algorithm_smoothing> alg_smoothing;
+
+    std::shared_ptr<algorithm_displacement_creation> alg_displacement_creation_lines,
+        alg_displacement_creation_grid, alg_displacement_creation_geometry;
+    std::shared_ptr<algorithm_displacement_precomputation> alg_displacement_precomputation_lines,
+        alg_displacement_precomputation_grid, alg_displacement_precomputation_geometry;
+    std::shared_ptr<algorithm_displacement_computation> alg_displacement_computation_lines,
+        alg_displacement_computation_grid, alg_displacement_computation_geometry;
+
+    // Output algorithms
 
 
 
 
-
-
-
-
-
-
-
-
-    // Caching
-    struct cache_t
-    {
-        cache_t() : modified(true), hash(-1), valid(false) {};
-
-        bool modified;
-        uint32_t hash;
-
-        bool valid;
-    };
-
-    // Precomputation caches
-    struct cache_precompute_tearing_t : public cache_t
-    {
-        vtkSmartPointer<vtkIdTypeArray> removed_cells;
-
-    } precompute_tearing;
-
-    // Output caches
-    struct cache_output_lines_t : public cache_t
-    {
-        vtkSmartPointer<vtkPolyData> data;
-
-    } output_lines;
-
-    struct cache_output_geometry_t : public cache_t
-    {
-        vtkSmartPointer<vtkMultiBlockDataSet> data;
-
-    } output_geometry;
 
     // Variable for counting the number of output frames
     int frames;
+
+
+
+
+
+
+
+    //// Precomputation caches
+    //struct cache_precompute_tearing_t : public cache_t
+    //{
+    //    vtkSmartPointer<vtkIdTypeArray> removed_cells;
+
+    //} precompute_tearing;
+
+    //// Output caches
+    //struct cache_output_lines_t : public cache_t
+    //{
+    //    vtkSmartPointer<vtkPolyData> data;
+
+    //} output_lines;
+
+    //struct cache_output_geometry_t : public cache_t
+    //{
+    //    vtkSmartPointer<vtkMultiBlockDataSet> data;
+
+    //} output_geometry;
+
+
+
+    /*/// Create and manipulate grid
+    void create_undeformed_grid(vtkPointSet* output_deformed_grid, const std::array<int, 6>& extent,
+        const std::array<int, 3>& dimension, const Eigen::Vector3f& origin, const Eigen::Vector3f& spacing) const;
+
+    void create_cells(vtkUnstructuredGrid* output_deformed_grid, vtkUnstructuredGrid* output_deformed_grid_removed,
+        const std::array<int, 3>& dimension, const Eigen::Vector3f& spacing) const;
+
+    /// Set output
+    void set_output_deformed_grid(vtkPointSet* output_deformed_grid, const cuda::displacement& grid_displacement) const;
+
+    void set_output_deformed_lines(vtkPolyData* input_lines, vtkPolyData* output_deformed_lines, const cuda::displacement& line_displacement,
+        bool modified, cache_output_lines_t& output_lines) const;
+
+    void set_output_deformed_geometry(const std::vector<vtkPointSet*>& input_geometry, vtkMultiBlockDataSet* output_deformed_geometry,
+        const cuda::displacement& geometry_displacement, bool modified, cache_output_geometry_t& output_geometry) const;
+
+    /// Deform velocities using a displacement map
+    void create_displacement_field(vtkPointSet* output_deformed_grid) const;
+
+    void deform_velocities(vtkPointSet* output_deformed_grid, vtkDataArray* data_array,
+        const std::array<int, 3>& dimension, const Eigen::Vector3f& spacing) const;
+
+    /// Resample the deformed grid on the original one
+    void resample_grid(vtkPointSet* output_deformed_grid, vtkImageData* output_resampled_grid, const std::string& velocity_name,
+        const std::array<int, 3>& dimension, const Eigen::Vector3f& origin, const Eigen::Vector3f& spacing) const;*/
 };

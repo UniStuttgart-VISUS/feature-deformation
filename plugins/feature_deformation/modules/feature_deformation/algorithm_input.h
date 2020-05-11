@@ -13,6 +13,7 @@ public:
         std::reference_wrapper<const std::vector<std::array<float, 3>>> points;
 
         std::uint32_t hash;
+        bool valid;
     };
 
     virtual points_t get_points() const = 0;

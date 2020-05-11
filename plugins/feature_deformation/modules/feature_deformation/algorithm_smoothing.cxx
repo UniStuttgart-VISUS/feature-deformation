@@ -7,7 +7,7 @@
 
 #include <iostream>
 
-void algorithm_smoothing::set_input(const algorithm_line_input& line_input,
+void algorithm_smoothing::set_input(std::shared_ptr<const algorithm_line_input> line_input,
     const smoothing::method_t method, const smoothing::variant_t variant, const float lambda, const int num_iterations)
 {
     this->line_input = line_input;
@@ -19,12 +19,12 @@ void algorithm_smoothing::set_input(const algorithm_line_input& line_input,
 
 std::uint32_t algorithm_smoothing::calculate_hash() const
 {
-    if (!this->line_input.get().is_valid())
+    if (!this->line_input->is_valid())
     {
         return -1;
     }
 
-    return jenkins_hash(this->line_input.get().get_hash(), this->method, this->variant, this->lambda, this->num_iterations);
+    return jenkins_hash(this->line_input->get_hash(), this->method, this->variant, this->lambda, this->num_iterations);
 }
 
 bool algorithm_smoothing::run_computation()
@@ -32,7 +32,7 @@ bool algorithm_smoothing::run_computation()
     std::cout << "Smoothing line" << std::endl;
 
     // Smooth line
-    smoothing smoother(this->line_input.get().get_results().selected_line, this->method, this->variant, this->lambda, this->num_iterations);
+    smoothing smoother(this->line_input->get_results().selected_line, this->method, this->variant, this->lambda, this->num_iterations);
 
     while (smoother.has_step())
     {
