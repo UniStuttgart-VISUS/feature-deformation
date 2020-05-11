@@ -19,6 +19,8 @@ public:
     /// Get results
     struct results_t
     {
+        vtkPolyData* input_lines;
+
         std::vector<Eigen::Vector3f> selected_line;
         std::vector<std::array<float, 3>> lines;
     };

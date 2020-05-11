@@ -14,6 +14,8 @@ set(sources
   algorithm_geometry_input.h algorithm_geometry_input.cxx
   algorithm_grid_input.h algorithm_grid_input.cxx
   algorithm_line_input.h algorithm_line_input.cxx
+  algorithm_line_output_creation.h algorithm_line_output_creation.cxx
+  algorithm_line_output_update.h algorithm_line_output_update.cxx
   algorithm_smoothing.h algorithm_smoothing.cxx
   algorithm_vectorfield_input.h algorithm_vectorfield_input.cxx)
 

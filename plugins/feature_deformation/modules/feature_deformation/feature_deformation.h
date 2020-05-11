@@ -8,6 +8,8 @@
 #include "algorithm_geometry_input.h"
 #include "algorithm_grid_input.h"
 #include "algorithm_line_input.h"
+#include "algorithm_line_output_creation.h"
+#include "algorithm_line_output_update.h"
 #include "algorithm_smoothing.h"
 
 #include "displacement.h"
@@ -210,6 +212,7 @@ private:
         int num_subdivisions;
         bool compute_tearing;
 
+        bool output_bspline_distance;
         bool output_deformed_grid;
         bool output_vector_field;
         bool output_resampled_grid;
@@ -234,7 +237,8 @@ private:
         alg_displacement_computation_grid, alg_displacement_computation_geometry;
 
     // Output algorithms
-
+    std::shared_ptr<algorithm_line_output_creation> alg_line_output_creation;
+    std::shared_ptr<algorithm_line_output_update> alg_line_output_update;
 
 
 

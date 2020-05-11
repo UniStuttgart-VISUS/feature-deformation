@@ -85,6 +85,9 @@ bool algorithm_line_input::run_computation()
         return false;
     }
 
+    // Set input as output
+    this->results.input_lines = this->input_lines;
+
     return true;
 }
 

@@ -117,6 +117,9 @@ feature_deformation::feature_deformation() : frames(0)
     alg_displacement_precomputation_geometry = std::make_shared<algorithm_displacement_precomputation>();
     alg_displacement_computation_geometry = std::make_shared<algorithm_displacement_computation>();
 
+    alg_line_output_creation = std::make_shared<algorithm_line_output_creation>();
+    alg_line_output_update = std::make_shared<algorithm_line_output_update>();
+
     this->SetNumberOfInputPorts(3);
     this->SetNumberOfOutputPorts(4);
 }
@@ -822,6 +825,27 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
 
     std::cout << std::endl;
 
+    // Set output
+    this->alg_line_output_creation->run(this->alg_line_input);
+    this->alg_line_output_update->run(this->alg_line_output_creation, this->alg_displacement_computation_lines,
+        this->parameters.displacement_method, this->parameters.output_bspline_distance);
+
+    if (this->alg_line_output_update->is_valid())
+    {
+        auto out_deformed_lines_info = output_vector->GetInformationObject(0);
+        auto output_deformed_lines = vtkPolyData::SafeDownCast(out_deformed_lines_info->Get(vtkDataObject::DATA_OBJECT()));
+
+        output_deformed_lines->ShallowCopy(this->alg_line_output_update->get_results().lines);
+
+        out_deformed_lines_info->Set(vtkDataObject::DATA_TIME_STEP(), time);
+        this->Modified();
+    }
+
+
+
+
+
+
     // Output grid
     //if (this->results_grid_displacement.valid && (this->results_grid_displacement.modified || this->parameter_output_grid.modified))
     //{
@@ -903,23 +927,6 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
     //{
     //    std::cout << "Loading deformed grid output from cache" << std::endl;
     //}
-
-    // Output lines
-    /*if (this->results_line_displacement.valid && this->results_line_displacement.modified)
-    {
-        auto out_deformed_lines_info = output_vector->GetInformationObject(0);
-        auto output_deformed_lines = vtkPolyData::SafeDownCast(out_deformed_lines_info->Get(vtkDataObject::DATA_OBJECT()));
-
-        set_output_deformed_lines(vtkPolyData::SafeDownCast(input_vector[1]->GetInformationObject(0)->Get(vtkDataObject::DATA_OBJECT())), 
-            output_deformed_lines, *this->results_line_displacement.displacement, this->input_lines.modified, this->output_lines);
-
-        out_deformed_lines_info->Set(vtkDataObject::DATA_TIME_STEP(), time);
-        this->Modified();
-    }
-    else if (!this->results_line_displacement.modified)
-    {
-        std::cout << "Loading deformed line output from cache" << std::endl;
-    }*/
 
     // Output geometry
     //if (this->results_geometry_displacement.valid && this->results_geometry_displacement.modified)
@@ -1059,6 +1066,7 @@ void feature_deformation::process_parameters(double time)
     this->parameters.compute_tearing = (this->ComputeTearing != 0);
 
     // Output parameters
+    this->parameters.output_bspline_distance = (this->OutputBSplineDistance != 0);
     this->parameters.output_deformed_grid = (this->OutputDeformedGrid != 0);
     this->parameters.output_vector_field = (this->OutputVectorField != 0);
     this->parameters.output_resampled_grid = (this->OutputResampledGrid != 0);
