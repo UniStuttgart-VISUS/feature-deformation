@@ -7,6 +7,8 @@
 #include "algorithm_displacement_precomputation.h"
 #include "algorithm_geometry_input.h"
 #include "algorithm_grid_input.h"
+#include "algorithm_grid_output_creation.h"
+#include "algorithm_grid_output_update.h"
 #include "algorithm_line_input.h"
 #include "algorithm_geometry_output_creation.h"
 #include "algorithm_geometry_output_update.h"
@@ -242,66 +244,12 @@ private:
     std::shared_ptr<algorithm_line_output_creation> alg_line_output_creation;
     std::shared_ptr<algorithm_line_output_update> alg_line_output_update;
 
+    std::shared_ptr<algorithm_grid_output_creation> alg_grid_output_creation;
+    std::shared_ptr<algorithm_grid_output_update> alg_grid_output_update;
+
     std::shared_ptr<algorithm_geometry_output_creation> alg_geometry_output_creation;
     std::shared_ptr<algorithm_geometry_output_update> alg_geometry_output_update;
 
-
-
-
     // Variable for counting the number of output frames
     int frames;
-
-
-
-
-
-
-
-    //// Precomputation caches
-    //struct cache_precompute_tearing_t : public cache_t
-    //{
-    //    vtkSmartPointer<vtkIdTypeArray> removed_cells;
-
-    //} precompute_tearing;
-
-    //// Output caches
-    //struct cache_output_lines_t : public cache_t
-    //{
-    //    vtkSmartPointer<vtkPolyData> data;
-
-    //} output_lines;
-
-    //struct cache_output_geometry_t : public cache_t
-    //{
-    //    vtkSmartPointer<vtkMultiBlockDataSet> data;
-
-    //} output_geometry;
-
-
-
-    /*/// Create and manipulate grid
-    void create_undeformed_grid(vtkPointSet* output_deformed_grid, const std::array<int, 6>& extent,
-        const std::array<int, 3>& dimension, const Eigen::Vector3f& origin, const Eigen::Vector3f& spacing) const;
-
-    void create_cells(vtkUnstructuredGrid* output_deformed_grid, vtkUnstructuredGrid* output_deformed_grid_removed,
-        const std::array<int, 3>& dimension, const Eigen::Vector3f& spacing) const;
-
-    /// Set output
-    void set_output_deformed_grid(vtkPointSet* output_deformed_grid, const cuda::displacement& grid_displacement) const;
-
-    void set_output_deformed_lines(vtkPolyData* input_lines, vtkPolyData* output_deformed_lines, const cuda::displacement& line_displacement,
-        bool modified, cache_output_lines_t& output_lines) const;
-
-    void set_output_deformed_geometry(const std::vector<vtkPointSet*>& input_geometry, vtkMultiBlockDataSet* output_deformed_geometry,
-        const cuda::displacement& geometry_displacement, bool modified, cache_output_geometry_t& output_geometry) const;
-
-    /// Deform velocities using a displacement map
-    void create_displacement_field(vtkPointSet* output_deformed_grid) const;
-
-    void deform_velocities(vtkPointSet* output_deformed_grid, vtkDataArray* data_array,
-        const std::array<int, 3>& dimension, const Eigen::Vector3f& spacing) const;
-
-    /// Resample the deformed grid on the original one
-    void resample_grid(vtkPointSet* output_deformed_grid, vtkImageData* output_resampled_grid, const std::string& velocity_name,
-        const std::array<int, 3>& dimension, const Eigen::Vector3f& origin, const Eigen::Vector3f& spacing) const;*/
 };
