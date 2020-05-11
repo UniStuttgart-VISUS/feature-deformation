@@ -97,3 +97,8 @@ const algorithm_line_input::results_t& algorithm_line_input::get_results() const
 {
     return this->results;
 }
+
+algorithm_input::points_t algorithm_line_input::get_points() const
+{
+    return algorithm_input::points_t{ this->results.lines, this->get_hash() };
+}

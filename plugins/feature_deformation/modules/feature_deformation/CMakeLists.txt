@@ -7,6 +7,10 @@ set(sources
   hash.h
   smoothing.h smoothing.cxx
   algorithm.h algorithm.inl
+  algorithm_input.h
+  algorithm_displacement_computation.h algorithm_displacement_computation.cxx
+  algorithm_displacement_creation.h algorithm_displacement_creation.cxx
+  algorithm_displacement_precomputation.h algorithm_displacement_precomputation.cxx
   algorithm_geometry_input.h algorithm_geometry_input.cxx
   algorithm_grid_input.h algorithm_grid_input.cxx
   algorithm_line_input.h algorithm_line_input.cxx

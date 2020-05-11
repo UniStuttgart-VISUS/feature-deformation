@@ -17,6 +17,7 @@ inline bool algorithm<input_t...>::run(input_t... input)
     // ... invalid input
     if (new_hash == -1)
     {
+        this->hash = -1;
         this->valid = false;
         return false;
     }
@@ -31,15 +32,16 @@ inline bool algorithm<input_t...>::run(input_t... input)
     }
 
     // ... cache miss
-    this->hash = new_hash;
-
     if (run_computation())
     {
+        this->hash = new_hash;
+
         this->valid = true;
         return true;
     }
 
     // Computation error
+    this->hash = -1;
     this->valid = false;
     return false;
 }

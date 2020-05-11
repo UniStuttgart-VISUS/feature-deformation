@@ -2,6 +2,9 @@
 
 #include "vtkAlgorithm.h"
 
+#include "algorithm_displacement_computation.h"
+#include "algorithm_displacement_creation.h"
+#include "algorithm_displacement_precomputation.h"
 #include "algorithm_geometry_input.h"
 #include "algorithm_grid_input.h"
 #include "algorithm_line_input.h"
@@ -247,7 +250,9 @@ private:
 
     // Computation algorithms
     algorithm_smoothing alg_smoothing;
-
+    algorithm_displacement_creation alg_displacement_creation;
+    algorithm_displacement_precomputation alg_displacement_precomputation;
+    algorithm_displacement_computation alg_displacement_computation;
 
 
 
@@ -277,13 +282,6 @@ private:
         vtkSmartPointer<vtkIdTypeArray> removed_cells;
 
     } precompute_tearing;
-
-    // Results caches
-    struct cache_results_displacement_t : public cache_t
-    {
-        std::shared_ptr<cuda::displacement> displacement;
-
-    } results_grid_displacement, results_line_displacement, results_geometry_displacement;
 
     // Output caches
     struct cache_output_lines_t : public cache_t

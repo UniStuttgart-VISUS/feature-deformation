@@ -885,36 +885,6 @@ namespace
     };
 }
 
-cuda::displacement::displacement(const std::array<double, 3>& origin, const std::array<double, 3>& spacing, const std::array<int, 3>& dimensions) :
-    cuda_res_input_points(nullptr), cuda_res_output_points(nullptr), cuda_res_info(nullptr),
-    cuda_res_mapping_point(nullptr), cuda_res_mapping_tangent(nullptr), cuda_res_mapping_arc_position(nullptr)
-{
-    // Create points
-    this->points.resize(dimensions[0] * dimensions[1] * dimensions[2]);
-
-    #pragma omp parallel for
-    for (long long z_omp = 0; z_omp < static_cast<long long>(dimensions[2]); ++z_omp)
-    {
-        const auto z = static_cast<std::size_t>(z_omp);
-
-        auto index = z * dimensions[1] * dimensions[0];
-
-        for (std::size_t y = 0; y < dimensions[1]; ++y)
-        {
-            for (std::size_t x = 0; x < dimensions[0]; ++x)
-            {
-                this->points[index][0] = static_cast<float>(origin[0] + x * spacing[0]);
-                this->points[index][1] = static_cast<float>(origin[1] + y * spacing[1]);
-                this->points[index][2] = static_cast<float>(origin[2] + z * spacing[2]);
-
-                ++index;
-            }
-        }
-    }
-
-    upload_points();
-}
-
 cuda::displacement::displacement(std::vector<std::array<float, 3>> points) :
     points(std::move(points)), cuda_res_input_points(nullptr), cuda_res_output_points(nullptr), cuda_res_info(nullptr),
     cuda_res_mapping_point(nullptr), cuda_res_mapping_tangent(nullptr), cuda_res_mapping_arc_position(nullptr)

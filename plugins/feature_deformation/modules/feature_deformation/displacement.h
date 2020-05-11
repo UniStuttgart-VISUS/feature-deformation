@@ -45,9 +45,6 @@ namespace cuda
             b_spline_parameters_t b_spline;
         };
 
-        /// Create original points of the cartesian grid
-        displacement(const std::array<double, 3>& origin, const std::array<double, 3>& spacing, const std::array<int, 3>& dimensions);
-
         /// Get original points
         displacement(std::vector<std::array<float, 3>> points);
 

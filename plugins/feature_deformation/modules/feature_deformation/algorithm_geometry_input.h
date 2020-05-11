@@ -1,6 +1,7 @@
 #pragma once
 
 #include "algorithm.h"
+#include "algorithm_input.h"
 
 #include "vtkPointSet.h"
 
@@ -9,7 +10,7 @@
 #include <array>
 #include <vector>
 
-class algorithm_geometry_input : public algorithm<std::vector<vtkPointSet*>>
+class algorithm_geometry_input : public algorithm<std::vector<vtkPointSet*>>, public algorithm_input
 {
 public:
     /// Default constructor
@@ -23,6 +24,9 @@ public:
     };
 
     const results_t& get_results() const;
+
+    /// Get points
+    virtual algorithm_input::points_t get_points() const override;
 
 protected:
     /// Set input

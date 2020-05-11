@@ -51,6 +51,8 @@ bool algorithm_smoothing::run_computation()
         this->results.positions[i] = { smoothing_results[i].first[0], smoothing_results[i].first[1], smoothing_results[i].first[2], 1.0f };
         this->results.displacements[i] = { smoothing_results[i].second[0], smoothing_results[i].second[1], smoothing_results[i].second[2], 0.0f };
     }
+
+    return true;
 }
 
 void algorithm_smoothing::cache_load() const

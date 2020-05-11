@@ -100,3 +100,8 @@ const algorithm_geometry_input::results_t& algorithm_geometry_input::get_results
 {
     return this->results;
 }
+
+algorithm_input::points_t algorithm_geometry_input::get_points() const
+{
+    return algorithm_input::points_t{ this->results.points, this->get_hash() };
+}
