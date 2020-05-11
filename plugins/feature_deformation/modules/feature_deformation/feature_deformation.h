@@ -8,6 +8,8 @@
 #include "algorithm_geometry_input.h"
 #include "algorithm_grid_input.h"
 #include "algorithm_line_input.h"
+#include "algorithm_geometry_output_creation.h"
+#include "algorithm_geometry_output_update.h"
 #include "algorithm_line_output_creation.h"
 #include "algorithm_line_output_update.h"
 #include "algorithm_smoothing.h"
@@ -239,6 +241,9 @@ private:
     // Output algorithms
     std::shared_ptr<algorithm_line_output_creation> alg_line_output_creation;
     std::shared_ptr<algorithm_line_output_update> alg_line_output_update;
+
+    std::shared_ptr<algorithm_geometry_output_creation> alg_geometry_output_creation;
+    std::shared_ptr<algorithm_geometry_output_update> alg_geometry_output_update;
 
 
 

@@ -8,6 +8,9 @@
 #include "vtkPolyData.h"
 #include "vtkSmartPointer.h"
 
+#include "vtkCellData.h"
+#include "vtkPointData.h"
+
 #include "Eigen/Dense"
 
 #include <array>
@@ -28,7 +31,7 @@ std::uint32_t algorithm_line_input::calculate_hash() const
         return -1;
     }
 
-    return jenkins_hash(this->input_lines->GetMTime(), this->selected_line_id);
+    return jenkins_hash(this->input_lines->GetPoints()->GetMTime(), this->input_lines->GetLines()->GetMTime(), this->selected_line_id);
 }
 
 bool algorithm_line_input::run_computation()

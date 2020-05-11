@@ -21,7 +21,17 @@ std::uint32_t algorithm_grid_input::calculate_hash() const
         return -1;
     }
 
-    return jenkins_hash(this->input_grid->GetMTime());
+    // Get extent, origin and spacing
+    std::array<int, 6> extent;
+    std::array<double, 3> origin;
+    std::array<double, 3> spacing;
+
+    this->input_grid->GetExtent(extent.data());
+    this->input_grid->GetOrigin(origin.data());
+    this->input_grid->GetSpacing(spacing.data());
+
+    return jenkins_hash(extent[0], extent[1], extent[2], extent[3], extent[4], extent[5],
+        origin[0], origin[1], origin[2], spacing[0], spacing[1], spacing[2]);
 }
 
 bool algorithm_grid_input::run_computation()

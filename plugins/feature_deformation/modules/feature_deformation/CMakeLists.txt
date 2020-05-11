@@ -12,6 +12,8 @@ set(sources
   algorithm_displacement_creation.h algorithm_displacement_creation.cxx
   algorithm_displacement_precomputation.h algorithm_displacement_precomputation.cxx
   algorithm_geometry_input.h algorithm_geometry_input.cxx
+  algorithm_geometry_output_creation.h algorithm_geometry_output_creation.cxx
+  algorithm_geometry_output_update.h algorithm_geometry_output_update.cxx
   algorithm_grid_input.h algorithm_grid_input.cxx
   algorithm_line_input.h algorithm_line_input.cxx
   algorithm_line_output_creation.h algorithm_line_output_creation.cxx

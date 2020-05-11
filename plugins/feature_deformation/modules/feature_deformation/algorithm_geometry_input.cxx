@@ -30,7 +30,7 @@ std::uint32_t algorithm_geometry_input::calculate_hash() const
 
     for (auto geometry_set : this->input_geometry)
     {
-        hash = jenkins_hash(hash, geometry_set->GetMTime());
+        hash = jenkins_hash(hash, geometry_set->GetPoints()->GetMTime());
     }
 
     return hash;
