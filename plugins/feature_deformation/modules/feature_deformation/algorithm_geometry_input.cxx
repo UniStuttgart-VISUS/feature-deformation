@@ -13,7 +13,7 @@
 #include <array>
 #include <iostream>
 
-void algorithm_geometry_input::set_input(std::vector<vtkPointSet*> geometry)
+void algorithm_geometry_input::set_input(const std::vector<vtkPointSet*> geometry)
 {
     this->input_geometry = geometry;
 }

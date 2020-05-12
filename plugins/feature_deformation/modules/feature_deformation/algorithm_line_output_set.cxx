@@ -7,8 +7,8 @@
 #include <iostream>
 #include <memory>
 
-void algorithm_line_output_set::set_input(std::shared_ptr<const algorithm_line_output_update> output_lines,
-    vtkInformation* output_information, double data_time)
+void algorithm_line_output_set::set_input(const std::shared_ptr<const algorithm_line_output_update> output_lines,
+    vtkInformation* const output_information, const double data_time)
 {
     this->output_lines = output_lines;
     this->output_information = output_information;
@@ -33,10 +33,5 @@ bool algorithm_line_output_set::run_computation()
 
 void algorithm_line_output_set::cache_load() const
 {
-    auto output_deformed_lines = vtkPolyData::SafeDownCast(this->output_information->Get(vtkDataObject::DATA_OBJECT()));
-
-    output_deformed_lines->ShallowCopy(this->output_lines->get_results().lines);
-    output_deformed_lines->Modified();
-
-    this->output_information->Set(vtkDataObject::DATA_TIME_STEP(), this->data_time);
+    const_cast<algorithm_line_output_set*>(this)->run_computation();
 }

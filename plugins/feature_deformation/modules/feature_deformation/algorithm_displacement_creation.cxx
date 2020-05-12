@@ -6,7 +6,7 @@
 #include <iostream>
 #include <memory>
 
-void algorithm_displacement_creation::set_input(std::shared_ptr<const algorithm_input> input)
+void algorithm_displacement_creation::set_input(const std::shared_ptr<const algorithm_input> input)
 {
     this->input = input;
 }

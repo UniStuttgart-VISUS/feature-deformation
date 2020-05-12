@@ -28,10 +28,10 @@
 #include <type_traits>
 #include <vector>
 
-void algorithm_compute_gauss::set_input(std::shared_ptr<const algorithm_line_input> line_input,
-    std::shared_ptr<const algorithm_grid_input> grid_input, const smoothing::method_t smoothing_method,
+void algorithm_compute_gauss::set_input(const std::shared_ptr<const algorithm_line_input> line_input,
+    const std::shared_ptr<const algorithm_grid_input> grid_input, const smoothing::method_t smoothing_method,
     const smoothing::variant_t smoothing_variant, const float lambda, const int num_iterations,
-    cuda::displacement::method_t displacement_method, cuda::displacement::b_spline_parameters_t bspline_parameters,
+    const cuda::displacement::method_t displacement_method, const cuda::displacement::b_spline_parameters_t bspline_parameters,
     const int num_subdivisions, const float remove_cells_scalar, const bool check_handedness,
     const bool check_convexity, const bool check_volume, const float volume_percentage)
 {

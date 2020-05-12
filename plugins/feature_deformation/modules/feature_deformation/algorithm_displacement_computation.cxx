@@ -8,8 +8,9 @@
 
 #include <iostream>
 
-void algorithm_displacement_computation::set_input(std::shared_ptr<const algorithm_displacement_creation> displacement,
-    std::shared_ptr<const algorithm_smoothing> smoothing, cuda::displacement::method_t method, cuda::displacement::parameter_t displacement_parameters)
+void algorithm_displacement_computation::set_input(const std::shared_ptr<const algorithm_displacement_creation> displacement,
+    const std::shared_ptr<const algorithm_smoothing> smoothing, const cuda::displacement::method_t method,
+    const cuda::displacement::parameter_t displacement_parameters)
 {
     this->displacement = displacement;
     this->smoothing = smoothing;

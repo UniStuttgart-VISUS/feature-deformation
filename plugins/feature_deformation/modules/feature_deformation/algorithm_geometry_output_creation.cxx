@@ -13,7 +13,7 @@
 #include <iostream>
 #include <memory>
 
-void algorithm_geometry_output_creation::set_input(std::shared_ptr<const algorithm_geometry_input> input_geometry)
+void algorithm_geometry_output_creation::set_input(const std::shared_ptr<const algorithm_geometry_input> input_geometry)
 {
     this->input_geometry = input_geometry;
 }

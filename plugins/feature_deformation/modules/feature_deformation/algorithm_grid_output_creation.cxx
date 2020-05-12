@@ -17,7 +17,7 @@
 #include <iostream>
 #include <memory>
 
-void algorithm_grid_output_creation::set_input(std::shared_ptr<const algorithm_grid_input> input_grid, bool remove_cells)
+void algorithm_grid_output_creation::set_input(const std::shared_ptr<const algorithm_grid_input> input_grid, const bool remove_cells)
 {
     this->input_grid = input_grid;
     this->remove_cells = remove_cells;

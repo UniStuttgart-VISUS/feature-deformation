@@ -17,9 +17,9 @@
 #include <iostream>
 #include <memory>
 
-void algorithm_line_output_update::set_input(std::shared_ptr<const algorithm_line_output_creation> output_lines,
-    std::shared_ptr<const algorithm_displacement_computation> displacement, cuda::displacement::method_t displacement_method,
-    bool output_bspline_distance)
+void algorithm_line_output_update::set_input(const std::shared_ptr<const algorithm_line_output_creation> output_lines,
+    const std::shared_ptr<const algorithm_displacement_computation> displacement, const cuda::displacement::method_t displacement_method,
+    const bool output_bspline_distance)
 {
     this->output_lines = output_lines;
     this->displacement = displacement;

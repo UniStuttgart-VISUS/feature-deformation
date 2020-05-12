@@ -19,9 +19,9 @@
 #include <iostream>
 #include <memory>
 
-void algorithm_geometry_output_update::set_input(std::shared_ptr<const algorithm_geometry_output_creation> output_geometry,
-    std::shared_ptr<const algorithm_displacement_computation> displacement, cuda::displacement::method_t displacement_method,
-    bool output_bspline_distance)
+void algorithm_geometry_output_update::set_input(const std::shared_ptr<const algorithm_geometry_output_creation> output_geometry,
+    const std::shared_ptr<const algorithm_displacement_computation> displacement, const cuda::displacement::method_t displacement_method,
+    const bool output_bspline_distance)
 {
     this->output_geometry = output_geometry;
     this->displacement = displacement;

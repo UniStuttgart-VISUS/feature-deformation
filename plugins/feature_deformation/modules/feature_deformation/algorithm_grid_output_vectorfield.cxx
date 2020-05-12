@@ -16,8 +16,8 @@
 #include <iostream>
 #include <memory>
 
-void algorithm_grid_output_vectorfield::set_input(std::shared_ptr<const algorithm_grid_input> input_grid,
-    std::shared_ptr<const algorithm_grid_output_update> output_grid, std::shared_ptr<const algorithm_vectorfield_input> vector_field)
+void algorithm_grid_output_vectorfield::set_input(const std::shared_ptr<const algorithm_grid_input> input_grid,
+    const std::shared_ptr<const algorithm_grid_output_update> output_grid, const std::shared_ptr<const algorithm_vectorfield_input> vector_field)
 {
     this->input_grid = input_grid;
     this->output_grid = output_grid;

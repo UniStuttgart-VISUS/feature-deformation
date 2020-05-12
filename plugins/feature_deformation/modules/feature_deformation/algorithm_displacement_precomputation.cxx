@@ -8,9 +8,10 @@
 
 #include <iostream>
 
-void algorithm_displacement_precomputation::set_input(std::shared_ptr<const algorithm_displacement_creation> displacement,
-    std::shared_ptr<const algorithm_smoothing> smoothing, std::shared_ptr<const algorithm_line_input> input_lines, cuda::displacement::method_t method,
-    cuda::displacement::parameter_t displacement_parameters, cuda::displacement::b_spline_parameters_t bspline_parameters)
+void algorithm_displacement_precomputation::set_input(const std::shared_ptr<const algorithm_displacement_creation> displacement,
+    const std::shared_ptr<const algorithm_smoothing> smoothing, const std::shared_ptr<const algorithm_line_input> input_lines, 
+    const cuda::displacement::method_t method, const cuda::displacement::parameter_t displacement_parameters,
+    const cuda::displacement::b_spline_parameters_t bspline_parameters)
 {
     this->displacement = displacement;
     this->smoothing = smoothing;

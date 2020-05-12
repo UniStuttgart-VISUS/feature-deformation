@@ -21,46 +21,25 @@
 #include "algorithm_smoothing.h"
 #include "algorithm_vectorfield_input.h"
 
-#include "b-spline.h"
 #include "displacement.h"
-#include "hash.h"
 #include "smoothing.h"
 
-#include "common/math.h"
-
-#include "vtkCell.h"
-#include "vtkCellArray.h"
-#include "vtkCellData.h"
-#include "vtkDataObjectTypes.h"
-#include "vtkDoubleArray.h"
-#include "vtkFloatArray.h"
-#include "vtkIdTypeArray.h"
+#include "vtkAlgorithm.h"
+#include "vtkDataObject.h"
+#include "vtkImageData.h"
 #include "vtkInformation.h"
 #include "vtkInformationVector.h"
-#include "vtkImageData.h"
 #include "vtkMultiBlockDataSet.h"
-#include "vtkPointData.h"
 #include "vtkPointSet.h"
 #include "vtkPolyData.h"
-#include "vtkPolyhedron.h"
-#include "vtkRectilinearGrid.h"
-#include "vtkSmartPointer.h"
 #include "vtkStreamingDemandDrivenPipeline.h"
-#include "vtkStructuredGrid.h"
-#include "vtkUnstructuredGrid.h"
-
-#include "Eigen/Dense"
 
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <iostream>
-#include <iterator>
-#include <limits>
 #include <memory>
-#include <numeric>
-#include <stdexcept>
-#include <unordered_set>
+#include <tuple>
 #include <vector>
 
 template <typename T>

@@ -23,10 +23,10 @@
 #include <iostream>
 #include <memory>
 
-void algorithm_grid_output_update::set_input(std::shared_ptr<const algorithm_grid_input> input_grid,
-    std::shared_ptr<const algorithm_grid_output_creation> output_grid,
-    std::shared_ptr<const algorithm_displacement_computation> displacement,
-    std::shared_ptr<const algorithm_compute_tearing> tearing, bool remove_cells, float remove_cells_scalar)
+void algorithm_grid_output_update::set_input(const std::shared_ptr<const algorithm_grid_input> input_grid,
+    const std::shared_ptr<const algorithm_grid_output_creation> output_grid,
+    const std::shared_ptr<const algorithm_displacement_computation> displacement,
+    const std::shared_ptr<const algorithm_compute_tearing> tearing, const bool remove_cells, const float remove_cells_scalar)
 {
     this->input_grid = input_grid;
     this->output_grid = output_grid;

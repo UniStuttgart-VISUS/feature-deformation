@@ -7,7 +7,7 @@
 
 #include <iostream>
 
-void algorithm_smoothing::set_input(std::shared_ptr<const algorithm_line_input> line_input,
+void algorithm_smoothing::set_input(const std::shared_ptr<const algorithm_line_input> line_input,
     const smoothing::method_t method, const smoothing::variant_t variant, const float lambda, const int num_iterations)
 {
     this->line_input = line_input;

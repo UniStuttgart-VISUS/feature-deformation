@@ -9,7 +9,7 @@
 #include <array>
 #include <iostream>
 
-void algorithm_grid_input::set_input(vtkImageData* grid)
+void algorithm_grid_input::set_input(vtkImageData* const grid)
 {
     this->input_grid = grid;
 }

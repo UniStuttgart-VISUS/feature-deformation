@@ -10,7 +10,7 @@
 #include <iostream>
 #include <memory>
 
-void algorithm_line_output_creation::set_input(std::shared_ptr<const algorithm_line_input> input_lines)
+void algorithm_line_output_creation::set_input(const std::shared_ptr<const algorithm_line_input> input_lines)
 {
     this->input_lines = input_lines;
 }

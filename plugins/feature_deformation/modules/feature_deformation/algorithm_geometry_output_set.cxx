@@ -8,8 +8,8 @@
 #include <iostream>
 #include <memory>
 
-void algorithm_geometry_output_set::set_input(std::shared_ptr<const algorithm_geometry_output_update> output_geometry,
-    vtkInformation* output_information, double data_time)
+void algorithm_geometry_output_set::set_input(const std::shared_ptr<const algorithm_geometry_output_update> output_geometry,
+    vtkInformation* const output_information, const double data_time)
 {
     this->output_geometry = output_geometry;
     this->output_information = output_information;
@@ -40,16 +40,5 @@ bool algorithm_geometry_output_set::run_computation()
 
 void algorithm_geometry_output_set::cache_load() const
 {
-    auto output_deformed_geometry = vtkMultiBlockDataSet::SafeDownCast(this->output_information->Get(vtkDataObject::DATA_OBJECT()));
-
-    output_deformed_geometry->ShallowCopy(this->output_geometry->get_results().geometry);
-    output_deformed_geometry->Modified();
-
-    for (unsigned int block_index = 0; block_index < output_deformed_geometry->GetNumberOfBlocks(); ++block_index)
-    {
-        output_deformed_geometry->GetBlock(block_index)->GetInformation()->Set(vtkDataObject::DATA_TIME_STEP(), this->data_time);
-        output_deformed_geometry->GetBlock(block_index)->Modified();
-    }
-
-    this->output_information->Set(vtkDataObject::DATA_TIME_STEP(), this->data_time);
+    const_cast<algorithm_geometry_output_set*>(this)->run_computation();
 }

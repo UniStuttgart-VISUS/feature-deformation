@@ -8,7 +8,7 @@
 
 #include <memory>
 
-void algorithm_vectorfield_input::set_input(std::shared_ptr<const algorithm_grid_input> grid, const std::string& array_name)
+void algorithm_vectorfield_input::set_input(const std::shared_ptr<const algorithm_grid_input> grid, const std::string& array_name)
 {
     this->input_grid = grid;
     this->array_name = array_name;

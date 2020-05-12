@@ -8,8 +8,8 @@
 #include <iostream>
 #include <memory>
 
-void algorithm_grid_output_set::set_input(std::shared_ptr<const algorithm_grid_output_update> output_grid,
-    vtkInformation* output_information, double data_time)
+void algorithm_grid_output_set::set_input(const std::shared_ptr<const algorithm_grid_output_update> output_grid,
+    vtkInformation* const output_information, const double data_time)
 {
     this->output_grid = output_grid;
     this->output_information = output_information;
@@ -34,10 +34,5 @@ bool algorithm_grid_output_set::run_computation()
 
 void algorithm_grid_output_set::cache_load() const
 {
-    auto output_deformed_grid = vtkMultiBlockDataSet::SafeDownCast(this->output_information->Get(vtkDataObject::DATA_OBJECT()));
-
-    output_deformed_grid->ShallowCopy(this->output_grid->get_results().grid);
-    output_deformed_grid->Modified();
-
-    this->output_information->Set(vtkDataObject::DATA_TIME_STEP(), this->data_time);
+    const_cast<algorithm_grid_output_set*>(this)->run_computation();
 }

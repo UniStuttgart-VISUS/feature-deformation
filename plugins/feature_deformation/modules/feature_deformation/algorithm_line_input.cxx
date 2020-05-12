@@ -16,7 +16,7 @@
 #include <array>
 #include <iostream>
 
-void algorithm_line_input::set_input(vtkPolyData* lines, int selected_line_id)
+void algorithm_line_input::set_input(vtkPolyData* const lines, const int selected_line_id)
 {
     this->input_lines = lines;
     this->selected_line_id = selected_line_id;
