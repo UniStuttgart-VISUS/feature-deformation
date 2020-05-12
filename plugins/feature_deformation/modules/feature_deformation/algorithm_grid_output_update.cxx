@@ -46,7 +46,7 @@ std::uint32_t algorithm_grid_output_update::calculate_hash() const
 
 bool algorithm_grid_output_update::run_computation()
 {
-    std::cout << "Updating deformed grid output" << std::endl;
+    if (!this->is_quiet()) std::cout << "Updating deformed grid output" << std::endl;
 
     // Set displaced points and displacement map
     const auto& displaced_grid = this->displacement->get_results().displacements->get_results();
@@ -257,7 +257,7 @@ bool algorithm_grid_output_update::run_computation()
 
 void algorithm_grid_output_update::cache_load() const
 {
-    std::cout << "Loading deformed grid output from cache" << std::endl;
+    if (!this->is_quiet()) std::cout << "Loading deformed grid output from cache" << std::endl;
 }
 
 const algorithm_grid_output_update::results_t& algorithm_grid_output_update::get_results() const

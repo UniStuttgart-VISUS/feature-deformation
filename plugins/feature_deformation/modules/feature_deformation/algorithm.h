@@ -15,6 +15,9 @@ public:
     /// Get validity
     bool is_valid() const;
 
+    /// Do not output information
+    void be_quiet(bool quiet = true);
+
 protected:
     /// Set default hash and initialize as invalid
     algorithm();
@@ -31,12 +34,18 @@ protected:
     /// Allow algorithm to do something although there is no need for computation
     virtual void cache_load() const;
 
+    /// Should information be printed or not?
+    bool is_quiet() const;
+
 private:
     /// Store hash of input, assuming deterministic behavior of the algorithm
     std::uint32_t hash;
 
     /// Validity state
     bool valid;
+
+    /// Quiet
+    bool quiet;
 };
 
 #include "algorithm.inl"

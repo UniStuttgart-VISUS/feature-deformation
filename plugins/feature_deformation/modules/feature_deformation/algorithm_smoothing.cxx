@@ -29,7 +29,7 @@ std::uint32_t algorithm_smoothing::calculate_hash() const
 
 bool algorithm_smoothing::run_computation()
 {
-    std::cout << "Smoothing line" << std::endl;
+    if (!this->is_quiet()) std::cout << "Smoothing line" << std::endl;
 
     // Smooth line
     smoothing smoother(this->line_input->get_results().selected_line, this->method, this->variant, this->lambda, this->num_iterations);
@@ -57,7 +57,7 @@ bool algorithm_smoothing::run_computation()
 
 void algorithm_smoothing::cache_load() const
 {
-    std::cout << "Loading smoothed line from cache" << std::endl;
+    if (!this->is_quiet()) std::cout << "Loading smoothed line from cache" << std::endl;
 }
 
 const algorithm_smoothing::results_t& algorithm_smoothing::get_results() const

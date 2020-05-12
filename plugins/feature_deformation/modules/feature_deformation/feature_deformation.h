@@ -2,6 +2,7 @@
 
 #include "vtkAlgorithm.h"
 
+#include "algorithm_compute_gauss.h"
 #include "algorithm_displacement_computation.h"
 #include "algorithm_displacement_creation.h"
 #include "algorithm_displacement_precomputation.h"
@@ -24,26 +25,10 @@
 #include "displacement.h"
 #include "smoothing.h"
 
-#include "vtkDataArray.h"
-#include "vtkIdTypeArray.h"
-#include "vtkImageData.h"
 #include "vtkInformation.h"
 #include "vtkInformationVector.h"
-#include "vtkMultiBlockDataSet.h"
-#include "vtkPointSet.h"
-#include "vtkPolyData.h"
-#include "vtkSmartPointer.h"
-#include "vtkUnstructuredGrid.h"
 
-#include "Eigen/Dense"
-
-#include <array>
-#include <cstdint>
-#include <iostream>
 #include <memory>
-#include <string>
-#include <utility>
-#include <vector>
 
 class VTK_EXPORT feature_deformation : public vtkAlgorithm
 {
@@ -123,14 +108,14 @@ public:
     vtkGetMacro(OutputVectorField, int);
     vtkSetMacro(OutputVectorField, int);
 
-    vtkGetMacro(OutputResampledGrid, int);
-    vtkSetMacro(OutputResampledGrid, int);
-
     vtkGetMacro(RemoveCells, int);
     vtkSetMacro(RemoveCells, int);
 
     vtkGetMacro(RemoveCellsScalar, double);
     vtkSetMacro(RemoveCellsScalar, double);
+
+    vtkGetMacro(Quiet, int);
+    vtkSetMacro(Quiet, int);
 
     void RemoveAllGeometryInputs();
 
@@ -196,6 +181,9 @@ private:
     int RemoveCells;
     double RemoveCellsScalar;
 
+    /// Logging options
+    bool Quiet;
+
     // Processed parameters
     struct parameter_t
     {
@@ -233,6 +221,9 @@ private:
     std::shared_ptr<algorithm_line_input> alg_line_input;
     std::shared_ptr<algorithm_geometry_input> alg_geometry_input;
     std::shared_ptr<algorithm_vectorfield_input> alg_vectorfield_input;
+
+    // Pre-computation algorithms
+    std::shared_ptr<algorithm_compute_gauss> alg_compute_gauss;
 
     // Computation algorithms
     std::shared_ptr<algorithm_smoothing> alg_smoothing;

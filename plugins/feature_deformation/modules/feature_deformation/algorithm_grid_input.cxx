@@ -36,7 +36,7 @@ std::uint32_t algorithm_grid_input::calculate_hash() const
 
 bool algorithm_grid_input::run_computation()
 {
-    std::cout << "Loading input grid" << std::endl;
+    if (!this->is_quiet()) std::cout << "Loading input grid" << std::endl;
 
     // Get extents
     this->input_grid->GetExtent(this->results.extent.data());
@@ -86,7 +86,7 @@ bool algorithm_grid_input::run_computation()
 
 void algorithm_grid_input::cache_load() const
 {
-    std::cout << "Loading input grid from cache" << std::endl;
+    if (!this->is_quiet()) std::cout << "Loading input grid from cache" << std::endl;
 }
 
 const algorithm_grid_input::results_t& algorithm_grid_input::get_results() const

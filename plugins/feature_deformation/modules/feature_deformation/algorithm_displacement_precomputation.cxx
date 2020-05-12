@@ -39,7 +39,7 @@ bool algorithm_displacement_precomputation::run_computation()
 {
     if (this->method == cuda::displacement::method_t::b_spline || this->method == cuda::displacement::method_t::b_spline_joints)
     {
-        std::cout << "  precomputing B-spline mapping on the GPU" << std::endl;
+        if (!this->is_quiet()) std::cout << "  precomputing B-spline mapping on the GPU" << std::endl;
 
         this->displacement->get_results().displacements->precompute(this->displacement_parameters, this->smoothing->get_results().positions);
     }

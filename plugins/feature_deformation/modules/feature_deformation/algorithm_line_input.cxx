@@ -43,7 +43,7 @@ bool algorithm_line_input::run_computation()
         return false;
     }
 
-    std::cout << "Loading input lines" << std::endl;
+    if (!this->is_quiet()) std::cout << "Loading input lines" << std::endl;
 
     // Get lines
     this->results.lines.resize(this->input_lines->GetNumberOfPoints());
@@ -83,7 +83,7 @@ bool algorithm_line_input::run_computation()
 
     if (this->results.selected_line.size() < 3)
     {
-        std::cout << "Line consists only of one segment -- nothing to do" << std::endl;
+        if (!this->is_quiet()) std::cout << "Line consists only of one segment -- nothing to do" << std::endl;
 
         return false;
     }
@@ -96,7 +96,7 @@ bool algorithm_line_input::run_computation()
 
 void algorithm_line_input::cache_load() const
 {
-    std::cout << "Loading input lines from cache" << std::endl;
+    if (!this->is_quiet()) std::cout << "Loading input lines from cache" << std::endl;
 }
 
 const algorithm_line_input::results_t& algorithm_line_input::get_results() const

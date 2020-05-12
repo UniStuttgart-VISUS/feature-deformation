@@ -29,7 +29,7 @@ std::uint32_t algorithm_displacement_computation::calculate_hash() const
 
 bool algorithm_displacement_computation::run_computation()
 {
-    std::cout << "  calculating new positions on the GPU" << std::endl;
+    if (!this->is_quiet()) std::cout << "  calculating new positions on the GPU" << std::endl;
 
     this->displacement->get_results().displacements->displace(this->method, this->displacement_parameters,
         this->smoothing->get_results().positions, this->smoothing->get_results().displacements);

@@ -41,7 +41,7 @@ std::uint32_t algorithm_geometry_output_update::calculate_hash() const
 
 bool algorithm_geometry_output_update::run_computation()
 {
-    std::cout << "Updating deformed geometry output" << std::endl;
+    if (!this->is_quiet()) std::cout << "Updating deformed geometry output" << std::endl;
 
     // Set displaced points
     const auto& displaced_geometry = this->displacement->get_results().displacements->get_results();
@@ -141,7 +141,7 @@ bool algorithm_geometry_output_update::run_computation()
 
 void algorithm_geometry_output_update::cache_load() const
 {
-    std::cout << "Loading deformed geometry output from cache" << std::endl;
+    if (!this->is_quiet()) std::cout << "Loading deformed geometry output from cache" << std::endl;
 }
 
 const algorithm_geometry_output_update::results_t& algorithm_geometry_output_update::get_results() const

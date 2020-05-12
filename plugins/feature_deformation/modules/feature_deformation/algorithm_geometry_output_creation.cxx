@@ -30,7 +30,7 @@ std::uint32_t algorithm_geometry_output_creation::calculate_hash() const
 
 bool algorithm_geometry_output_creation::run_computation()
 {
-    std::cout << "Creating deformed geometry output" << std::endl;
+    if (!this->is_quiet()) std::cout << "Creating deformed geometry output" << std::endl;
 
     this->results.geometry = vtkSmartPointer<vtkMultiBlockDataSet>::New();
 

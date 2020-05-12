@@ -28,7 +28,7 @@ std::uint32_t algorithm_line_output_creation::calculate_hash() const
 bool algorithm_line_output_creation::run_computation()
 {
     // Create output geometry
-    std::cout << "Creating deformed lines output" << std::endl;
+    if (!this->is_quiet()) std::cout << "Creating deformed lines output" << std::endl;
 
     this->results.lines = vtkSmartPointer<vtkPolyData>::New();
     this->results.lines->DeepCopy(this->input_lines->get_results().input_lines);

@@ -39,7 +39,7 @@ std::uint32_t algorithm_line_output_update::calculate_hash() const
 
 bool algorithm_line_output_update::run_computation()
 {
-    std::cout << "Updating deformed lines output" << std::endl;
+    if (!this->is_quiet()) std::cout << "Updating deformed lines output" << std::endl;
 
     // Set displaced points
     const auto& displaced_lines = displacement->get_results().displacements->get_results();
@@ -96,7 +96,7 @@ bool algorithm_line_output_update::run_computation()
 
 void algorithm_line_output_update::cache_load() const
 {
-    std::cout << "Loading deformed line output from cache" << std::endl;
+    if (!this->is_quiet()) std::cout << "Loading deformed line output from cache" << std::endl;
 }
 
 const algorithm_line_output_update::results_t& algorithm_line_output_update::get_results() const

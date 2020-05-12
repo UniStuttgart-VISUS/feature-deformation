@@ -18,7 +18,7 @@ std::uint32_t algorithm_displacement_creation::calculate_hash() const
 
 bool algorithm_displacement_creation::run_computation()
 {
-    std::cout << "  uploading points to the GPU" << std::endl;
+    if (!this->is_quiet()) std::cout << "  uploading points to the GPU" << std::endl;
 
     this->results.displacements = std::make_shared<cuda::displacement>(this->input->get_points().points);
 

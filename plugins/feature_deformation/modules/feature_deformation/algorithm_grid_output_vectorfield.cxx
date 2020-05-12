@@ -36,7 +36,7 @@ std::uint32_t algorithm_grid_output_vectorfield::calculate_hash() const
 
 bool algorithm_grid_output_vectorfield::run_computation()
 {
-    std::cout << "Computing deformed velocity field" << std::endl;
+    if (!this->is_quiet()) std::cout << "Computing deformed velocity field" << std::endl;
 
     // Setup finite differences for the calculation of the Jacobian
     auto grid = vtkPointSet::SafeDownCast(output_grid->get_results().grid->GetBlock(0u));
@@ -125,7 +125,7 @@ bool algorithm_grid_output_vectorfield::run_computation()
 
 void algorithm_grid_output_vectorfield::cache_load() const
 {
-    std::cout << "Loading deformed velocity field from cache" << std::endl;
+    if (!this->is_quiet()) std::cout << "Loading deformed velocity field from cache" << std::endl;
 }
 
 const algorithm_grid_output_vectorfield::results_t& algorithm_grid_output_vectorfield::get_results() const

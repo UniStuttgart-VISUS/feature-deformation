@@ -35,7 +35,7 @@ std::uint32_t algorithm_grid_output_creation::calculate_hash() const
 
 bool algorithm_grid_output_creation::run_computation()
 {
-    std::cout << "Creating deformed grid output" << std::endl;
+    if (!this->is_quiet()) std::cout << "Creating deformed grid output" << std::endl;
 
     // Create structured or unstructured grid
     vtkSmartPointer<vtkPointSet> output_deformed_grid = nullptr;

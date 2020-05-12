@@ -27,7 +27,7 @@ std::uint32_t algorithm_vectorfield_input::calculate_hash() const
 
 bool algorithm_vectorfield_input::run_computation()
 {
-    std::cout << "Loading input vector field" << std::endl;
+    if (!this->is_quiet()) std::cout << "Loading input vector field" << std::endl;
 
     this->results.vector_field = this->input_grid->get_results().grid->GetPointData()->GetArray(this->array_name.c_str());
 
@@ -42,7 +42,7 @@ bool algorithm_vectorfield_input::run_computation()
 
 void algorithm_vectorfield_input::cache_load() const
 {
-    std::cout << "Loading input vector field from cache" << std::endl;
+    if (!this->is_quiet()) std::cout << "Loading input vector field from cache" << std::endl;
 }
 
 const algorithm_vectorfield_input::results_t& algorithm_vectorfield_input::get_results() const

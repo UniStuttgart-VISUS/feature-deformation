@@ -1,7 +1,7 @@
 #include "algorithm.h"
 
 template <typename... input_t>
-inline algorithm<input_t...>::algorithm() : hash(-1), valid(false)
+inline algorithm<input_t...>::algorithm() : hash(-1), valid(false), quiet(false)
 {
 }
 
@@ -61,4 +61,16 @@ inline bool algorithm<input_t...>::is_valid() const
 template <typename... input_t>
 inline void algorithm<input_t...>::cache_load() const
 {
+}
+
+template <typename... input_t>
+inline void algorithm<input_t...>::be_quiet(const bool quiet)
+{
+    this->quiet = quiet;
+}
+
+template <typename... input_t>
+inline bool algorithm<input_t...>::is_quiet() const
+{
+    return this->quiet;
 }

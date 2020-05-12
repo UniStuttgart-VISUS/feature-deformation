@@ -38,7 +38,7 @@ std::uint32_t algorithm_geometry_input::calculate_hash() const
 
 bool algorithm_geometry_input::run_computation()
 {
-    std::cout << "Loading input geometry" << std::endl;
+    if (!this->is_quiet()) std::cout << "Loading input geometry" << std::endl;
 
     // Count points
     std::size_t num_points = 0;
@@ -68,7 +68,7 @@ bool algorithm_geometry_input::run_computation()
         {
             if (this->input_geometry.size() > 1)
             {
-                std::cout << "  input " << index++ << std::endl;
+                if (!this->is_quiet()) std::cout << "  input " << index++ << std::endl;
             }
 
             // Get geometry
@@ -93,7 +93,7 @@ bool algorithm_geometry_input::run_computation()
 
 void algorithm_geometry_input::cache_load() const
 {
-    std::cout << "Loading input geometry from cache" << std::endl;
+    if (!this->is_quiet()) std::cout << "Loading input geometry from cache" << std::endl;
 }
 
 const algorithm_geometry_input::results_t& algorithm_geometry_input::get_results() const

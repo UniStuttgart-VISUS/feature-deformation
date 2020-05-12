@@ -11,6 +11,8 @@ set(sources
 
   algorithm_input.h
 
+  algorithm_compute_gauss.h algorithm_compute_gauss.cxx
+
   algorithm_displacement_computation.h algorithm_displacement_computation.cxx
   algorithm_displacement_creation.h algorithm_displacement_creation.cxx
   algorithm_displacement_precomputation.h algorithm_displacement_precomputation.cxx
