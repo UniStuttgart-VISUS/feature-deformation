@@ -27,6 +27,9 @@ protected:
     /// Run computation
     virtual bool run_computation() override;
 
+    /// Print cache load message
+    virtual void cache_load() const override;
+
 private:
     /// Input
     std::shared_ptr<const algorithm_geometry_output_update> output_geometry;

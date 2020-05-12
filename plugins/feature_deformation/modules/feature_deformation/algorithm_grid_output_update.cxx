@@ -25,11 +25,13 @@
 
 void algorithm_grid_output_update::set_input(std::shared_ptr<const algorithm_grid_input> input_grid,
     std::shared_ptr<const algorithm_grid_output_creation> output_grid,
-    std::shared_ptr<const algorithm_displacement_computation> displacement, bool remove_cells, float remove_cells_scalar)
+    std::shared_ptr<const algorithm_displacement_computation> displacement,
+    std::shared_ptr<const algorithm_compute_tearing> tearing, bool remove_cells, float remove_cells_scalar)
 {
     this->input_grid = input_grid;
     this->output_grid = output_grid;
     this->displacement = displacement;
+    this->tearing = tearing;
     this->remove_cells = remove_cells;
     this->remove_cells_scalar = remove_cells_scalar;
 }
@@ -41,7 +43,7 @@ std::uint32_t algorithm_grid_output_update::calculate_hash() const
         return -1;
     }
 
-    return jenkins_hash(this->displacement->get_hash(), this->remove_cells, this->remove_cells_scalar);
+    return jenkins_hash(this->displacement->get_hash(), this->tearing->get_hash(), this->remove_cells, this->remove_cells_scalar);
 }
 
 bool algorithm_grid_output_update::run_computation()
@@ -238,16 +240,16 @@ bool algorithm_grid_output_update::run_computation()
 
         output_deformed_grid->GetCellData()->AddArray(handedness);
 
+        // Add tear array if possible
+        if (this->tearing->is_valid())
+        {
+            output_deformed_grid->GetPointData()->AddArray(this->tearing->get_results().tearing_cells);
+        }
+
         this->output_grid->get_results().grid->SetBlock(0u, output_deformed_grid);
         this->output_grid->get_results().grid->SetBlock(1u, output_deformed_grid_removed);
         this->output_grid->get_results().grid->GetMetaData(1u)->Set(vtkCompositeDataSet::NAME(), "Removed Cells");
     }
-
-    // Add tear array if possible
-    /*if (this->precompute_tearing.valid && this->precompute_tearing.removed_cells->GetNumberOfTuples() == output_deformed_grid->GetNumberOfPoints())
-    {
-        output_deformed_grid->GetPointData()->AddArray(this->precompute_tearing.removed_cells);
-    }*/
 
     // Set input as output
     this->results.grid = this->output_grid->get_results().grid;

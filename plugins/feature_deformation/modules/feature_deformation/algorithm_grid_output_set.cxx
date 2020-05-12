@@ -31,3 +31,13 @@ bool algorithm_grid_output_set::run_computation()
 
     return true;
 }
+
+void algorithm_grid_output_set::cache_load() const
+{
+    auto output_deformed_grid = vtkMultiBlockDataSet::SafeDownCast(this->output_information->Get(vtkDataObject::DATA_OBJECT()));
+
+    output_deformed_grid->ShallowCopy(this->output_grid->get_results().grid);
+    output_deformed_grid->Modified();
+
+    this->output_information->Set(vtkDataObject::DATA_TIME_STEP(), this->data_time);
+}

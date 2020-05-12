@@ -1,6 +1,7 @@
 #pragma once
 
 #include "algorithm.h"
+#include "algorithm_compute_tearing.h"
 #include "algorithm_displacement_computation.h"
 #include "algorithm_grid_input.h"
 #include "algorithm_grid_output_creation.h"
@@ -12,7 +13,8 @@
 #include <memory>
 
 class algorithm_grid_output_update : public algorithm<std::shared_ptr<const algorithm_grid_input>,
-    std::shared_ptr<const algorithm_grid_output_creation>, std::shared_ptr<const algorithm_displacement_computation>, bool, float>
+    std::shared_ptr<const algorithm_grid_output_creation>, std::shared_ptr<const algorithm_displacement_computation>,
+    std::shared_ptr<const algorithm_compute_tearing>, bool, float>
 {
 public:
     /// Default constructor
@@ -32,6 +34,7 @@ protected:
         std::shared_ptr<const algorithm_grid_input> input_grid,
         std::shared_ptr<const algorithm_grid_output_creation> output_grid,
         std::shared_ptr<const algorithm_displacement_computation> displacement,
+        std::shared_ptr<const algorithm_compute_tearing> tearing,
         bool remove_cells,
         float remove_cells_scalar
     ) override;
@@ -50,6 +53,7 @@ private:
     std::shared_ptr<const algorithm_grid_input> input_grid;
     std::shared_ptr<const algorithm_grid_output_creation> output_grid;
     std::shared_ptr<const algorithm_displacement_computation> displacement;
+    std::shared_ptr<const algorithm_compute_tearing> tearing;
 
     /// Parameters
     bool remove_cells;

@@ -19,7 +19,14 @@
 
 #include "Eigen/Dense"
 
+#include <algorithm>
+#include <array>
+#include <cmath>
 #include <iostream>
+#include <limits>
+#include <memory>
+#include <type_traits>
+#include <vector>
 
 void algorithm_compute_gauss::set_input(std::shared_ptr<const algorithm_line_input> line_input,
     std::shared_ptr<const algorithm_grid_input> grid_input, const smoothing::method_t smoothing_method,

@@ -30,3 +30,13 @@ bool algorithm_line_output_set::run_computation()
 
     return true;
 }
+
+void algorithm_line_output_set::cache_load() const
+{
+    auto output_deformed_lines = vtkPolyData::SafeDownCast(this->output_information->Get(vtkDataObject::DATA_OBJECT()));
+
+    output_deformed_lines->ShallowCopy(this->output_lines->get_results().lines);
+    output_deformed_lines->Modified();
+
+    this->output_information->Set(vtkDataObject::DATA_TIME_STEP(), this->data_time);
+}

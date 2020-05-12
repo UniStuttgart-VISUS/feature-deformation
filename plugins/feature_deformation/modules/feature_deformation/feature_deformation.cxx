@@ -1,12 +1,14 @@
 #include "feature_deformation.h"
 
 #include "algorithm_compute_gauss.h"
+#include "algorithm_compute_tearing.h"
 #include "algorithm_displacement_computation.h"
 #include "algorithm_displacement_creation.h"
 #include "algorithm_displacement_precomputation.h"
 #include "algorithm_geometry_input.h"
 #include "algorithm_grid_input.h"
 #include "algorithm_grid_output_creation.h"
+#include "algorithm_grid_output_set.h"
 #include "algorithm_grid_output_update.h"
 #include "algorithm_grid_output_vectorfield.h"
 #include "algorithm_line_input.h"
@@ -84,6 +86,7 @@ feature_deformation::feature_deformation() : frames(0)
     this->alg_vectorfield_input = std::make_shared<algorithm_vectorfield_input>();
 
     this->alg_compute_gauss = std::make_shared<algorithm_compute_gauss>();
+    this->alg_compute_tearing = std::make_shared<algorithm_compute_tearing>();
 
     this->alg_smoothing = std::make_shared<algorithm_smoothing>();
 
@@ -240,6 +243,7 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
     this->alg_geometry_input->be_quiet(quiet);
     this->alg_vectorfield_input->be_quiet(quiet);
     this->alg_compute_gauss->be_quiet(quiet);
+    this->alg_compute_tearing->be_quiet(quiet);
     this->alg_smoothing->be_quiet(quiet);
     this->alg_displacement_creation_lines->be_quiet(quiet);
     this->alg_displacement_precomputation_lines->be_quiet(quiet);
@@ -317,7 +321,7 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
         this->parameters.displacement_method == cuda::displacement::method_t::b_spline_joints))
     {
         this->alg_compute_gauss->run(this->alg_line_input, this->alg_grid_input, this->parameters.smoothing_method,
-            this->parameters.variant, this->parameters.lambda, this->parameters.num_iterations, this->parameters.displacement_method,
+            this->parameters.variant, this->parameters.lambda, this->parameters.max_num_iterations, this->parameters.displacement_method,
             this->parameters.bspline_parameters, this->parameters.num_subdivisions, this->parameters.remove_cells_scalar,
             this->parameters.check_handedness, this->parameters.check_convexity, this->parameters.check_volume, this->parameters.volume_percentage);
 
@@ -325,207 +329,12 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
             = this->parameters.bspline_parameters.gauss_parameter = this->alg_compute_gauss->get_results().gauss_parameter;
     }
 
-    if (this->parameters.compute_tearing)
+    if (this->parameters.compute_tearing && this->parameters.remove_cells)
     {
-
+        this->alg_compute_tearing->run(this->alg_line_input, this->alg_grid_input, this->parameters.smoothing_method,
+            this->parameters.variant, this->parameters.lambda, this->parameters.max_num_iterations, this->parameters.displacement_method,
+            this->parameters.displacement_parameters, this->parameters.bspline_parameters, this->parameters.remove_cells_scalar);
     }
-
-    // Compute Gauss parameter epsilon and tearing
-//    const bool is_2d = this->input_grid.dimension[2] == 1;
-//
-//    if (this->input_grid.valid && (this->parameter_lines.modified || this->parameter_smoothing.modified ||
-//        this->parameter_displacement.modified || this->parameter_precompute.modified || this->input_grid.modified || this->input_lines.modified))
-//    {
-//        if (this->parameter_precompute.compute_gauss || this->parameter_precompute.compute_tearing)
-//        {
-//            // Create smoother
-//            smoothing smoother(this->input_lines.selected_line, this->parameter_lines.method, this->parameter_smoothing.variant,
-//                this->parameter_smoothing.lambda, this->parameter_smoothing.max_num_iterations);
-//
-//            // Straighten the selected line
-//            while (smoother.has_step())
-//            {
-//                // Perform smoothing step
-//                smoother.next_step();
-//            }
-//
-//            const auto displacements = get_displacements(smoother.get_displacement());
-//
-//            // Create displacer
-//            auto displacement = std::make_shared<cuda::displacement>(
-//                std::array<double, 3>{ this->input_grid.origin[0], this->input_grid.origin[1], this->input_grid.origin[2] },
-//                std::array<double, 3>{ this->input_grid.spacing[0], this->input_grid.spacing[1], this->input_grid.spacing[2] },
-//                this->input_grid.dimension);
-//
-//            // Set threshold for tearing cells
-//            const auto threshold = static_cast<float>(this->parameter_output_grid.remove_cells_scalar) * this->input_grid.spacing.head(is_2d ? 2 : 3).norm();
-//
-//            // Deform grid and mark cells which are going to tear
-//            if (this->parameter_precompute.compute_tearing)
-//            {
-//                // Deform grid
-//                if ((this->parameter_displacement.method == cuda::displacement::method_t::b_spline ||
-//                    this->parameter_displacement.method == cuda::displacement::method_t::b_spline_joints))
-//                {
-//                    displacement->precompute(this->parameter_displacement.parameters, displacements.first);
-//                }
-//
-//                displacement->displace(this->parameter_displacement.method, this->parameter_displacement.parameters, displacements.first, displacements.second);
-//
-//                const auto displaced_positions = displacement->get_results();
-//
-//                // Create output array
-//                std::cout << "Pre-computing tearing cells" << std::endl;
-//
-//                precompute_tearing.removed_cells = vtkSmartPointer<vtkIdTypeArray>::New();
-//                precompute_tearing.removed_cells->SetNumberOfComponents(2);
-//                precompute_tearing.removed_cells->SetNumberOfTuples(this->input_grid.grid->GetNumberOfPoints());
-//                precompute_tearing.removed_cells->SetName("Tearing cells");
-//                precompute_tearing.removed_cells->FillTypedComponent(0, 0);
-//                precompute_tearing.removed_cells->FillTypedComponent(1, -1);
-//
-//                // Set value to 1 for all points that are part of a cell that tears
-//                #pragma omp parallel for
-//                for (int z = 0; z < (is_2d ? 1 : (this->input_grid.dimension[2] - 1)); ++z)
-//                {
-//                    for (int y = 0; y < this->input_grid.dimension[1] - 1; ++y)
-//                    {
-//                        for (int x = 0; x < this->input_grid.dimension[0] - 1; ++x)
-//                        {
-//                            // Create point IDs
-//                            const auto point0 = calc_index_point(this->input_grid.dimension, x + 0, y + 0, z + 0);
-//                            const auto point1 = calc_index_point(this->input_grid.dimension, x + 1, y + 0, z + 0);
-//                            const auto point2 = calc_index_point(this->input_grid.dimension, x + 0, y + 1, z + 0);
-//                            const auto point3 = calc_index_point(this->input_grid.dimension, x + 1, y + 1, z + 0);
-//                            const auto point4 = calc_index_point(this->input_grid.dimension, x + 0, y + 0, z + 1);
-//                            const auto point5 = calc_index_point(this->input_grid.dimension, x + 1, y + 0, z + 1);
-//                            const auto point6 = calc_index_point(this->input_grid.dimension, x + 0, y + 1, z + 1);
-//                            const auto point7 = calc_index_point(this->input_grid.dimension, x + 1, y + 1, z + 1);
-//
-//                            const std::array<vtkIdType, 8> point_ids{
-//                                point0,
-//                                point1,
-//                                point2,
-//                                point3,
-//                                point4,
-//                                point5,
-//                                point6,
-//                                point7
-//                            };
-//
-//                            // Calculate distances between points and compare to threshold
-//                            bool discard_cell = false;
-//
-//                            std::vector<Eigen::Vector3d> cell_points(is_2d ? 4 : 8);
-//
-//                            for (std::size_t point_index = 0; point_index < (is_2d ? 4 : 8); ++point_index)
-//                            {
-//                                cell_points[point_index] = Eigen::Vector3d(displaced_positions[point_ids[point_index]][0],
-//                                    displaced_positions[point_ids[point_index]][1], displaced_positions[point_ids[point_index]][2]);
-//                            }
-//
-//                            // Pairwise calculate the distance between all points and compare the result with the threshold
-//                            for (std::size_t i = 0; i < cell_points.size() - 1; ++i)
-//                            {
-//                                for (std::size_t j = i + 1; j < cell_points.size(); ++j)
-//                                {
-//                                    discard_cell |= (cell_points[i] - cell_points[j]).norm() > threshold;
-//                                }
-//                            }
-//
-//                            // Set value if discarded
-//                            if (discard_cell)
-//                            {
-//                                for (std::size_t point_index = 0; point_index < (is_2d ? 4 : 8); ++point_index)
-//                                {
-//                                    precompute_tearing.removed_cells->SetTypedComponent(point_ids[point_index], 0, 1);
-//                                }
-//                            }
-//                        }
-//                    }
-//                }
-//
-//                // Use region growing to detect and label connected tearing regions
-//                int next_region = 0;
-//
-//                auto hasher = [this](const std::tuple<int, int, int>& key) -> std::size_t {
-//                    return std::hash<int>()(calc_index_point(this->input_grid.dimension, std::get<0>(key), std::get<1>(key), std::get<2>(key)));
-//                };
-//
-//                std::unordered_set<std::tuple<int, int, int>, decltype(hasher)> todo(29, hasher);
-//
-//                for (int z = 0; z < this->input_grid.dimension[2]; ++z)
-//                {
-//                    for (int y = 0; y < this->input_grid.dimension[1]; ++y)
-//                    {
-//                        for (int x = 0; x < this->input_grid.dimension[0]; ++x)
-//                        {
-//                            const auto index = calc_index_point(this->input_grid.dimension, x, y, z);
-//
-//                            std::array<vtkIdType, 2> value;
-//                            precompute_tearing.removed_cells->GetTypedTuple(index, value.data());
-//
-//                            if (value[0] == 1 && value[1] == -1)
-//                            {
-//                                const auto current_region = next_region++;
-//
-//                                todo.insert({x, y, z});
-//
-//                                // Take first item, process it, and put unprocessed neighbors on the ToDo list
-//                                while (!todo.empty())
-//                                {
-//                                    const auto current_coords = *todo.cbegin();
-//                                    todo.erase(current_coords);
-//
-//                                    const auto current_x = std::get<0>(current_coords);
-//                                    const auto current_y = std::get<1>(current_coords);
-//                                    const auto current_z = std::get<2>(current_coords);
-//                                    const auto current_index = calc_index_point(this->input_grid.dimension, current_x, current_y, current_z);
-//
-//                                    precompute_tearing.removed_cells->SetTypedComponent(current_index, 1, current_region);
-//
-//                                    // Add neighbors to ToDo list
-//                                    for (int k = (is_2d ? 0 : -1); k <= (is_2d ? 0 : 1); ++k)
-//                                    {
-//                                        for (int j = -1; j <= 1; ++j)
-//                                        {
-//                                            for (int i = -1; i <= 1; ++i)
-//                                            {
-//                                                if (i != 0 || j != 0 || k != 0)
-//                                                {
-//                                                    const auto neighbor_x = current_x + i;
-//                                                    const auto neighbor_y = current_y + j;
-//                                                    const auto neighbor_z = current_z + k;
-//                                                    const auto neighbor_index = calc_index_point(this->input_grid.dimension, neighbor_x, neighbor_y, neighbor_z);
-//
-//                                                    if (neighbor_x >= 0 && neighbor_x < this->input_grid.dimension[0] &&
-//                                                        neighbor_y >= 0 && neighbor_y < this->input_grid.dimension[1] &&
-//                                                        neighbor_z >= 0 && neighbor_z < this->input_grid.dimension[2])
-//                                                    {
-//                                                        std::array<vtkIdType, 2> value;
-//                                                        precompute_tearing.removed_cells->GetTypedTuple(neighbor_index, value.data());
-//
-//                                                        if (value[0] == 1 && value[1] == -1)
-//                                                        {
-//                                                            todo.insert({ neighbor_x, neighbor_y, neighbor_z });
-//                                                        }
-//                                                    }
-//                                                }
-//                                            }
-//                                        }
-//                                    }
-//                                }
-//                            }
-//                        }
-//                    }
-//                }
-//
-//                precompute_tearing.valid = true;
-//            }
-//
-//            std::cout << std::endl;
-//        }
-//    }
 
     // Smooth line
     if (!this->alg_smoothing->run(this->alg_line_input, this->parameters.smoothing_method, this->parameters.variant, this->parameters.lambda, this->parameters.num_iterations))
@@ -583,8 +392,8 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
     if (this->parameters.output_deformed_grid)
     {
         this->alg_grid_output_creation->run(this->alg_grid_input, this->parameters.remove_cells);
-        this->alg_grid_output_update->run(this->alg_grid_input, this->alg_grid_output_creation, this->alg_displacement_computation_grid, // TODO: add precomputation results (tearing)
-            this->parameters.remove_cells, this->parameters.remove_cells_scalar);
+        this->alg_grid_output_update->run(this->alg_grid_input, this->alg_grid_output_creation, this->alg_displacement_computation_grid,
+            this->alg_compute_tearing, this->parameters.remove_cells, this->parameters.remove_cells_scalar);
 
         if (this->parameters.output_vector_field)
         {
@@ -611,6 +420,7 @@ void feature_deformation::process_parameters(double time)
     this->parameters.variant = static_cast<smoothing::variant_t>(this->Variant);
     this->parameters.lambda = static_cast<float>(this->Lambda);
     this->parameters.num_iterations = this->MaxNumIterations;
+    this->parameters.max_num_iterations = this->MaxNumIterations;
 
     if (this->parameters.smoothing_method == smoothing::method_t::smoothing)
     {

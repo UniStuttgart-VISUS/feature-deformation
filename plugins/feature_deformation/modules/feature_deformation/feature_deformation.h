@@ -3,6 +3,7 @@
 #include "vtkAlgorithm.h"
 
 #include "algorithm_compute_gauss.h"
+#include "algorithm_compute_tearing.h"
 #include "algorithm_displacement_computation.h"
 #include "algorithm_displacement_creation.h"
 #include "algorithm_displacement_precomputation.h"
@@ -182,7 +183,7 @@ private:
     double RemoveCellsScalar;
 
     /// Logging options
-    bool Quiet;
+    int Quiet;
 
     // Processed parameters
     struct parameter_t
@@ -193,6 +194,7 @@ private:
         smoothing::variant_t variant;
         float lambda;
         int num_iterations;
+        int max_num_iterations;
 
         cuda::displacement::method_t displacement_method;
         cuda::displacement::parameter_t displacement_parameters;
@@ -224,6 +226,7 @@ private:
 
     // Pre-computation algorithms
     std::shared_ptr<algorithm_compute_gauss> alg_compute_gauss;
+    std::shared_ptr<algorithm_compute_tearing> alg_compute_tearing;
 
     // Computation algorithms
     std::shared_ptr<algorithm_smoothing> alg_smoothing;
