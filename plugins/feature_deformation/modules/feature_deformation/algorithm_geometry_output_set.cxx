@@ -17,7 +17,7 @@ void algorithm_geometry_output_set::set_input(std::shared_ptr<const algorithm_ge
 
 std::uint32_t algorithm_geometry_output_set::calculate_hash() const
 {
-    return jenkins_hash(this->output_geometry->get_hash());
+    return this->output_geometry->get_hash();
 }
 
 bool algorithm_geometry_output_set::run_computation()

@@ -12,7 +12,7 @@
 
 #include "Eigen/Dense"
 
-#include <functional>
+#include <array>
 #include <iostream>
 #include <memory>
 

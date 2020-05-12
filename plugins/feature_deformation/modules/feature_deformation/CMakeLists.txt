@@ -22,6 +22,7 @@ set(sources
 
   algorithm_grid_input.h algorithm_grid_input.cxx
   algorithm_grid_output_creation.h algorithm_grid_output_creation.cxx
+  algorithm_grid_output_set.h algorithm_grid_output_set.cxx
   algorithm_grid_output_update.h algorithm_grid_output_update.cxx
   algorithm_grid_output_vectorfield.h algorithm_grid_output_vectorfield.cxx
 

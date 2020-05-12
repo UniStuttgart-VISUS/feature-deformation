@@ -10,8 +10,10 @@
 #include "algorithm_grid_output_vectorfield.h"
 #include "algorithm_line_input.h"
 #include "algorithm_geometry_output_creation.h"
+#include "algorithm_geometry_output_set.h"
 #include "algorithm_geometry_output_update.h"
 #include "algorithm_line_output_creation.h"
+#include "algorithm_line_output_set.h"
 #include "algorithm_line_output_update.h"
 #include "algorithm_smoothing.h"
 #include "algorithm_vectorfield_input.h"
@@ -93,36 +95,37 @@ vtkStandardNewMacro(feature_deformation);
 
 feature_deformation::feature_deformation() : frames(0)
 {
-    alg_grid_input = std::make_shared<algorithm_grid_input>();
-    alg_line_input = std::make_shared<algorithm_line_input>();
-    alg_geometry_input = std::make_shared<algorithm_geometry_input>();
-    alg_vectorfield_input = std::make_shared<algorithm_vectorfield_input>();
+    this->alg_grid_input = std::make_shared<algorithm_grid_input>();
+    this->alg_line_input = std::make_shared<algorithm_line_input>();
+    this->alg_geometry_input = std::make_shared<algorithm_geometry_input>();
+    this->alg_vectorfield_input = std::make_shared<algorithm_vectorfield_input>();
 
-    alg_smoothing = std::make_shared<algorithm_smoothing>();
+    this->alg_smoothing = std::make_shared<algorithm_smoothing>();
 
-    alg_displacement_creation_lines = std::make_shared<algorithm_displacement_creation>();
-    alg_displacement_precomputation_lines = std::make_shared<algorithm_displacement_precomputation>();
-    alg_displacement_computation_lines = std::make_shared<algorithm_displacement_computation>();
+    this->alg_displacement_creation_lines = std::make_shared<algorithm_displacement_creation>();
+    this->alg_displacement_precomputation_lines = std::make_shared<algorithm_displacement_precomputation>();
+    this->alg_displacement_computation_lines = std::make_shared<algorithm_displacement_computation>();
 
-    alg_displacement_creation_grid = std::make_shared<algorithm_displacement_creation>();
-    alg_displacement_precomputation_grid = std::make_shared<algorithm_displacement_precomputation>();
-    alg_displacement_computation_grid = std::make_shared<algorithm_displacement_computation>();
+    this->alg_displacement_creation_grid = std::make_shared<algorithm_displacement_creation>();
+    this->alg_displacement_precomputation_grid = std::make_shared<algorithm_displacement_precomputation>();
+    this->alg_displacement_computation_grid = std::make_shared<algorithm_displacement_computation>();
 
-    alg_displacement_creation_geometry = std::make_shared<algorithm_displacement_creation>();
-    alg_displacement_precomputation_geometry = std::make_shared<algorithm_displacement_precomputation>();
-    alg_displacement_computation_geometry = std::make_shared<algorithm_displacement_computation>();
+    this->alg_displacement_creation_geometry = std::make_shared<algorithm_displacement_creation>();
+    this->alg_displacement_precomputation_geometry = std::make_shared<algorithm_displacement_precomputation>();
+    this->alg_displacement_computation_geometry = std::make_shared<algorithm_displacement_computation>();
 
-    alg_line_output_creation = std::make_shared<algorithm_line_output_creation>();
-    alg_line_output_update = std::make_shared<algorithm_line_output_update>();
-    alg_line_output_set = std::make_shared<algorithm_line_output_set>();
+    this->alg_line_output_creation = std::make_shared<algorithm_line_output_creation>();
+    this->alg_line_output_update = std::make_shared<algorithm_line_output_update>();
+    this->alg_line_output_set = std::make_shared<algorithm_line_output_set>();
 
-    alg_grid_output_creation = std::make_shared<algorithm_grid_output_creation>();
-    alg_grid_output_update = std::make_shared<algorithm_grid_output_update>();
-    alg_grid_output_vectorfield = std::make_shared<algorithm_grid_output_vectorfield>();
+    this->alg_grid_output_creation = std::make_shared<algorithm_grid_output_creation>();
+    this->alg_grid_output_set = std::make_shared<algorithm_grid_output_set>();
+    this->alg_grid_output_update = std::make_shared<algorithm_grid_output_update>();
+    this->alg_grid_output_vectorfield = std::make_shared<algorithm_grid_output_vectorfield>();
 
-    alg_geometry_output_creation = std::make_shared<algorithm_geometry_output_creation>();
-    alg_geometry_output_update = std::make_shared<algorithm_geometry_output_update>();
-    alg_geometry_output_set = std::make_shared<algorithm_geometry_output_set>();
+    this->alg_geometry_output_creation = std::make_shared<algorithm_geometry_output_creation>();
+    this->alg_geometry_output_update = std::make_shared<algorithm_geometry_output_update>();
+    this->alg_geometry_output_set = std::make_shared<algorithm_geometry_output_set>();
 
     this->SetNumberOfInputPorts(3);
     this->SetNumberOfOutputPorts(4);
@@ -162,7 +165,6 @@ int feature_deformation::RequestDataObject(vtkInformation*, vtkInformationVector
     create_or_get_data_object<vtkPolyData>(0, this, output_vector);
     create_or_get_data_object<vtkMultiBlockDataSet>(1, this, output_vector);
     create_or_get_data_object<vtkMultiBlockDataSet>(2, this, output_vector);
-    create_or_get_data_object<vtkImageData>(3, this, output_vector);
 
     return 1;
 }
@@ -184,7 +186,6 @@ int feature_deformation::RequestInformation(vtkInformation*, vtkInformationVecto
     output_vector->GetInformationObject(0)->Set(vtkStreamingDemandDrivenPipeline::TIME_RANGE(), time_range.data(), 2);
     output_vector->GetInformationObject(1)->Set(vtkStreamingDemandDrivenPipeline::TIME_RANGE(), time_range.data(), 2);
     output_vector->GetInformationObject(2)->Set(vtkStreamingDemandDrivenPipeline::TIME_RANGE(), time_range.data(), 2);
-    output_vector->GetInformationObject(3)->Set(vtkStreamingDemandDrivenPipeline::TIME_RANGE(), time_range.data(), 2);
 
     return 1;
 }
@@ -228,11 +229,6 @@ int feature_deformation::FillOutputPortInformation(int port, vtkInformation* inf
     else if (port == 2)
     {
         info->Set(vtkDataObject::DATA_TYPE_NAME(), "vtkMultiBlockDataSet");
-        return 1;
-    }
-    else if (port == 3)
-    {
-        info->Set(vtkDataObject::DATA_TYPE_NAME(), "vtkImageData");
         return 1;
     }
 
@@ -848,6 +844,12 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
         this->parameters.displacement_method, this->parameters.output_bspline_distance);
     this->alg_line_output_set->run(this->alg_line_output_update, output_vector->GetInformationObject(0), time);
 
+    // Output geometry
+    this->alg_geometry_output_creation->run(this->alg_geometry_input);
+    this->alg_geometry_output_update->run(this->alg_geometry_output_creation, this->alg_displacement_computation_geometry,
+        this->parameters.displacement_method, this->parameters.output_bspline_distance);
+    this->alg_geometry_output_set->run(this->alg_geometry_output_update, output_vector->GetInformationObject(1), time);
+
     // Output grid
     if (this->parameters.output_deformed_grid)
     {
@@ -858,69 +860,10 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
         if (this->parameters.output_vector_field)
         {
             this->alg_grid_output_vectorfield->run(this->alg_grid_input, this->alg_grid_output_update, this->alg_vectorfield_input);
-
-            if (this->parameters.output_resampled_grid)
-            {
-                // TODO
-            }
         }
 
-
-        if (this->alg_grid_output_update->is_valid())
-        {
-            
-
-            auto out_deformed_grid_info = output_vector->GetInformationObject(2);
-            auto output_deformed_grid = vtkMultiBlockDataSet::SafeDownCast(out_deformed_grid_info->Get(vtkDataObject::DATA_OBJECT()));
-
-            output_deformed_grid->ShallowCopy(this->alg_grid_output_update->get_results().grid);
-
-            out_deformed_grid_info->Set(vtkDataObject::DATA_TIME_STEP(), time);
-        }
+        this->alg_grid_output_set->run(this->alg_grid_output_update, output_vector->GetInformationObject(2), time);
     }
-
-
-
-
-
-    //        // Create displacement field and use it to "deform" the velocities
-    //        if (this->input_grid.input_data.valid && this->parameter_output_grid.output_vector_field)
-    //        {
-    //            std::cout << "Calculating deformed velocities" << std::endl;
-
-    //            deform_velocities(output_deformed_grid, this->input_grid.input_data.data, this->input_grid.dimension, this->input_grid.spacing);
-
-    //            // Resample the deformed grid on the original one
-    //            if (this->parameter_output_grid.output_resampled_grid)
-    //            {
-    //                std::cout << "Creating resampled grid output" << std::endl;
-
-    //                auto out_resampled_grid_info = output_vector->GetInformationObject(3);
-    //                auto output_resampled_grid = vtkImageData::SafeDownCast(out_resampled_grid_info->Get(vtkDataObject::DATA_OBJECT()));
-
-    //                output_resampled_grid->DeepCopy(this->input_grid.grid);
-
-    //                resample_grid(output_deformed_grid, output_resampled_grid, this->input_grid.input_data.data->GetName(),
-    //                    this->input_grid.dimension, this->input_grid.origin, this->input_grid.spacing);
-
-    //                out_resampled_grid_info->Set(vtkDataObject::DATA_TIME_STEP(), time);
-    //            }
-    //        }
-
-    //        out_deformed_grid_info->Set(vtkDataObject::DATA_TIME_STEP(), time);
-    //        this->Modified();
-    //    }
-    //}
-    //else if (this->parameter_output_grid.output_deformed_grid && !this->results_grid_displacement.modified)
-    //{
-    //    std::cout << "Loading deformed grid output from cache" << std::endl;
-    //}
-
-    // Output geometry
-    this->alg_geometry_output_creation->run(this->alg_geometry_input);
-    this->alg_geometry_output_update->run(this->alg_geometry_output_creation, this->alg_displacement_computation_geometry,
-        this->parameters.displacement_method, this->parameters.output_bspline_distance);
-    this->alg_geometry_output_set->run(this->alg_geometry_output_update, output_vector->GetInformationObject(1), time);
 
     // Output info
     std::cout << std::endl << "Finished deformation" << std::endl;
@@ -1014,80 +957,6 @@ void feature_deformation::process_parameters(double time)
     this->parameters.output_bspline_distance = (this->OutputBSplineDistance != 0);
     this->parameters.output_deformed_grid = (this->OutputDeformedGrid != 0);
     this->parameters.output_vector_field = (this->OutputVectorField != 0);
-    this->parameters.output_resampled_grid = (this->OutputResampledGrid != 0);
     this->parameters.remove_cells = (this->RemoveCells != 0);
     this->parameters.remove_cells_scalar = static_cast<float>(this->RemoveCellsScalar);
 }
-
-
-//void feature_deformation::resample_grid(vtkPointSet* output_deformed_grid, vtkImageData* output_resampled_grid, const std::string& velocity_name,
-//    const std::array<int, 3>& dimension, const Eigen::Vector3f& origin, const Eigen::Vector3f& spacing) const
-
-//{
-//    // Resample original grid
-//    auto velocities_deformed = vtkDoubleArray::SafeDownCast(output_deformed_grid->GetPointData()->GetArray(velocity_name.c_str()));
-//
-//    auto velocities_resampled = vtkSmartPointer<vtkDoubleArray>::New();
-//    velocities_resampled->SetNumberOfComponents(3);
-//    velocities_resampled->SetNumberOfTuples(velocities_deformed->GetNumberOfTuples());
-//    velocities_resampled->SetName(velocities_deformed->GetName());
-//
-//    const Eigen::Vector3d origin_d(static_cast<double>(origin[0]), static_cast<double>(origin[1]), static_cast<double>(origin[2]));
-//    const Eigen::Vector3d spacing_d(static_cast<double>(spacing[0]), static_cast<double>(spacing[1]), static_cast<double>(spacing[2]));
-//
-//    for (int z = 0; z < dimension[2]; ++z)
-//    {
-//        for (int y = 0; y < dimension[1]; ++y)
-//        {
-//            vtkCell* cell = nullptr;
-//
-//            for (int x = 0; x < dimension[0]; ++x)
-//            {
-//                Eigen::Vector3d point = origin_d + Eigen::Vector3d(x, y, z).cwiseProduct(spacing_d);
-//
-//                // Find cell of the deformed grid, in which the point lies
-//                int subID;
-//                Eigen::Vector3d pcoords;
-//                std::array<double, 8> weights;
-//
-//                cell = output_deformed_grid->FindAndGetCell(point.data(), cell, 0, 0.0, subID, pcoords.data(), weights.data());
-//
-//                // Use weights to interpolate the velocity
-//                if (cell != nullptr)
-//                {
-//                    if (cell->GetNumberOfPoints() == 8)
-//                    {
-//                        auto point_ids = cell->GetPointIds();
-//
-//                        Eigen::Vector3d velocity_sum{ 0.0, 0.0, 0.0 };
-//                        double weight_sum = 0.0;
-//
-//                        for (vtkIdType i = 0; i < point_ids->GetNumberOfIds(); ++i)
-//                        {
-//                            Eigen::Vector3d velocity;
-//                            velocities_deformed->GetTuple(point_ids->GetId(i), velocity.data());
-//
-//                            velocity_sum += weights[i] * velocity;
-//                            weight_sum += weights[i];
-//                        }
-//
-//                        const Eigen::Vector3d velocity = velocity_sum / weight_sum;
-//
-//                        velocities_resampled->SetTuple(calc_index_point(dimension, x, y, z), velocity.data());
-//                    }
-//                    else
-//                    {
-//                        std::clog << cell->GetNumberOfPoints() << std::endl;
-//                        velocities_resampled->SetTuple3(calc_index_point(dimension, x, y, z), 0.0, 0.0, 0.0);
-//                    }
-//                }
-//                else
-//                {
-//                    velocities_resampled->SetTuple3(calc_index_point(dimension, x, y, z), 0.0, 0.0, 0.0);
-//                }
-//            }
-//        }
-//    }
-//
-//    output_resampled_grid->GetPointData()->AddArray(velocities_resampled);
-//}

@@ -1,7 +1,6 @@
 #include "algorithm_line_output_set.h"
 
 #include "algorithm_line_output_update.h"
-#include "hash.h"
 
 #include "vtkInformation.h"
 
@@ -17,7 +16,7 @@ void algorithm_line_output_set::set_input(std::shared_ptr<const algorithm_line_o
 
 std::uint32_t algorithm_line_output_set::calculate_hash() const
 {
-    return jenkins_hash(this->output_lines->get_hash());
+    return this->output_lines->get_hash();
 }
 
 bool algorithm_line_output_set::run_computation()

@@ -8,6 +8,7 @@
 #include "algorithm_geometry_input.h"
 #include "algorithm_grid_input.h"
 #include "algorithm_grid_output_creation.h"
+#include "algorithm_grid_output_set.h"
 #include "algorithm_grid_output_update.h"
 #include "algorithm_grid_output_vectorfield.h"
 #include "algorithm_line_input.h"
@@ -192,7 +193,6 @@ private:
     int OutputBSplineDistance;
     int OutputDeformedGrid;
     int OutputVectorField;
-    int OutputResampledGrid;
     int RemoveCells;
     double RemoveCellsScalar;
 
@@ -223,7 +223,6 @@ private:
         bool output_bspline_distance;
         bool output_deformed_grid;
         bool output_vector_field;
-        bool output_resampled_grid;
         bool remove_cells;
         float remove_cells_scalar;
 
@@ -251,6 +250,7 @@ private:
     std::shared_ptr<algorithm_line_output_set> alg_line_output_set;
 
     std::shared_ptr<algorithm_grid_output_creation> alg_grid_output_creation;
+    std::shared_ptr<algorithm_grid_output_set> alg_grid_output_set;
     std::shared_ptr<algorithm_grid_output_update> alg_grid_output_update;
     std::shared_ptr<algorithm_grid_output_vectorfield> alg_grid_output_vectorfield;
 

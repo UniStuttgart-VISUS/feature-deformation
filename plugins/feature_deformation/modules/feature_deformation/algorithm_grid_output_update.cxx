@@ -69,20 +69,25 @@ bool algorithm_grid_output_update::run_computation()
     // Create cells and create grid to store "removed" cells
     if (this->remove_cells)
     {
-        auto output_deformed_grid = vtkUnstructuredGrid::SafeDownCast(grid);
+        // Create new deformed grid without cells
+        const auto dimension = this->input_grid->get_results().dimension;
+        const auto num_cells = (dimension[0] - 1) * (dimension[1] - 1) * (dimension[2] - 1);
+
+        auto points = vtkSmartPointer<vtkPoints>::New();
+        points->ShallowCopy(grid->GetPoints());
+
+        auto output_deformed_grid = vtkSmartPointer<vtkUnstructuredGrid>::New();
+        output_deformed_grid->Allocate(num_cells);
+        output_deformed_grid->SetPoints(points);
+        output_deformed_grid->GetPointData()->ShallowCopy(grid->GetPointData());
 
         auto output_deformed_grid_removed = vtkSmartPointer<vtkUnstructuredGrid>::New();
-        output_deformed_grid_removed->CopyStructure(output_deformed_grid);
-
-        this->output_grid->get_results().grid->SetBlock(1u, output_deformed_grid_removed);
-        this->output_grid->get_results().grid->GetMetaData(1u)->Set(vtkCompositeDataSet::NAME(), "Removed Cells");
+        output_deformed_grid_removed->Allocate(num_cells);
+        output_deformed_grid_removed->SetPoints(points);
 
         // Create cells
-        const auto dimension = this->input_grid->get_results().dimension;
-
         const auto is_2d = dimension[2] == 1;
         const auto threshold = this->remove_cells_scalar * this->input_grid->get_results().spacing.head(is_2d ? 2 : 3).norm();
-        const auto num_cells = (dimension[0] - 1) * (dimension[1] - 1) * (dimension[2] - 1);
 
         auto handedness = vtkSmartPointer<vtkFloatArray>::New();
         handedness->SetNumberOfComponents(1);
@@ -232,8 +237,10 @@ bool algorithm_grid_output_update::run_computation()
         }
 
         output_deformed_grid->GetCellData()->AddArray(handedness);
-        output_deformed_grid->Modified();
-        output_deformed_grid_removed->Modified();
+
+        this->output_grid->get_results().grid->SetBlock(0u, output_deformed_grid);
+        this->output_grid->get_results().grid->SetBlock(1u, output_deformed_grid_removed);
+        this->output_grid->get_results().grid->GetMetaData(1u)->Set(vtkCompositeDataSet::NAME(), "Removed Cells");
     }
 
     // Add tear array if possible
