@@ -1,0 +1,33 @@
+#include "algorithm_line_output_set.h"
+
+#include "algorithm_line_output_update.h"
+#include "hash.h"
+
+#include "vtkInformation.h"
+
+#include <iostream>
+#include <memory>
+
+void algorithm_line_output_set::set_input(std::shared_ptr<const algorithm_line_output_update> output_lines,
+    vtkInformation* output_information, double data_time)
+{
+    this->output_lines = output_lines;
+    this->output_information = output_information;
+}
+
+std::uint32_t algorithm_line_output_set::calculate_hash() const
+{
+    return jenkins_hash(this->output_lines->get_hash());
+}
+
+bool algorithm_line_output_set::run_computation()
+{
+    auto output_deformed_lines = vtkPolyData::SafeDownCast(this->output_information->Get(vtkDataObject::DATA_OBJECT()));
+
+    output_deformed_lines->ShallowCopy(this->output_lines->get_results().lines);
+    output_deformed_lines->Modified();
+
+    this->output_information->Set(vtkDataObject::DATA_TIME_STEP(), this->data_time);
+
+    return true;
+}

@@ -9,12 +9,16 @@
 #include "algorithm_grid_input.h"
 #include "algorithm_grid_output_creation.h"
 #include "algorithm_grid_output_update.h"
+#include "algorithm_grid_output_vectorfield.h"
 #include "algorithm_line_input.h"
 #include "algorithm_geometry_output_creation.h"
+#include "algorithm_geometry_output_set.h"
 #include "algorithm_geometry_output_update.h"
 #include "algorithm_line_output_creation.h"
+#include "algorithm_line_output_set.h"
 #include "algorithm_line_output_update.h"
 #include "algorithm_smoothing.h"
+#include "algorithm_vectorfield_input.h"
 
 #include "displacement.h"
 #include "smoothing.h"
@@ -229,6 +233,7 @@ private:
     std::shared_ptr<algorithm_grid_input> alg_grid_input;
     std::shared_ptr<algorithm_line_input> alg_line_input;
     std::shared_ptr<algorithm_geometry_input> alg_geometry_input;
+    std::shared_ptr<algorithm_vectorfield_input> alg_vectorfield_input;
 
     // Computation algorithms
     std::shared_ptr<algorithm_smoothing> alg_smoothing;
@@ -243,12 +248,15 @@ private:
     // Output algorithms
     std::shared_ptr<algorithm_line_output_creation> alg_line_output_creation;
     std::shared_ptr<algorithm_line_output_update> alg_line_output_update;
+    std::shared_ptr<algorithm_line_output_set> alg_line_output_set;
 
     std::shared_ptr<algorithm_grid_output_creation> alg_grid_output_creation;
     std::shared_ptr<algorithm_grid_output_update> alg_grid_output_update;
+    std::shared_ptr<algorithm_grid_output_vectorfield> alg_grid_output_vectorfield;
 
     std::shared_ptr<algorithm_geometry_output_creation> alg_geometry_output_creation;
     std::shared_ptr<algorithm_geometry_output_update> alg_geometry_output_update;
+    std::shared_ptr<algorithm_geometry_output_set> alg_geometry_output_set;
 
     // Variable for counting the number of output frames
     int frames;

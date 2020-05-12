@@ -6,21 +6,32 @@ set(sources
   displacement.h displacement.cu
   hash.h
   smoothing.h smoothing.cxx
+
   algorithm.h algorithm.inl
+
   algorithm_input.h
+
   algorithm_displacement_computation.h algorithm_displacement_computation.cxx
   algorithm_displacement_creation.h algorithm_displacement_creation.cxx
   algorithm_displacement_precomputation.h algorithm_displacement_precomputation.cxx
+
   algorithm_geometry_input.h algorithm_geometry_input.cxx
   algorithm_geometry_output_creation.h algorithm_geometry_output_creation.cxx
+  algorithm_geometry_output_set.h algorithm_geometry_output_set.cxx
   algorithm_geometry_output_update.h algorithm_geometry_output_update.cxx
+
   algorithm_grid_input.h algorithm_grid_input.cxx
   algorithm_grid_output_creation.h algorithm_grid_output_creation.cxx
   algorithm_grid_output_update.h algorithm_grid_output_update.cxx
+  algorithm_grid_output_vectorfield.h algorithm_grid_output_vectorfield.cxx
+
   algorithm_line_input.h algorithm_line_input.cxx
   algorithm_line_output_creation.h algorithm_line_output_creation.cxx
+  algorithm_line_output_set.h algorithm_line_output_set.cxx
   algorithm_line_output_update.h algorithm_line_output_update.cxx
+
   algorithm_smoothing.h algorithm_smoothing.cxx
+
   algorithm_vectorfield_input.h algorithm_vectorfield_input.cxx)
 
 pv_module(feature_deformation ${PROJECT_NAME} "${sources}" feature_deformation_target)

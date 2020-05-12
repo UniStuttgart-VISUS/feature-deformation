@@ -50,10 +50,9 @@ bool algorithm_grid_output_creation::run_computation()
         vtkStructuredGrid::SafeDownCast(output_deformed_grid)->SetExtent(const_cast<int*>(this->input_grid->get_results().extent.data()));
     }
 
-    this->results.grid->SetBlock(0u, output_deformed_grid);
-    this->results.grid->GetMetaData(0u)->Set(vtkCompositeDataSet::NAME(), "Grid");
-
     // Set points of the undeformed grid
+    const auto num_cells = (this->input_grid->get_results().dimension[0] - 1) *
+        (this->input_grid->get_results().dimension[1] - 1) * (this->input_grid->get_results().dimension[2] - 1);
     const auto num_points = this->input_grid->get_results().dimension[0] *
         this->input_grid->get_results().dimension[1] * this->input_grid->get_results().dimension[2];
 
@@ -86,6 +85,11 @@ bool algorithm_grid_output_creation::run_computation()
     output_deformed_grid->SetPoints(coords);
     output_deformed_grid->GetPointData()->AddArray(tex_coords);
 
+    if (this->remove_cells)
+    {
+        vtkUnstructuredGrid::SafeDownCast(output_deformed_grid)->Allocate(num_cells);
+    }
+
     // Create information arrays
     auto displacement_id_array = vtkSmartPointer<vtkFloatArray>::New();
     displacement_id_array->SetNumberOfComponents(4);
@@ -116,15 +120,10 @@ bool algorithm_grid_output_creation::run_computation()
     output_deformed_grid->GetPointData()->AddArray(jacobian);
     output_deformed_grid->GetPointData()->AddArray(velocities);
 
-    // Create grid to store "removed" cells
-    if (this->remove_cells)
-    {
-        auto output_deformed_grid_removed = vtkSmartPointer<vtkUnstructuredGrid>::New();
-        output_deformed_grid_removed->ShallowCopy(vtkUnstructuredGrid::SafeDownCast(output_deformed_grid));
-
-        this->results.grid->SetBlock(1u, output_deformed_grid_removed);
-        this->results.grid->GetMetaData(1u)->Set(vtkCompositeDataSet::NAME(), "Removed Cells");
-    }
+    // Create dataset
+    this->results.grid = vtkSmartPointer<vtkMultiBlockDataSet>::New();
+    this->results.grid->SetBlock(0u, output_deformed_grid);
+    this->results.grid->GetMetaData(0u)->Set(vtkCompositeDataSet::NAME(), "Grid");
 
     return true;
 }

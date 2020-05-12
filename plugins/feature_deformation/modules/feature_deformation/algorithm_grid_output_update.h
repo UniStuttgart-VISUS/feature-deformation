@@ -2,16 +2,17 @@
 
 #include "algorithm.h"
 #include "algorithm_displacement_computation.h"
+#include "algorithm_grid_input.h"
 #include "algorithm_grid_output_creation.h"
 #include "displacement.h"
 
-#include "vtkPolyData.h"
+#include "vtkMultiBlockDataSet.h"
 #include "vtkSmartPointer.h"
 
 #include <memory>
 
-class algorithm_grid_output_update : public algorithm<std::shared_ptr<const algorithm_grid_output_creation>,
-    std::shared_ptr<const algorithm_displacement_computation>, cuda::displacement::method_t, bool>
+class algorithm_grid_output_update : public algorithm<std::shared_ptr<const algorithm_grid_input>,
+    std::shared_ptr<const algorithm_grid_output_creation>, std::shared_ptr<const algorithm_displacement_computation>, bool, float>
 {
 public:
     /// Default constructor
@@ -20,7 +21,7 @@ public:
     /// Get results
     struct results_t
     {
-        vtkSmartPointer<vtkPolyData> grids;
+        vtkSmartPointer<vtkMultiBlockDataSet> grid;
     };
 
     const results_t& get_results() const;
@@ -28,10 +29,11 @@ public:
 protected:
     /// Set input
     virtual void set_input(
-        std::shared_ptr<const algorithm_grid_output_creation> output_grids,
+        std::shared_ptr<const algorithm_grid_input> input_grid,
+        std::shared_ptr<const algorithm_grid_output_creation> output_grid,
         std::shared_ptr<const algorithm_displacement_computation> displacement,
-        cuda::displacement::method_t displacement_method,
-        bool output_bspgrid_distance
+        bool remove_cells,
+        float remove_cells_scalar
     ) override;
 
     /// Calculate hash
@@ -45,12 +47,13 @@ protected:
 
 private:
     /// Input
-    std::shared_ptr<const algorithm_grid_output_creation> output_grids;
+    std::shared_ptr<const algorithm_grid_input> input_grid;
+    std::shared_ptr<const algorithm_grid_output_creation> output_grid;
     std::shared_ptr<const algorithm_displacement_computation> displacement;
 
     /// Parameters
-    cuda::displacement::method_t displacement_method;
-    bool output_bspgrid_distance;
+    bool remove_cells;
+    float remove_cells_scalar;
 
     /// Results
     results_t results;

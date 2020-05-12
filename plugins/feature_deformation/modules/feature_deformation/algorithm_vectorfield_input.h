@@ -5,9 +5,9 @@
 
 #include "vtkDataArray.h"
 
-#include <type_traits>
+#include <memory>
 
-class algorithm_vectorfield_input : public algorithm<const algorithm_grid_input&, const std::string&>
+class algorithm_vectorfield_input : public algorithm<std::shared_ptr<const algorithm_grid_input>, const std::string&>
 {
 public:
     /// Default constructor
@@ -24,7 +24,7 @@ public:
 protected:
     /// Set input
     virtual void set_input(
-        const algorithm_grid_input& input_grid,
+        std::shared_ptr<const algorithm_grid_input> input_grid,
         const std::string& array_name
     ) override;
 
@@ -39,7 +39,7 @@ protected:
 
 private:
     /// Input
-    std::reference_wrapper<const algorithm_grid_input> input_grid;
+    std::shared_ptr<const algorithm_grid_input> input_grid;
     std::string array_name;
 
     /// Results

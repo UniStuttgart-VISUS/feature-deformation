@@ -70,6 +70,8 @@ bool algorithm_geometry_output_update::run_computation()
 
         std::memcpy(data_array->GetPointer(0), &displacement_ids[global_data_index], data_array->GetNumberOfTuples() * sizeof(float4));
 
+        data_array->Modified();
+
         global_data_index += data_array->GetNumberOfTuples();
     }
 
@@ -108,6 +110,8 @@ bool algorithm_geometry_output_update::run_computation()
                     cell_index += num_points + 1;
                 }
             }
+
+            displacement_distance_array->Modified();
         }
     }
 
@@ -125,6 +129,8 @@ bool algorithm_geometry_output_update::run_computation()
 
             displacement_map_array->SetTuple(p, displaced_point.data());
         }
+
+        displacement_map_array->Modified();
     }
 
     // Set input as output

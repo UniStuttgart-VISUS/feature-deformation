@@ -56,6 +56,8 @@ bool algorithm_line_output_update::run_computation()
     std::memcpy(vtkFloatArray::SafeDownCast(this->output_lines->get_results().lines->GetPointData()->GetArray("Displacement Information"))->GetPointer(0),
         displacement_ids.data(), displacement_ids.size() * sizeof(float4));
 
+    vtkFloatArray::SafeDownCast(this->output_lines->get_results().lines->GetPointData()->GetArray("Displacement Information"))->Modified();
+
     // In case of the B-Spline, store distance on B-Spline for neighboring points
     if ((this->displacement_method == cuda::displacement::method_t::b_spline ||
         this->displacement_method == cuda::displacement::method_t::b_spline_joints) &&
@@ -83,6 +85,8 @@ bool algorithm_line_output_update::run_computation()
             index += num_points;
             cell_index += num_points + 1;
         }
+
+        displacement_distance_array->Modified();
     }
 
     this->results.lines = this->output_lines->get_results().lines;
