@@ -315,20 +315,6 @@
                     Output adjusted vector field as attribute of the deformed grid.
                 </Documentation>
             </IntVectorProperty>
-            <IntVectorProperty name="OutputResampledGrid" label="Output resampled grid" command="SetOutputResampledGrid" number_of_elements="1" default_values="0">
-                <BooleanDomain name="bool"/>
-                <Hints>
-                    <PropertyWidgetDecorator type="CompositeDecorator">
-                        <Expression type="or">
-                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="OutputDeformedGrid" value="1" />
-                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="OutputVectorField" value="1" />
-                        </Expression>
-                    </PropertyWidgetDecorator>
-                </Hints>
-                <Documentation>
-                    Resample deformed velocities on the original grid.
-                </Documentation>
-            </IntVectorProperty>
             <IntVectorProperty name="RemoveCells" label="Remove elongated cells" command="SetRemoveCells" number_of_elements="1" default_values="0">
                 <BooleanDomain name="bool"/>
                 <Hints>
@@ -351,6 +337,13 @@
                     Factor determining the threshold for cell removal. E.g., a value of two means that cells are discared whose edge length exceeds two times the original cell's diagonal.
                 </Documentation>
             </DoubleVectorProperty>
+
+            <IntVectorProperty name="Quiet" label="No information output" command="SetQuiet" number_of_elements="1" default_values="0">
+                <BooleanDomain name="bool"/>
+                <Documentation>
+                    Restrict console output to error messages, if checked.
+                </Documentation>
+            </IntVectorProperty>
 
             <DoubleVectorProperty information_only="1" name="TimestepValues" repeatable="1">
                 <TimeStepsInformationHelper />
@@ -396,9 +389,12 @@
                 <Property name="OutputBSplineDistance" />
                 <Property name="OutputDeformedGrid" />
                 <Property name="OutputVectorField" />
-                <Property name="OutputResampledGrid" />
                 <Property name="RemoveCells" />
                 <Property name="RemoveCellsScalar" />
+            </PropertyGroup>
+
+            <PropertyGroup label="Logging">
+                <Property name="Quiet" />
             </PropertyGroup>
 
             <OutputPort name="Deformed Features" index="0" id="lines">
@@ -414,11 +410,6 @@
             <OutputPort name="Deformed Grid" index="2" id="grid">
                 <Documentation>
                     Deformed grid.
-                </Documentation>
-            </OutputPort>
-            <OutputPort name="Resampled Grid" index="3" id="resampled">
-                <Documentation>
-                    Grid with resampled deformed velocities.
                 </Documentation>
             </OutputPort>
 
