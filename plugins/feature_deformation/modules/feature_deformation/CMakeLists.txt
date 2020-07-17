@@ -7,6 +7,8 @@ set(sources
   hash.h
   smoothing.h smoothing.cxx
 
+  performance.h performance.cxx
+
   algorithm.h algorithm.inl
 
   algorithm_input.h

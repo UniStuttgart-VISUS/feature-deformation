@@ -338,6 +338,13 @@
                 </Documentation>
             </DoubleVectorProperty>
 
+            <StringVectorProperty name="PerformanceLog" label="File name for performance log" command="SetPerformanceLog" number_of_elements="1" default_values="performance.csv">
+                <FileListDomain name="files"/>
+                <Documentation>
+                    Choose file destination for logging performance.
+                </Documentation>
+            </StringVectorProperty>
+
             <IntVectorProperty name="Quiet" label="No information output" command="SetQuiet" number_of_elements="1" default_values="0">
                 <BooleanDomain name="bool"/>
                 <Documentation>

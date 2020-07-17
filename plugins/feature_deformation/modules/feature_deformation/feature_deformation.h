@@ -115,6 +115,9 @@ public:
     vtkGetMacro(RemoveCellsScalar, double);
     vtkSetMacro(RemoveCellsScalar, double);
 
+    vtkGetStringMacro(PerformanceLog);
+    vtkSetStringMacro(PerformanceLog);
+
     vtkGetMacro(Quiet, int);
     vtkSetMacro(Quiet, int);
 
@@ -181,6 +184,9 @@ private:
     int OutputVectorField;
     int RemoveCells;
     double RemoveCellsScalar;
+
+    /// Performance log
+    char* PerformanceLog;
 
     /// Logging options
     int Quiet;
