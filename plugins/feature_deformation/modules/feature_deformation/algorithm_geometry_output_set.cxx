@@ -13,6 +13,7 @@ void algorithm_geometry_output_set::set_input(const std::shared_ptr<const algori
 {
     this->output_geometry = output_geometry;
     this->output_information = output_information;
+    this->data_time = data_time;
 }
 
 std::uint32_t algorithm_geometry_output_set::calculate_hash() const

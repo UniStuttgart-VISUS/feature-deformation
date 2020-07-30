@@ -12,6 +12,7 @@ void algorithm_line_output_set::set_input(const std::shared_ptr<const algorithm_
 {
     this->output_lines = output_lines;
     this->output_information = output_information;
+    this->data_time = data_time;
 }
 
 std::uint32_t algorithm_line_output_set::calculate_hash() const
