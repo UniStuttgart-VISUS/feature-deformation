@@ -1,6 +1,8 @@
 #include "smoothing.h"
 
 #include "Eigen/Dense"
+#include "Eigen/Sparse"
+#include "Eigen/SparseCholesky"
 
 #include <cmath>
 #include <iostream>
@@ -263,35 +265,69 @@ std::pair<Eigen::Vector3f, Eigen::Vector3f> smoothing::approx_line_pca() const
     }
 }
 
-Eigen::Vector3f smoothing::gaussian_smoothing(const std::vector<Eigen::Vector3f>& points, const std::size_t index, const float weight) const
-{
-    Eigen::Vector3f point = points[index];
-
-    if (index == 0)
-    {
-        point = point + weight * (points[index + 1] - point);
-    }
-    else if (index == points.size() - 1)
-    {
-        point = point + weight * (points[index - 1] - point);
-    }
-    else
-    {
-        point = point + weight * (
-            0.5f * (points[index - 1] - point) +
-            0.5f * (points[index + 1] - point));
-    }
-
-    return point;
-}
-
 std::vector<Eigen::Vector3f> smoothing::gaussian_line_smoothing(const std::size_t offset) const
 {
-    auto deformed_line = this->line;
+    const auto n = this->line.size();
 
-    for (std::size_t i = offset; i < this->line.size() - offset; ++i)
+    // Create weight matrix
+    Eigen::SparseMatrix<float> L(n, n);
+
+    for (std::size_t j = std::max(1uLL, offset); j < n - std::max(1uLL, offset); ++j)
     {
-        deformed_line[i] = gaussian_smoothing(this->line, i, this->lambda);
+        const auto weight_left = 1.0f / (this->line[j] - this->line[j - 1]).norm();
+        const auto weight_right = 1.0f / (this->line[j] - this->line[j - 1]).norm();
+        const auto weight_sum = weight_left + weight_right;
+
+        L.insert(j, j - 1) = weight_left / weight_sum;
+        L.insert(j, j) = -1.0f;
+        L.insert(j, j + 1) = weight_right / weight_sum;
+    }
+
+    if (offset == 0)
+    {
+        L.insert(0, 0) = -1.0f;
+        L.insert(0, 1) = 1.0f;
+        L.insert(n - 1, n - 2) = 1.0f;
+        L.insert(n - 1, n - 1) = -1.0f;
+    }
+
+    // Get vertices
+    Eigen::MatrixXf V(n, 3);
+
+    for (std::size_t i = 0; i < n; ++i)
+    {
+        V.row(i) = this->line[i].transpose();
+    }
+
+    // Compute smoothing
+    Eigen::SparseMatrix<float> I(n, n);
+    I.setIdentity();
+
+#define __explicit_euler
+#ifdef __explicit_euler
+    const auto V_smoothed = (I + this->lambda * L) * V;
+#else
+    Eigen::MatrixXf epsilon(n, n);
+    epsilon.fill(0.000001f);
+
+    const Eigen::MatrixXf A = (I - this->lambda * L) + epsilon;
+
+    const Eigen::HouseholderQR<Eigen::MatrixXf> chol(A);
+
+    const Eigen::VectorXf x1 = chol.solve(V.col(0));
+    const Eigen::VectorXf x2 = chol.solve(V.col(1));
+    const Eigen::VectorXf x3 = chol.solve(V.col(2));
+
+    Eigen::MatrixXf V_smoothed(n, 3);
+    V_smoothed << x1, x2, x3;
+#endif
+
+    // Set output
+    std::vector<Eigen::Vector3f> deformed_line(n);
+
+    for (std::size_t i = 0; i < n; ++i)
+    {
+        deformed_line[i] = V_smoothed.row(i).transpose();
     }
 
     return deformed_line;

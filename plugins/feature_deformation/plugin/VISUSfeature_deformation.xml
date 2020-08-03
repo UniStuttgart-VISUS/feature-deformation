@@ -100,13 +100,13 @@
                     Number of smoothing iterations.
                 </Documentation>
             </IntVectorProperty>
-            <DoubleVectorProperty name="Lambda" label="Smoothing factor" command="SetLambda" number_of_elements="1" default_values="0.7">
-                <DoubleRangeDomain name="lambda_range" min="0.00001" max="1.0" />
+            <DoubleVectorProperty name="Lambda" label="Smoothing factor" command="SetLambda" number_of_elements="1" default_values="20.0">
+                <DoubleRangeDomain name="lambda_range" min="0.00001" max="100.0" />
                 <Hints>
                     <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Method" value="1" />
                 </Hints>
                 <Documentation>
-                    Smoothing factor between 0 (no smoothing) and 1 (strong smoothing).
+                    Smoothing factor, where 0 means no smoothing, and higher values increase smoothing, but also error.
                 </Documentation>
             </DoubleVectorProperty>
 

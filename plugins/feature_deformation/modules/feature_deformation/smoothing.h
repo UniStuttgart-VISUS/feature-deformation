@@ -42,9 +42,6 @@ private:
     /// Use PCA to calculate the endpoints of a straight line with the same arc length
     std::pair<Eigen::Vector3f, Eigen::Vector3f> approx_line_pca() const;
 
-    /// Gaussian smoothing
-    Eigen::Vector3f gaussian_smoothing(const std::vector<Eigen::Vector3f>& points, std::size_t index, float weight) const;
-
     /// Gaussian line smoothing
     std::vector<Eigen::Vector3f> gaussian_line_smoothing(std::size_t offset = 1) const;
 
