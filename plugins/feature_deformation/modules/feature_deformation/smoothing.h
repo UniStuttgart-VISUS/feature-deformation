@@ -12,8 +12,7 @@ public:
     enum class method_t
     {
         direct,
-        smoothing,
-        time_local
+        smoothing
     };
 
     /// Variant
@@ -27,29 +26,28 @@ public:
     smoothing(std::vector<Eigen::Vector3f> line, method_t method, variant_t variant, float lambda, std::size_t num_iterations);
 
     /// Perform one step for the chosen method and variant
-    std::vector<std::pair<Eigen::Vector3f, Eigen::Vector3f>> next_step();
+    void next_step();
 
     /// Check if there is another step available, i.e. the line is not straight yet
     bool has_step() const;
 
     /// Get displacement after all performed steps
-    const std::vector<std::pair<Eigen::Vector3f, Eigen::Vector3f>>& get_displacement() const;
+    const std::vector<std::pair<Eigen::Vector3f, Eigen::Vector3f>> get_displacement() const;
 
 private:
-    /// Resample line, such that each of its points coincides with a time step
-    void resample_line();
-
     /// Use PCA to calculate the endpoints of a straight line with the same arc length
     std::pair<Eigen::Vector3f, Eigen::Vector3f> approx_line_pca() const;
 
     /// Gaussian line smoothing
-    std::vector<Eigen::Vector3f> gaussian_line_smoothing(std::size_t offset = 1) const;
+    void gaussian_line_smoothing(bool fixed);
 
     /// Line for straightening
     std::vector<Eigen::Vector3f> line;
+    Eigen::MatrixXf vertices;
 
-    /// Displacement after all performed steps
-    std::vector<std::pair<Eigen::Vector3f, Eigen::Vector3f>> displacement;
+    /// Matrices for implicit smoothing calculation
+    Eigen::MatrixXf A_fixed;
+    Eigen::MatrixXf A_moving;
 
     /// Tracking of performed steps
     std::size_t num_performed_steps;

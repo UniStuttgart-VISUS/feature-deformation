@@ -2,7 +2,6 @@
 
 #include "Eigen/Dense"
 #include "Eigen/Sparse"
-#include "Eigen/SparseCholesky"
 
 #include <cmath>
 #include <iostream>
@@ -11,40 +10,118 @@
 
 smoothing::smoothing(std::vector<Eigen::Vector3f> line, const method_t method, const variant_t variant, const float lambda, const std::size_t num_iterations) :
     line(line),
+    vertices(line.size(), 3),
     num_performed_steps(0),
     method(method),
-    variant(method == method_t::time_local ? variant_t::fixed_endpoints : variant),
+    variant(variant),
     lambda(lambda),
     num_steps(num_iterations),
     state(state_t::growing),
     max_distance((line.back() - line.front()).norm())
 {
-    // Resample line if necessary
-    if (this->method == method_t::time_local)
+    // Create matrix representing the points of the polyline
+    const auto n = this->line.size();
+
+    for (std::size_t i = 0; i < n; ++i)
     {
-        resample_line();
+        this->vertices.row(i) = this->line[i].transpose();
     }
 
-    // Create initial zero-displacement
-    this->displacement.resize(this->line.size());
+    // Create weight matrix for fixed end points
+    Eigen::SparseMatrix<float> L_fixed(n, n);
 
-    for (std::size_t i = 0; i < this->line.size(); ++i)
+    for (std::size_t j = 1; j < n - 1; ++j)
     {
-        this->displacement[i].first = this->line[i];
-        this->displacement[i].second.setZero();
+        const auto weight_left = 1.0f / (this->line[j] - this->line[j - 1]).norm();
+        const auto weight_right = 1.0f / (this->line[j] - this->line[j - 1]).norm();
+        const auto weight_sum = weight_left + weight_right;
+
+        L_fixed.insert(j, j - 1) = weight_left / weight_sum;
+        L_fixed.insert(j, j) = -1.0f;
+        L_fixed.insert(j, j + 1) = weight_right / weight_sum;
     }
+
+    // Create weight matrix for moving end points
+    auto L_moving = L_fixed;
+
+    L_moving.insert(0, 0) = -1.0f;
+    L_moving.insert(0, 1) = 1.0f;
+    L_moving.insert(n - 1, n - 2) = 1.0f;
+    L_moving.insert(n - 1, n - 1) = -1.0f;
+
+    // Create matrices
+    Eigen::SparseMatrix<float> I(n, n);
+    I.setIdentity();
+
+    Eigen::MatrixXf epsilon(n, n);
+    epsilon.fill(0.000001f);
+
+    this->A_fixed = (I - this->lambda * L_fixed) + epsilon;
+    this->A_moving = (I - this->lambda * L_moving) + epsilon;
 }
 
-std::vector<std::pair<Eigen::Vector3f, Eigen::Vector3f>> smoothing::next_step()
+void smoothing::next_step()
 {
-    // Depending on method and variant, deform line
-    std::vector<Eigen::Vector3f> target_line;
-    std::vector<std::pair<Eigen::Vector3f, Eigen::Vector3f>> displacement;
+    if (this->method == method_t::smoothing)
+    {
+        // Apply smoothing step to the line
+        switch (this->variant)
+        {
+        case variant_t::fixed_endpoints:
+            // Apply Gaussian smoothing step
+            gaussian_line_smoothing(true);
 
+            break;
+        case variant_t::growing:
+            // Apply Gaussian smoothing step, fixing the endpoints only after letting them grow apart
+            if (this->state == state_t::growing)
+            {
+                gaussian_line_smoothing(false);
+
+                const auto distance = (this->vertices.row(0) - this->vertices.row(this->line.size() - 1)).norm();
+
+                if (distance < 0.9 * this->max_distance)
+                {
+                    this->state = state_t::shrinking;
+                }
+
+                this->max_distance = std::max(this->max_distance, distance);
+            }
+            else
+            {
+                gaussian_line_smoothing(true);
+            }
+
+            break;
+        }
+    }
+
+    ++this->num_performed_steps;
+}
+
+bool smoothing::has_step() const
+{
     switch (this->method)
     {
-    case method_t::time_local:
     case method_t::direct:
+        return this->num_performed_steps == 0;
+
+        break;
+    case method_t::smoothing:
+        return this->num_performed_steps < this->num_steps;
+
+        break;
+    }
+
+    return false;
+}
+
+const std::vector<std::pair<Eigen::Vector3f, Eigen::Vector3f>> smoothing::get_displacement() const
+{
+    std::vector<std::pair<Eigen::Vector3f, Eigen::Vector3f>> displacement(this->line.size());
+
+    // Define target line directly and calculate displacement
+    if (this->method == method_t::direct)
     {
         // Compute target line endpoints
         Eigen::Vector3f line_start, line_end;
@@ -65,150 +142,28 @@ std::vector<std::pair<Eigen::Vector3f, Eigen::Vector3f>> smoothing::next_step()
         }
 
         // Uniformly subdivide the target line
-        target_line.resize(this->line.size());
-        target_line.front() = line_start;
-        target_line.back() = line_end;
+        const auto direction = (line_end - line_start) / static_cast<float>(this->line.size() - 1);
 
-        const auto direction = (target_line.back() - target_line.front()) / static_cast<float>(target_line.size() - 1);
-
-        for (std::size_t i = 1; i < target_line.size() - 1; ++i)
+        for (std::size_t i = 0; i < this->line.size(); ++i)
         {
-            target_line[i] = target_line.front() + i * direction;
+            const auto target = line_start + i * direction;
+
+            displacement[i].first = this->line[i];
+            displacement[i].second = target - this->line[i];
         }
     }
 
-        break;
-    case method_t::smoothing:
-        // Apply smoothing step to the line
-        switch (this->variant)
+    // Extract displacement from previous smoothing
+    else
+    {
+        for (std::size_t i = 0; i < this->line.size(); ++i)
         {
-        case variant_t::fixed_endpoints:
-            // Apply Gaussian smoothing step
-            target_line = gaussian_line_smoothing();
-
-            break;
-        case variant_t::growing:
-            // Apply Gaussian smoothing step, fixing the endpoints only after letting them grow apart
-            if (this->state == state_t::growing)
-            {
-                auto new_line = gaussian_line_smoothing(0);
-
-                const auto distance = (new_line.front() - new_line.back()).norm();
-
-                if (distance < 0.9 * this->max_distance)
-                {
-                    this->state = state_t::shrinking;
-                }
-
-                this->max_distance = std::max(this->max_distance, distance);
-
-                target_line = new_line;
-            }
-            else
-            {
-                target_line = gaussian_line_smoothing();
-            }
-
-            break;
+            displacement[i].first = this->line[i];
+            displacement[i].second = this->vertices.row(i).transpose() - this->line[i];
         }
-
-        break;
     }
 
-    // Calculate displacement
-    displacement.resize(target_line.size());
-
-    for (std::size_t i = 0; i < target_line.size(); ++i)
-    {
-        displacement[i].first = this->line[i];
-        displacement[i].second = target_line[i] - this->line[i];
-    }
-
-    // Accumulate displacements
-    for (std::size_t i = 0; i < this->displacement.size(); ++i)
-    {
-        // Only add displacement vector (.second), retaining the original position (.first)
-        this->displacement[i].second += displacement[i].second;
-    }
-
-    // Prepare for the next iteration
-    std::swap(this->line, target_line);
-
-    ++this->num_performed_steps;
-
-    // Return displacement calculated for this step
     return displacement;
-}
-
-bool smoothing::has_step() const
-{
-    switch (this->method)
-    {
-    case method_t::direct:
-    case method_t::time_local:
-        return this->num_performed_steps == 0;
-
-        break;
-    case method_t::smoothing:
-        return this->num_performed_steps < this->num_steps;
-
-        break;
-    }
-
-    return false;
-}
-
-const std::vector<std::pair<Eigen::Vector3f, Eigen::Vector3f>>& smoothing::get_displacement() const
-{
-    return this->displacement;
-}
-
-void smoothing::resample_line()
-{
-    // Get line starts and ends
-    const auto inverse = this->line.front()[2] > this->line.back()[2];
-
-    const auto line_start = this->line.front();
-    const auto line_target = this->line.back();
-    const auto line_direction = (line_target - line_start) / (this->line.size() - 1);
-
-    // Calculate sample z-positions
-    std::vector<float> time_points(this->line.size());
-
-    for (std::size_t i = 0; i < this->line.size(); ++i)
-    {
-        time_points[i] = line_start[2] + i * line_direction[2];
-    }
-
-    // (Re-)sample original line
-    std::vector<Eigen::Vector3f> resampled_line = this->line;
-
-    std::size_t time_index = 1;
-
-    for (std::size_t i = 0; i < this->line.size() - 1; ++i)
-    {
-        // Does the first line segment's point coincide with a time step?
-        if (i != 0 && time_points[time_index] == this->line[i][2])
-        {
-            resampled_line[time_index++] = this->line[i];
-        }
-
-        // Does a time step lie within the segment? -> Interpolate
-        auto between = time_points[time_index] > this->line[i][2] && time_points[time_index] < this->line[i + 1][2];
-        auto between_inverse = time_points[time_index] < this->line[i][2] && time_points[time_index] > this->line[i + 1][2];
-
-        while (time_index < (this->line.size() - 1) && ((between && !inverse) || (between_inverse && inverse)))
-        {
-            const auto lambda = (time_points[time_index] - this->line[i][2]) / (this->line[i + 1][2] - this->line[i][2]);
-            resampled_line[time_index++] = this->line[i] + lambda * (this->line[i + 1] - this->line[i]);
-
-            between = time_points[time_index] > this->line[i][2] && time_points[time_index] < this->line[i + 1][2];
-            between_inverse = time_points[time_index] < this->line[i][2] && time_points[time_index] > this->line[i + 1][2];
-        }
-    }
-
-    // Set resampled line as input line
-    std::swap(this->line, resampled_line);
 }
 
 std::pair<Eigen::Vector3f, Eigen::Vector3f> smoothing::approx_line_pca() const
@@ -265,70 +220,13 @@ std::pair<Eigen::Vector3f, Eigen::Vector3f> smoothing::approx_line_pca() const
     }
 }
 
-std::vector<Eigen::Vector3f> smoothing::gaussian_line_smoothing(const std::size_t offset) const
+void smoothing::gaussian_line_smoothing(const bool fixed)
 {
-    const auto n = this->line.size();
+    const Eigen::HouseholderQR<Eigen::MatrixXf> solver(fixed ? this->A_fixed : this->A_moving);
 
-    // Create weight matrix
-    Eigen::SparseMatrix<float> L(n, n);
+    const Eigen::VectorXf x1 = solver.solve(this->vertices.col(0));
+    const Eigen::VectorXf x2 = solver.solve(this->vertices.col(1));
+    const Eigen::VectorXf x3 = solver.solve(this->vertices.col(2));
 
-    for (std::size_t j = std::max(1uLL, offset); j < n - std::max(1uLL, offset); ++j)
-    {
-        const auto weight_left = 1.0f / (this->line[j] - this->line[j - 1]).norm();
-        const auto weight_right = 1.0f / (this->line[j] - this->line[j - 1]).norm();
-        const auto weight_sum = weight_left + weight_right;
-
-        L.insert(j, j - 1) = weight_left / weight_sum;
-        L.insert(j, j) = -1.0f;
-        L.insert(j, j + 1) = weight_right / weight_sum;
-    }
-
-    if (offset == 0)
-    {
-        L.insert(0, 0) = -1.0f;
-        L.insert(0, 1) = 1.0f;
-        L.insert(n - 1, n - 2) = 1.0f;
-        L.insert(n - 1, n - 1) = -1.0f;
-    }
-
-    // Get vertices
-    Eigen::MatrixXf V(n, 3);
-
-    for (std::size_t i = 0; i < n; ++i)
-    {
-        V.row(i) = this->line[i].transpose();
-    }
-
-    // Compute smoothing
-    Eigen::SparseMatrix<float> I(n, n);
-    I.setIdentity();
-
-#define __explicit_euler
-#ifdef __explicit_euler
-    const auto V_smoothed = (I + this->lambda * L) * V;
-#else
-    Eigen::MatrixXf epsilon(n, n);
-    epsilon.fill(0.000001f);
-
-    const Eigen::MatrixXf A = (I - this->lambda * L) + epsilon;
-
-    const Eigen::HouseholderQR<Eigen::MatrixXf> chol(A);
-
-    const Eigen::VectorXf x1 = chol.solve(V.col(0));
-    const Eigen::VectorXf x2 = chol.solve(V.col(1));
-    const Eigen::VectorXf x3 = chol.solve(V.col(2));
-
-    Eigen::MatrixXf V_smoothed(n, 3);
-    V_smoothed << x1, x2, x3;
-#endif
-
-    // Set output
-    std::vector<Eigen::Vector3f> deformed_line(n);
-
-    for (std::size_t i = 0; i < n; ++i)
-    {
-        deformed_line[i] = V_smoothed.row(i).transpose();
-    }
-
-    return deformed_line;
+    this->vertices << x1, x2, x3;
 }
