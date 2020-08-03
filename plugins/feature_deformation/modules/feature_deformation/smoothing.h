@@ -23,7 +23,7 @@ public:
     };
 
     /// Set method and variant, as well as parameters for Gaussian smoothing
-    smoothing(std::vector<Eigen::Vector3f> line, method_t method, variant_t variant, float lambda, std::size_t num_iterations);
+    smoothing(std::vector<Eigen::Vector3f> line, method_t method, variant_t variant, float lambda);
 
     /// Perform one step for the chosen method and variant
     void next_step();
@@ -51,7 +51,6 @@ private:
 
     /// Tracking of performed steps
     std::size_t num_performed_steps;
-    std::size_t num_steps;
 
     enum class state_t
     {

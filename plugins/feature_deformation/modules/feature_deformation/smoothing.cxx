@@ -8,14 +8,13 @@
 #include <utility>
 #include <vector>
 
-smoothing::smoothing(std::vector<Eigen::Vector3f> line, const method_t method, const variant_t variant, const float lambda, const std::size_t num_iterations) :
+smoothing::smoothing(std::vector<Eigen::Vector3f> line, const method_t method, const variant_t variant, const float lambda) :
     line(line),
     vertices(line.size(), 3),
     num_performed_steps(0),
     method(method),
     variant(variant),
     lambda(lambda),
-    num_steps(num_iterations),
     state(state_t::growing),
     max_distance((line.back() - line.front()).norm())
 {
@@ -108,7 +107,7 @@ bool smoothing::has_step() const
 
         break;
     case method_t::smoothing:
-        return this->num_performed_steps < this->num_steps;
+        return true;
 
         break;
     }

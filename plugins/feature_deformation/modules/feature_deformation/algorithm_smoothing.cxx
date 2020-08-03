@@ -7,6 +7,10 @@
 
 #include <iostream>
 
+algorithm_smoothing::algorithm_smoothing() : smoother(nullptr), smoother_hash(-1)
+{
+}
+
 void algorithm_smoothing::set_input(const std::shared_ptr<const algorithm_line_input> line_input,
     const smoothing::method_t method, const smoothing::variant_t variant, const float lambda, const int num_iterations)
 {
@@ -31,15 +35,26 @@ bool algorithm_smoothing::run_computation()
 {
     if (!this->is_quiet()) std::cout << "Smoothing line" << std::endl;
 
-    // Smooth line
-    smoothing smoother(this->line_input->get_results().selected_line, this->method, this->variant, this->lambda, this->num_iterations);
+    // Create smoother if necessary
+    const auto new_smoother_hash = jenkins_hash(this->line_input->get_hash(), this->method, this->variant, this->lambda);
 
-    while (smoother.has_step())
+    if (this->smoother == nullptr || this->smoother_hash != new_smoother_hash || this->num_smoothing_steps > this->num_iterations)
     {
-        smoother.next_step();
+        this->smoother = std::make_unique<smoothing>(this->line_input->get_results().selected_line, this->method, this->variant, this->lambda);
+
+        this->smoother_hash = new_smoother_hash;
+        this->num_smoothing_steps = 0;
     }
 
-    const auto smoothing_results = smoother.get_displacement();
+    // Smooth line
+    while (this->smoother->has_step() && this->num_smoothing_steps < this->num_iterations)
+    {
+        this->smoother->next_step();
+
+        ++this->num_smoothing_steps;
+    }
+
+    const auto smoothing_results = this->smoother->get_displacement();
 
     // Convert results
     this->results.positions.resize(smoothing_results.size());

@@ -14,7 +14,7 @@ class algorithm_smoothing : public algorithm<std::shared_ptr<const algorithm_lin
 {
 public:
     /// Default constructor
-    algorithm_smoothing() = default;
+    algorithm_smoothing();
 
     /// Get results
     struct results_t
@@ -56,4 +56,9 @@ private:
 
     /// Results
     results_t results;
+
+    /// Smoother
+    std::unique_ptr<smoothing> smoother;
+    uint32_t smoother_hash;
+    std::size_t num_smoothing_steps;
 };
