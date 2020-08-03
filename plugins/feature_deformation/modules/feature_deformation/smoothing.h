@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Eigen/Dense"
+#include "Eigen/Sparse"
 
 #include <utility>
 #include <vector>
@@ -46,8 +47,8 @@ private:
     Eigen::MatrixXf vertices;
 
     /// Matrices for implicit smoothing calculation
-    Eigen::MatrixXf A_fixed;
-    Eigen::MatrixXf A_moving;
+    Eigen::SparseMatrix<float> A_fixed;
+    Eigen::SparseMatrix<float> A_moving;
 
     /// Tracking of performed steps
     std::size_t num_performed_steps;

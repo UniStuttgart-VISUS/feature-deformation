@@ -1,6 +1,7 @@
 #include "smoothing.h"
 
 #include "Eigen/Dense"
+#include "Eigen/IterativeLinearSolvers"
 #include "Eigen/Sparse"
 
 #include <cmath>
@@ -52,11 +53,8 @@ smoothing::smoothing(std::vector<Eigen::Vector3f> line, const method_t method, c
     Eigen::SparseMatrix<float> I(n, n);
     I.setIdentity();
 
-    Eigen::MatrixXf epsilon(n, n);
-    epsilon.fill(0.000001f);
-
-    this->A_fixed = (I - this->lambda * L_fixed) + epsilon;
-    this->A_moving = (I - this->lambda * L_moving) + epsilon;
+    this->A_fixed = (I - this->lambda * L_fixed);
+    this->A_moving = (I - this->lambda * L_moving);
 }
 
 void smoothing::next_step()
@@ -221,7 +219,7 @@ std::pair<Eigen::Vector3f, Eigen::Vector3f> smoothing::approx_line_pca() const
 
 void smoothing::gaussian_line_smoothing(const bool fixed)
 {
-    const Eigen::HouseholderQR<Eigen::MatrixXf> solver(fixed ? this->A_fixed : this->A_moving);
+    const Eigen::BiCGSTAB<Eigen::SparseMatrix<float>, Eigen::IncompleteLUT<float>> solver(fixed ? this->A_fixed : this->A_moving);
 
     const Eigen::VectorXf x1 = solver.solve(this->vertices.col(0));
     const Eigen::VectorXf x2 = solver.solve(this->vertices.col(1));
