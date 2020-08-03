@@ -253,7 +253,12 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
     this->alg_geometry_output_set->be_quiet(quiet);
 
     // Create performance measure
-    __initialize_file_peformance_measure(this->PerformanceLog, std::ios_base::app | std::ios_base::out);
+    __init_perf_file(this->PerformanceLog, std::ios_base::app | std::ios_base::out, performance::style::csv);
+
+    if (!quiet)
+    {
+        __add_perf(std::cout, performance::style::colored_message);
+    }
 
     // Output info
     if (!quiet) std::cout << "------------------------------------------------------" << std::endl;
@@ -263,7 +268,7 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
     const auto time = output_vector->GetInformationObject(0)->Get(vtkStreamingDemandDrivenPipeline::UPDATE_TIME_STEP());
 
     // Get parameters
-    __next_performance_measure("process parameters", quiet);
+    __next_perf_measure("process parameters");
 
     process_parameters(time);
 
@@ -273,7 +278,7 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
     }
 
     // Get input
-    __next_performance_measure("get feature lines input", quiet);
+    __next_perf_measure("get feature lines input");
 
     if (!this->alg_line_input->run(vtkPolyData::SafeDownCast(input_vector[1]->GetInformationObject(0)->Get(vtkDataObject::DATA_OBJECT())), this->parameters.selected_line_id))
     {
@@ -283,7 +288,7 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
     if (input_vector[0] != nullptr && input_vector[0]->GetInformationObject(0) != nullptr &&
         (this->parameters.output_deformed_grid || this->parameters.compute_gauss))
     {
-        __next_performance_measure("get grid input", quiet);
+        __next_perf_measure("get grid input");
 
         this->alg_grid_input->run(vtkImageData::SafeDownCast(input_vector[0]->GetInformationObject(0)->Get(vtkDataObject::DATA_OBJECT())));
 
@@ -293,7 +298,7 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
 
             if (velocity_array != nullptr)
             {
-                __next_performance_measure("get vector field input", quiet);
+                __next_perf_measure("get vector field input");
 
                 this->alg_vectorfield_input->run(this->alg_grid_input, velocity_array->GetName());
             }
@@ -302,7 +307,7 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
 
     if (input_vector[2] != nullptr)
     {
-        __next_performance_measure("get geometry input", quiet);
+        __next_perf_measure("get geometry input");
 
         std::vector<vtkPointSet*> geometry_sets;
 
@@ -320,7 +325,7 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
     if (this->parameters.compute_gauss && (this->parameters.displacement_method == cuda::displacement::method_t::b_spline || 
         this->parameters.displacement_method == cuda::displacement::method_t::b_spline_joints))
     {
-        __next_performance_measure("pre-compute gauss parameter", quiet);
+        __next_perf_measure("pre-compute gauss parameter");
 
         this->alg_compute_gauss->run(this->alg_line_input, this->alg_grid_input, this->parameters.smoothing_method,
             this->parameters.variant, this->parameters.lambda, this->parameters.max_num_iterations, this->parameters.displacement_method,
@@ -333,7 +338,7 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
 
     if (this->parameters.compute_tearing && this->parameters.remove_cells)
     {
-        __next_performance_measure("pre-compute tearing", quiet);
+        __next_perf_measure("pre-compute tearing");
 
         this->alg_compute_tearing->run(this->alg_line_input, this->alg_grid_input, this->parameters.smoothing_method,
             this->parameters.variant, this->parameters.lambda, this->parameters.max_num_iterations, this->parameters.displacement_method,
@@ -341,7 +346,7 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
     }
 
     // Smooth line
-    __next_performance_measure("smooth feature lines", quiet);
+    __next_perf_measure("smooth feature lines");
 
     if (!this->alg_smoothing->run(this->alg_line_input, this->parameters.smoothing_method, this->parameters.variant, this->parameters.lambda, this->parameters.num_iterations))
     {
@@ -370,16 +375,16 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
         {
             if (!quiet) std::cout << "Displacing " << std::get<0>(displacement_input) << " points..." << std::endl;
 
-            __next_performance_measure("upload points to GPU", quiet);
+            __next_perf_measure("upload points to GPU");
 
             std::get<2>(displacement_input)->run(std::get<1>(displacement_input));
 
-            __next_performance_measure("pre-compute on GPU", quiet);
+            __next_perf_measure("pre-compute on GPU");
 
             std::get<3>(displacement_input)->run(std::get<2>(displacement_input), this->alg_smoothing, this->alg_line_input,
                 this->parameters.displacement_method, this->parameters.displacement_parameters, this->parameters.bspline_parameters);
 
-            __next_performance_measure("displace points on GPU", quiet);
+            __next_perf_measure("displace points on GPU");
 
             std::get<4>(displacement_input)->run(std::get<2>(displacement_input), this->alg_smoothing,
                 this->parameters.displacement_method, this->parameters.displacement_parameters);
@@ -389,53 +394,53 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
     if (!quiet) std::cout << std::endl;
 
     // Output lines
-    __next_performance_measure("create output feature lines", quiet);
+    __next_perf_measure("create output feature lines");
 
     this->alg_line_output_creation->run(this->alg_line_input);
 
-    __next_performance_measure("update output feature lines", quiet);
+    __next_perf_measure("update output feature lines");
 
     this->alg_line_output_update->run(this->alg_line_output_creation, this->alg_displacement_computation_lines,
         this->parameters.displacement_method, this->parameters.output_bspline_distance);
 
-    __next_performance_measure("output feature lines", quiet);
+    __next_perf_measure("output feature lines");
 
     this->alg_line_output_set->run(this->alg_line_output_update, output_vector->GetInformationObject(0), time);
 
     // Output geometry
-    __next_performance_measure("create output geometry", quiet);
+    __next_perf_measure("create output geometry");
 
     this->alg_geometry_output_creation->run(this->alg_geometry_input);
 
-    __next_performance_measure("update output geometry", quiet);
+    __next_perf_measure("update output geometry");
 
     this->alg_geometry_output_update->run(this->alg_geometry_output_creation, this->alg_displacement_computation_geometry,
         this->parameters.displacement_method, this->parameters.output_bspline_distance);
 
-    __next_performance_measure("output geometry", quiet);
+    __next_perf_measure("output geometry");
 
     this->alg_geometry_output_set->run(this->alg_geometry_output_update, output_vector->GetInformationObject(1), time);
 
     // Output grid
     if (this->parameters.output_deformed_grid)
     {
-        __next_performance_measure("create output grid", quiet);
+        __next_perf_measure("create output grid");
 
         this->alg_grid_output_creation->run(this->alg_grid_input, this->parameters.remove_cells);
 
-        __next_performance_measure("update output grid", quiet);
+        __next_perf_measure("update output grid");
 
         this->alg_grid_output_update->run(this->alg_grid_input, this->alg_grid_output_creation, this->alg_displacement_computation_grid,
             this->alg_compute_tearing, this->parameters.remove_cells, this->parameters.remove_cells_scalar);
 
         if (this->parameters.output_vector_field)
         {
-            __next_performance_measure("output vector field", quiet);
+            __next_perf_measure("output vector field");
 
             this->alg_grid_output_vectorfield->run(this->alg_grid_input, this->alg_grid_output_update, this->alg_vectorfield_input);
         }
 
-        __next_performance_measure("output grid", quiet);
+        __next_perf_measure("output grid");
 
         this->alg_grid_output_set->run(this->alg_grid_output_update, output_vector->GetInformationObject(2), time);
     }

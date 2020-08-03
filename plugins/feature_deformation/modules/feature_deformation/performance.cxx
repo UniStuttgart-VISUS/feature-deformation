@@ -4,27 +4,55 @@
 #include <fstream>
 #include <iostream>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <tuple>
 
-performance::performance(std::ostream* const output_stream) :
-    output_stream(output_stream), own(false), active(false), start_time(clock_t::now()), label("")
+performance::ostream_ptr_t::ostream_ptr_t(std::ostream* pointer)
 {
+    this->ostream_ptr = pointer;
+    this->ostream_smart_ptr = nullptr;
 }
 
-performance::performance(const std::string& file_name, int file_options) :
-    output_stream(new std::ofstream(file_name, file_options)), own(true), active(false), start_time(clock_t::now()), label("")
+performance::ostream_ptr_t::ostream_ptr_t(std::unique_ptr<std::ostream>&& pointer)
 {
+    this->ostream_ptr = pointer.get();
+    this->ostream_smart_ptr = std::move(pointer);
+}
+
+performance::ostream_ptr_t::operator std::ostream* () const
+{
+    return this->ostream_ptr;
+}
+
+performance::performance(std::ostream* const output_stream, const style output_style) : active(false), start_time(clock_t::now()), label("")
+{
+    add_output(output_stream, output_style);
+}
+
+performance::performance(const std::string& file_name, int file_options, const style output_style) : active(false), start_time(clock_t::now()), label("")
+{
+    add_output(file_name, file_options, output_style);
 }
 
 performance::~performance() noexcept
 {
     stop();
+}
 
-    if (own && this->output_stream != nullptr)
+void performance::add_output(std::ostream* output_stream, const style output_style)
+{
+    if (output_stream == nullptr)
     {
-        delete this->output_stream;
+        throw std::runtime_error("Performance log output stream must not be null.");
     }
+
+    this->output_streams.push_back(std::make_pair(ostream_ptr_t(output_stream), output_style));
+}
+
+void performance::add_output(const std::string& file_name, int file_options, const style output_style)
+{
+    this->output_streams.push_back(std::make_pair(ostream_ptr_t(std::make_unique<std::ofstream>(file_name, file_options)), output_style));
 }
 
 void performance::start(std::string label)
@@ -35,13 +63,13 @@ void performance::start(std::string label)
     this->active = true;
 }
 
-std::tuple<performance::duration_t, std::string> performance::next_interval(std::string label)
+void performance::next_interval(std::string label)
 {
     if (!this->active)
     {
         start(label);
 
-        return std::make_tuple(performance::duration_t::zero(), "");
+        return;
     }
 
     // Calculate duration
@@ -49,13 +77,8 @@ std::tuple<performance::duration_t, std::string> performance::next_interval(std:
 
     const auto duration = std::chrono::duration_cast<duration_t>(stop_time - this->start_time);
 
-    if (this->output_stream != nullptr)
-    {
-        (*this->output_stream) << this->label << "," << duration.count() << "," << this->unit() << std::endl;
-    }
-
-    // Return message and duration
-    std::stringstream ss_1, ss_2, ss_3, ss_4;
+    // Create output message
+    std::stringstream ss_1, ss_2, ss_3;
     ss_1 << "Performance measure for '" << this->label << "':";
 
     ss_2.width(55);
@@ -66,26 +89,54 @@ std::tuple<performance::duration_t, std::string> performance::next_interval(std:
     ss_3.fill(' ');
     ss_3 << std::right << duration.count() << " " << this->unit();
 
-    ss_4 << "\x1B[36m" << ss_2.str() << ss_3.str() << "\033[0m";
+    // Output CSV-style or message
+    for (auto& output_stream : this->output_streams)
+    {
+        if (std::get<0>(output_stream) != nullptr)
+        {
+            auto& output = *std::get<0>(output_stream);
+            const auto output_style = std::get<1>(output_stream);
+
+            if (output_style == style::csv)
+            {
+                output << this->label << "," << duration.count() << "," << this->unit() << std::endl;
+            }
+            else if (output_style == style::message)
+            {
+                output << ss_2.str() << ss_3.str() << std::endl;
+            }
+            else if (output_style == style::colored_message)
+            {
+                output << "\x1B[36m" << ss_2.str() << ss_3.str() << "\033[0m" << std::endl;
+            }
+        }
+    }
 
     // Start new measurement
     this->start_time = stop_time;
     this->label = label;
-
-    return std::make_tuple(duration, ss_4.str());
 }
 
-std::tuple<performance::duration_t, std::string> performance::stop()
+void performance::stop()
 {
     if (this->active)
     {
-        const auto result = next_interval("");
-        (*this->output_stream) << std::endl;
+        next_interval("");
+
+        for (auto& output_stream : this->output_streams)
+        {
+            if (std::get<0>(output_stream) != nullptr)
+            {
+                auto& output = *std::get<0>(output_stream);
+                const auto output_style = std::get<1>(output_stream);
+
+                if (output_style == style::csv)
+                {
+                    output << std::endl;
+                }
+            }
+        }
 
         this->active = false;
-
-        return result;
     }
-
-    return std::make_tuple(performance::duration_t::zero(), "");
 }
