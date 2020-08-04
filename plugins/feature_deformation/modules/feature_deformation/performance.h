@@ -14,6 +14,7 @@ public:
     using time_point_t = std::chrono::time_point<clock_t>;
     using duration_t = std::chrono::milliseconds;
 
+    /// Possible output styles
     enum class style
     {
         csv, message, colored_message
@@ -75,9 +76,12 @@ private:
     std::string label;
 };
 
-#ifdef __no_performance_measure
-#define __initialize_peformance_measure(output_stream)
-#define __next_performance_measure(label, quiet)
+#ifdef __disable_performance_measure
+#define __init_perf(output_stream, output_style)
+#define __init_perf_file(file_name, file_options, output_style)
+#define __add_perf(output_stream, output_style)
+#define __add_perf_file(file_name, file_options, output_style)
+#define __next_perf_measure(label)
 #else
 #define __init_perf(output_stream, output_style) performance _std_measure(&output_stream, output_style);
 #define __init_perf_file(file_name, file_options, output_style) performance _std_measure(file_name, file_options, output_style);

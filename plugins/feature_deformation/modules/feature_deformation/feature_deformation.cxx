@@ -22,7 +22,7 @@
 #include "algorithm_vectorfield_input.h"
 
 #include "displacement.h"
-//#define __no_performance_measure
+//#define __disable_performance_measure
 #include "performance.h"
 #include "smoothing.h"
 
