@@ -483,7 +483,7 @@ void feature_deformation::process_parameters(double time)
             {
                 this->parameters.num_iterations = 0;
             }
-            else if (time < 1.0)
+            else
             {
                 this->parameters.num_iterations = std::pow(this->parameters.num_iterations + 1, time) - 1;
             }
