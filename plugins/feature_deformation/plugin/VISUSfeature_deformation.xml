@@ -110,10 +110,11 @@
                 </Documentation>
             </DoubleVectorProperty>
 
-            <IntVectorProperty name="Interpolator" label="Interpolator" command="SetInterpolator" number_of_elements="1" default_values="1">
+            <IntVectorProperty name="Interpolator" label="Interpolator" command="SetInterpolator" number_of_elements="1" default_values="2">
                 <EnumerationDomain name="enum">
                     <Entry value="0" text="Linear"/>
                     <Entry value="1" text="Exponential"/>
+                    <Entry value="2" text="First linear, then exponential"/>
                 </EnumerationDomain>
                 <Hints>
                     <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Method" value="1" />
@@ -122,6 +123,20 @@
                     Mapping of real time onto the smoothing iteration step. As the smoothing has a larger effect in the beginning and a very low effect in the end, exponential mapping can be used.
                 </Documentation>
             </IntVectorProperty>
+            <DoubleVectorProperty name="InterpolatorThreshold" label="Threshold linear to exponential" command="SetInterpolatorThreshold" number_of_elements="1" default_values="0.9">
+                <DoubleRangeDomain name="time_range" min="0.0" max="1.0" />
+                <Hints>
+                    <PropertyWidgetDecorator type="CompositeDecorator">
+                        <Expression type="and">
+                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Method" value="1" />
+                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Interpolator" value="2" />
+                        </Expression>
+                    </PropertyWidgetDecorator>
+                </Hints>
+                <Documentation>
+                    Duration of the animation when triggered using the python script. Does not have any effect otherwise.
+                </Documentation>
+            </DoubleVectorProperty>
             <IntVectorProperty name="Duration" label="Duration (s)" command="SetDuration" number_of_elements="1" default_values="5">
                 <Hints>
                     <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Method" value="1" />
@@ -365,6 +380,7 @@
 
             <PropertyGroup label="Animation">
                 <Property name="Interpolator" />
+                <Property name="InterpolatorThreshold" />
                 <Property name="Duration" />
                 <Property name="Inverse" />
 

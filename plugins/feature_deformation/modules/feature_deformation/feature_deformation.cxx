@@ -476,7 +476,7 @@ void feature_deformation::process_parameters(double time)
             // Linear
             this->parameters.num_iterations *= std::min(time, 1.0);
         }
-        else
+        else if (this->Interpolator == 1)
         {
             // Exponential
             if (time == 0.0)
@@ -485,7 +485,26 @@ void feature_deformation::process_parameters(double time)
             }
             else if (time < 1.0)
             {
-                this->parameters.num_iterations = std::pow(2.0, time * std::log2(this->parameters.num_iterations + 1)) - 1;
+                this->parameters.num_iterations = std::pow(this->parameters.num_iterations + 1, time) - 1;
+            }
+        }
+        else
+        {
+            // First linear, then exponential
+            const auto connection_time = this->InterpolatorThreshold;
+            const auto connection_value = std::pow(this->parameters.num_iterations + 1, connection_time) - 1;
+
+            if (time == 0.0)
+            {
+                this->parameters.num_iterations = 0;
+            }
+            else if (time <= connection_time)
+            {
+                this->parameters.num_iterations = std::min((time / connection_time) * connection_value, connection_value);
+            }
+            else
+            {
+                this->parameters.num_iterations = std::pow(this->parameters.num_iterations + 1, time) - 1;
             }
         }
     }
