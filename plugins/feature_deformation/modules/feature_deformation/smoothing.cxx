@@ -33,7 +33,7 @@ smoothing::smoothing(std::vector<Eigen::Vector3f> line, const method_t method, c
     for (std::size_t j = 1; j < n - 1; ++j)
     {
         const auto weight_left = 1.0f / (this->line[j] - this->line[j - 1]).norm();
-        const auto weight_right = 1.0f / (this->line[j] - this->line[j - 1]).norm();
+        const auto weight_right = 1.0f / (this->line[j + 1] - this->line[j]).norm();
         const auto weight_sum = weight_left + weight_right;
 
         L_fixed.insert(j, j - 1) = weight_left / weight_sum;
