@@ -507,6 +507,11 @@ void feature_deformation::process_parameters(double time)
                 this->parameters.num_iterations = std::pow(this->parameters.num_iterations + 1, time) - 1;
             }
         }
+
+        if (this->InterpolateSmoothingFactor)
+        {
+            this->parameters.lambda *= std::min(1.0, std::max(0.1, time));
+        }
     }
 
     // Displacement parameters

@@ -134,7 +134,7 @@
                     </PropertyWidgetDecorator>
                 </Hints>
                 <Documentation>
-                    Duration of the animation when triggered using the python script. Does not have any effect otherwise.
+                    Time in [0,1] at which the interpolator switches from linear to exponential interpolation.
                 </Documentation>
             </DoubleVectorProperty>
             <IntVectorProperty name="Duration" label="Duration (s)" command="SetDuration" number_of_elements="1" default_values="5">
@@ -143,6 +143,15 @@
                 </Hints>
                 <Documentation>
                     Duration of the animation when triggered using the python script. Does not have any effect otherwise.
+                </Documentation>
+            </IntVectorProperty>
+            <IntVectorProperty name="InterpolateSmoothingFactor" label="Interpolate smoothing factor" command="SetInterpolateSmoothingFactor" number_of_elements="1" default_values="0">
+                <BooleanDomain name="bool"/>
+                <Hints>
+                    <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Method" value="1" />
+                </Hints>
+                <Documentation>
+                    Linearly interpolate the smoothing factor for smaller steps in the beginning.
                 </Documentation>
             </IntVectorProperty>
             <IntVectorProperty name="Inverse" label="Inverse" command="SetInverse" number_of_elements="1" default_values="0">
@@ -382,6 +391,7 @@
                 <Property name="Interpolator" />
                 <Property name="InterpolatorThreshold" />
                 <Property name="Duration" />
+                <Property name="InterpolateSmoothingFactor" />
                 <Property name="Inverse" />
 
                 <Hints>

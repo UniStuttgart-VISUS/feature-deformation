@@ -61,6 +61,9 @@ public:
     vtkGetMacro(Duration, int);
     vtkSetMacro(Duration, int);
 
+    vtkGetMacro(InterpolateSmoothingFactor, int);
+    vtkSetMacro(InterpolateSmoothingFactor, int);
+
     vtkGetMacro(Inverse, int);
     vtkSetMacro(Inverse, int);
 
@@ -163,6 +166,7 @@ private:
     int Interpolator;
     double InterpolatorThreshold;
     int Duration;
+    int InterpolateSmoothingFactor;
     int Inverse;
 
     /// Weighting function for the displacement and corresponding parameters
