@@ -9,8 +9,6 @@
 #include <utility>
 #include <vector>
 
-//#define __recompute_every_step
-
 smoothing::smoothing(std::vector<Eigen::Vector3f> line, const method_t method, const variant_t variant, const float lambda) :
     line(line),
     vertices(line.size(), 3),
@@ -29,7 +27,6 @@ smoothing::smoothing(std::vector<Eigen::Vector3f> line, const method_t method, c
         this->vertices.row(i) = this->line[i].transpose();
     }
 
-#ifndef __recompute_every_step
     // Create weight matrix for fixed end points
     Eigen::SparseMatrix<float> L_fixed(n, n);
 
@@ -58,44 +55,10 @@ smoothing::smoothing(std::vector<Eigen::Vector3f> line, const method_t method, c
 
     this->A_fixed = (I - this->lambda * L_fixed);
     this->A_moving = (I - this->lambda * L_moving);
-#endif
 }
 
 void smoothing::next_step()
 {
-#ifdef __recompute_every_step
-    const auto n = this->line.size();
-
-    // Create weight matrix for fixed end points
-    Eigen::SparseMatrix<float> L_fixed(n, n);
-
-    for (std::size_t j = 1; j < n - 1; ++j)
-    {
-        const auto weight_left = 1.0f / (this->vertices.row(j) - this->vertices.row(j - 1)).norm();
-        const auto weight_right = 1.0f / (this->vertices.row(j + 1) - this->vertices.row(j)).norm();
-        const auto weight_sum = weight_left + weight_right;
-
-        L_fixed.insert(j, j - 1) = weight_left / weight_sum;
-        L_fixed.insert(j, j) = -1.0f;
-        L_fixed.insert(j, j + 1) = weight_right / weight_sum;
-    }
-
-    // Create weight matrix for moving end points
-    auto L_moving = L_fixed;
-
-    L_moving.insert(0, 0) = -1.0f;
-    L_moving.insert(0, 1) = 1.0f;
-    L_moving.insert(n - 1, n - 2) = 1.0f;
-    L_moving.insert(n - 1, n - 1) = -1.0f;
-
-    // Create matrices
-    Eigen::SparseMatrix<float> I(n, n);
-    I.setIdentity();
-
-    this->A_fixed = (I - this->lambda * L_fixed);
-    this->A_moving = (I - this->lambda * L_moving);
-#endif
-
     if (this->method == method_t::smoothing)
     {
         // Apply smoothing step to the line
