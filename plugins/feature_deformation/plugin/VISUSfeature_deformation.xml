@@ -362,13 +362,18 @@
                 </Documentation>
             </DoubleVectorProperty>
 
+            <StringVectorProperty name="ParameterLog" label="File name for parameter log" command="SetParameterLog" number_of_elements="1" default_values="parameters.log">
+                <FileListDomain name="files"/>
+                <Documentation>
+                    Choose file destination for logging the parameters used for computation.
+                </Documentation>
+            </StringVectorProperty>
             <StringVectorProperty name="PerformanceLog" label="File name for performance log" command="SetPerformanceLog" number_of_elements="1" default_values="performance.csv">
                 <FileListDomain name="files"/>
                 <Documentation>
                     Choose file destination for logging performance.
                 </Documentation>
             </StringVectorProperty>
-
             <IntVectorProperty name="Quiet" label="No information output" command="SetQuiet" number_of_elements="1" default_values="0">
                 <BooleanDomain name="bool"/>
                 <Documentation>
@@ -427,6 +432,8 @@
             </PropertyGroup>
 
             <PropertyGroup label="Logging">
+                <Property name="ParameterLog" />
+                <Property name="PerformanceLog" />
                 <Property name="Quiet" />
             </PropertyGroup>
 

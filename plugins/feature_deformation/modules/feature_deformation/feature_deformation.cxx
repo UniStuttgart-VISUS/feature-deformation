@@ -62,6 +62,7 @@ vtkStandardNewMacro(feature_deformation);
 
 feature_deformation::feature_deformation() : frames(0)
 {
+    this->ParameterLog = new char[1024];
     this->PerformanceLog = new char[1024];
 
     this->alg_grid_input = std::make_shared<algorithm_grid_input>();
@@ -105,6 +106,7 @@ feature_deformation::feature_deformation() : frames(0)
 
 feature_deformation::~feature_deformation()
 {
+    delete[] this->ParameterLog;
     delete[] this->PerformanceLog;
 }
 
@@ -454,15 +456,31 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
 
 void feature_deformation::process_parameters(double time)
 {
+    // Set up parameter logging
+    std::ofstream parameter_log(this->ParameterLog, std::ios_base::app | std::ios_base::out);
+
+#define __log_header(name) parameter_log << std::endl << name << std::endl << "--------------------------" << std::endl;
+#define __log_parameter(name, value) parameter_log.width(55); parameter_log.fill(' '); parameter_log << std::left << name << std::flush; \
+                                     parameter_log.width(0); parameter_log << value << std::endl;
+
+#define __set_parameter(lhs, rhs) this->parameters.lhs = rhs; __log_parameter(#lhs, rhs);
+#define __set_parameter_with_cast(lhs, rhs, cast) this->parameters.lhs = cast(rhs); __log_parameter(#lhs, rhs);
+#define __set_parameter_bool(lhs, rhs) this->parameters.lhs = rhs != 0; __log_parameter(#lhs, (rhs != 0 ? "true" : "false"));
+
     // Line parameters
-    this->parameters.selected_line_id = this->LineID;
+    __log_header("line");
+
+    __set_parameter(selected_line_id, this->LineID);
 
     // Smoothing parameters
-    this->parameters.smoothing_method = static_cast<smoothing::method_t>(this->Method);
-    this->parameters.variant = static_cast<smoothing::variant_t>(this->Variant);
-    this->parameters.lambda = static_cast<float>(this->Lambda);
-    this->parameters.num_iterations = this->MaxNumIterations;
-    this->parameters.max_num_iterations = this->MaxNumIterations;
+    __log_header("smoothing");
+
+    __set_parameter_with_cast(smoothing_method, this->Method, static_cast<smoothing::method_t>);
+    __set_parameter_with_cast(variant, this->Variant, static_cast<smoothing::variant_t>);
+    __set_parameter(max_num_iterations, this->MaxNumIterations);
+
+    float lambda = static_cast<float>(this->Lambda);
+    int num_iterations = this->MaxNumIterations;
 
     if (this->parameters.smoothing_method == smoothing::method_t::smoothing)
     {
@@ -474,94 +492,111 @@ void feature_deformation::process_parameters(double time)
         if (this->Interpolator == 0)
         {
             // Linear
-            this->parameters.num_iterations *= std::min(time, 1.0);
+            num_iterations *= std::min(time, 1.0);
         }
         else if (this->Interpolator == 1)
         {
             // Exponential
             if (time == 0.0)
             {
-                this->parameters.num_iterations = 0;
+                num_iterations = 0;
             }
             else
             {
-                this->parameters.num_iterations = std::pow(this->parameters.num_iterations + 1, time) - 1;
+                num_iterations = std::pow(num_iterations + 1, time) - 1;
             }
         }
         else
         {
             // First linear, then exponential
             const auto connection_time = this->InterpolatorThreshold;
-            const auto connection_value = std::pow(this->parameters.num_iterations + 1, connection_time) - 1;
+            const auto connection_value = std::pow(num_iterations + 1, connection_time) - 1;
 
             if (time == 0.0)
             {
-                this->parameters.num_iterations = 0;
+                num_iterations = 0;
             }
             else if (time <= connection_time)
             {
-                this->parameters.num_iterations = std::min((time / connection_time) * connection_value, connection_value);
+                num_iterations = std::min((time / connection_time) * connection_value, connection_value);
             }
             else
             {
-                this->parameters.num_iterations = std::pow(this->parameters.num_iterations + 1, time) - 1;
+                num_iterations = std::pow(num_iterations + 1, time) - 1;
             }
         }
 
         if (this->InterpolateSmoothingFactor)
         {
-            this->parameters.lambda *= std::min(1.0, std::max(0.1, time));
+            lambda *= std::min(1.0, std::max(0.1, time));
         }
     }
 
+    __set_parameter(lambda, lambda);
+    __set_parameter(num_iterations, num_iterations);
+
     // Displacement parameters
-    this->parameters.displacement_method = static_cast<cuda::displacement::method_t>(this->Weight);
+    __log_header("displacement");
+
+    __set_parameter_with_cast(displacement_method, this->Weight, static_cast<cuda::displacement::method_t>);
 
     switch (this->parameters.displacement_method)
     {
     case cuda::displacement::method_t::greedy:
     case cuda::displacement::method_t::voronoi:
-        this->parameters.displacement_parameters.inverse_distance_weighting.exponent = static_cast<float>(this->EpsilonScalar);
-        this->parameters.displacement_parameters.inverse_distance_weighting.neighborhood = this->VoronoiDistance;
+        __set_parameter_with_cast(displacement_parameters.inverse_distance_weighting.exponent, this->EpsilonScalar, static_cast<float>);
+        __set_parameter(displacement_parameters.inverse_distance_weighting.neighborhood, this->VoronoiDistance);
 
         break;
     case cuda::displacement::method_t::greedy_joints:
-        this->parameters.displacement_parameters.inverse_distance_weighting.exponent = static_cast<float>(this->EpsilonScalar);
+        __set_parameter_with_cast(displacement_parameters.inverse_distance_weighting.exponent, this->EpsilonScalar, static_cast<float>);
 
         break;
     case cuda::displacement::method_t::projection:
-        this->parameters.displacement_parameters.projection.gauss_parameter = static_cast<float>(this->GaussParameter);
+        __set_parameter_with_cast(displacement_parameters.projection.gauss_parameter, this->GaussParameter, static_cast<float>);
 
         break;
     case cuda::displacement::method_t::b_spline:
     case cuda::displacement::method_t::b_spline_joints:
-        this->parameters.displacement_parameters.b_spline.degree = this->SplineDegree;
-        this->parameters.displacement_parameters.b_spline.gauss_parameter = static_cast<float>(this->GaussParameter);
-        this->parameters.displacement_parameters.b_spline.iterations = this->Subdivisions;
+        __set_parameter(displacement_parameters.b_spline.degree, this->SplineDegree);
+        __set_parameter_with_cast(displacement_parameters.b_spline.gauss_parameter, this->GaussParameter, static_cast<float>);
+        __set_parameter(displacement_parameters.b_spline.iterations, this->Subdivisions);
 
         break;
     }
 
-    this->parameters.idw_parameters.exponent = static_cast<float>(this->EpsilonScalar);
-    this->parameters.idw_parameters.neighborhood = this->VoronoiDistance;
-    this->parameters.projection_parameters.gauss_parameter = static_cast<float>(this->GaussParameter);
-    this->parameters.bspline_parameters.degree = this->SplineDegree;
-    this->parameters.bspline_parameters.gauss_parameter = static_cast<float>(this->GaussParameter);
-    this->parameters.bspline_parameters.iterations = this->Subdivisions;
+    __set_parameter_with_cast(idw_parameters.exponent, this->EpsilonScalar, static_cast<float>);
+    __set_parameter(idw_parameters.neighborhood, this->VoronoiDistance);
+    __set_parameter_with_cast(projection_parameters.gauss_parameter, this->GaussParameter, static_cast<float>);
+    __set_parameter(bspline_parameters.degree, this->SplineDegree);
+    __set_parameter_with_cast(bspline_parameters.gauss_parameter, this->GaussParameter, static_cast<float>);
+    __set_parameter(bspline_parameters.iterations, this->Subdivisions);
 
     // Pre-computation parameters
-    this->parameters.compute_gauss = (this->ComputeGauss != 0);
-    this->parameters.check_handedness = (this->CheckHandedness != 0);
-    this->parameters.check_convexity = (this->CheckConvexity != 0);
-    this->parameters.check_volume = (this->CheckVolume != 0);
-    this->parameters.volume_percentage = this->VolumePercentage;
-    this->parameters.num_subdivisions = this->GaussSubdivisions;
-    this->parameters.compute_tearing = (this->ComputeTearing != 0);
+    __log_header("precomputation");
+
+    __set_parameter_bool(compute_gauss, this->ComputeGauss);
+    __set_parameter_bool(check_handedness, this->CheckHandedness);
+    __set_parameter_bool(check_convexity, this->CheckConvexity);
+    __set_parameter_bool(check_volume, this->CheckVolume);
+    __set_parameter(volume_percentage, this->VolumePercentage);
+    __set_parameter(num_subdivisions, this->GaussSubdivisions);
+    __set_parameter_bool(compute_tearing, this->ComputeTearing);
 
     // Output parameters
-    this->parameters.output_bspline_distance = (this->OutputBSplineDistance != 0);
-    this->parameters.output_deformed_grid = (this->OutputDeformedGrid != 0);
-    this->parameters.output_vector_field = (this->OutputVectorField != 0);
-    this->parameters.remove_cells = (this->RemoveCells != 0);
-    this->parameters.remove_cells_scalar = static_cast<float>(this->RemoveCellsScalar);
+    __log_header("output");
+
+    __set_parameter_bool(output_bspline_distance, this->OutputBSplineDistance);
+    __set_parameter_bool(output_deformed_grid, this->OutputDeformedGrid);
+    __set_parameter_bool(output_vector_field, this->OutputVectorField);
+    __set_parameter_bool(remove_cells, this->RemoveCells);
+    __set_parameter_with_cast(remove_cells_scalar, this->RemoveCellsScalar, static_cast<float>);
+
+    parameter_log << std::endl << "-----------------------------------------------------------------------------------------------" << std::endl;
+
+#undef __log_header
+#undef __log_parameter
+#undef __set_parameter
+#undef __set_parameter_with_cast
+#undef __set_parameter_bool
 }
