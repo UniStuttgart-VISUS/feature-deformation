@@ -506,7 +506,19 @@ void feature_deformation::process_parameters(double time)
                 num_iterations = std::pow(num_iterations + 1, time) - 1;
             }
         }
-        else
+        else if (this->Interpolator == 2)
+        {
+            // "Quadratic"
+            if (time == 0.0)
+            {
+                num_iterations = 0;
+            }
+            else
+            {
+                num_iterations = num_iterations * std::pow(time, this->Exponent);
+            }
+        }
+        else if (this->Interpolator == 3)
         {
             // First linear, then exponential
             const auto connection_time = this->InterpolatorThreshold;

@@ -114,7 +114,8 @@
                 <EnumerationDomain name="enum">
                     <Entry value="0" text="Linear"/>
                     <Entry value="1" text="Exponential"/>
-                    <Entry value="2" text="First linear, then exponential"/>
+                    <Entry value="2" text="Quadratic (configurable exponent)"/>
+                    <Entry value="3" text="First linear, then exponential"/>
                 </EnumerationDomain>
                 <Hints>
                     <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Method" value="1" />
@@ -129,12 +130,25 @@
                     <PropertyWidgetDecorator type="CompositeDecorator">
                         <Expression type="and">
                             <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Method" value="1" />
-                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Interpolator" value="2" />
+                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Interpolator" value="3" />
                         </Expression>
                     </PropertyWidgetDecorator>
                 </Hints>
                 <Documentation>
                     Time in [0,1] at which the interpolator switches from linear to exponential interpolation.
+                </Documentation>
+            </DoubleVectorProperty>
+            <DoubleVectorProperty name="Exponent" label="Exponent" command="SetExponent" number_of_elements="1" default_values="2.0">
+                <Hints>
+                    <PropertyWidgetDecorator type="CompositeDecorator">
+                        <Expression type="and">
+                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Method" value="1" />
+                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Interpolator" value="2" />
+                        </Expression>
+                    </PropertyWidgetDecorator>
+                </Hints>
+                <Documentation>
+                    Exponent for the quadratic/cubic/... interpolator.
                 </Documentation>
             </DoubleVectorProperty>
             <IntVectorProperty name="Duration" label="Duration (s)" command="SetDuration" number_of_elements="1" default_values="5">
@@ -395,6 +409,7 @@
             <PropertyGroup label="Animation">
                 <Property name="Interpolator" />
                 <Property name="InterpolatorThreshold" />
+                <Property name="Exponent" />
                 <Property name="Duration" />
                 <Property name="InterpolateSmoothingFactor" />
                 <Property name="Inverse" />

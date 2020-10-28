@@ -58,6 +58,9 @@ public:
     vtkGetMacro(InterpolatorThreshold, double);
     vtkSetMacro(InterpolatorThreshold, double);
 
+    vtkGetMacro(Exponent, double);
+    vtkSetMacro(Exponent, double);
+
     vtkGetMacro(Duration, int);
     vtkSetMacro(Duration, int);
 
@@ -168,6 +171,7 @@ private:
     /// Animation parameters
     int Interpolator;
     double InterpolatorThreshold;
+    double Exponent;
     int Duration;
     int InterpolateSmoothingFactor;
     int Inverse;
