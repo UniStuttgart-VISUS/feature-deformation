@@ -12,7 +12,7 @@
                 Deform a feature and its surrounding space.
             </Documentation>
 
-            <InputProperty name="Feature" command="SetInputConnection" port_index="1">
+            <InputProperty name="Input" label="Feature" command="SetInputConnection" port_index="1">
                 <ProxyGroupDomain name="groups">
                     <Group name="sources"/>
                     <Group name="filters"/>

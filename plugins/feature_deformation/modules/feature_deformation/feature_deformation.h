@@ -1,6 +1,6 @@
 #pragma once
 
-#include "vtkAlgorithm.h"
+#include "vtkDataObjectAlgorithm.h"
 
 #include "algorithm_compute_gauss.h"
 #include "algorithm_compute_tearing.h"
@@ -31,11 +31,11 @@
 
 #include <memory>
 
-class VTK_EXPORT feature_deformation : public vtkAlgorithm
+class VTK_EXPORT feature_deformation : public vtkDataObjectAlgorithm
 {
 public:
     static feature_deformation* New();
-    vtkTypeMacro(feature_deformation, vtkAlgorithm);
+    vtkTypeMacro(feature_deformation, vtkDataObjectAlgorithm);
 
     vtkGetMacro(LineID, int);
     vtkSetMacro(LineID, int);
@@ -142,12 +142,8 @@ protected:
     virtual int FillInputPortInformation(int, vtkInformation*) override;
     virtual int FillOutputPortInformation(int, vtkInformation*) override;
 
-    virtual int ProcessRequest(vtkInformation*, vtkInformationVector**, vtkInformationVector*) override;
-
-    virtual int RequestDataObject(vtkInformation*, vtkInformationVector**, vtkInformationVector*);
-    virtual int RequestInformation(vtkInformation*, vtkInformationVector**, vtkInformationVector*);
-    virtual int RequestUpdateExtent(vtkInformation*, vtkInformationVector**, vtkInformationVector*);
-    virtual int RequestData(vtkInformation*, vtkInformationVector**, vtkInformationVector*);
+    virtual int RequestInformation(vtkInformation*, vtkInformationVector**, vtkInformationVector*) override;
+    virtual int RequestData(vtkInformation*, vtkInformationVector**, vtkInformationVector*) override;
 
 private:
     feature_deformation(const feature_deformation&);
