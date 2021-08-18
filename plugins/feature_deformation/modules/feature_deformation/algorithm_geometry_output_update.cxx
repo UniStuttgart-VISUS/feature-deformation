@@ -20,11 +20,13 @@
 #include <memory>
 
 void algorithm_geometry_output_update::set_input(const std::shared_ptr<const algorithm_geometry_output_creation> output_geometry,
-    const std::shared_ptr<const algorithm_displacement_computation> displacement, const cuda::displacement::method_t displacement_method,
-    const bool output_bspline_distance)
+    const std::shared_ptr<const algorithm_displacement_computation> displacement,
+    const std::shared_ptr<const algorithm_displacement_assessment> assessment,
+    const cuda::displacement::method_t displacement_method, const bool output_bspline_distance)
 {
     this->output_geometry = output_geometry;
     this->displacement = displacement;
+    this->assessment = assessment;
     this->displacement_method = displacement_method;
     this->output_bspline_distance = output_bspline_distance;
 }
@@ -36,7 +38,7 @@ std::uint32_t algorithm_geometry_output_update::calculate_hash() const
         return -1;
     }
 
-    return jenkins_hash(this->displacement->get_hash(), this->displacement_method, this->output_bspline_distance);
+    return jenkins_hash(this->displacement->get_hash(), this->assessment->get_hash(), this->displacement_method, this->output_bspline_distance);
 }
 
 bool algorithm_geometry_output_update::run_computation()

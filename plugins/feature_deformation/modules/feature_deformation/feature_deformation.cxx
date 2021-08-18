@@ -2,6 +2,7 @@
 
 #include "algorithm_compute_gauss.h"
 #include "algorithm_compute_tearing.h"
+#include "algorithm_displacement_assessment.h"
 #include "algorithm_displacement_computation.h"
 #include "algorithm_displacement_creation.h"
 #include "algorithm_displacement_precomputation.h"
@@ -65,14 +66,17 @@ feature_deformation::feature_deformation() : frames(0)
     this->alg_displacement_creation_lines = std::make_shared<algorithm_displacement_creation>();
     this->alg_displacement_precomputation_lines = std::make_shared<algorithm_displacement_precomputation>();
     this->alg_displacement_computation_lines = std::make_shared<algorithm_displacement_computation>();
+    this->alg_displacement_assess_lines = std::make_shared<algorithm_displacement_assessment>();
 
     this->alg_displacement_creation_grid = std::make_shared<algorithm_displacement_creation>();
     this->alg_displacement_precomputation_grid = std::make_shared<algorithm_displacement_precomputation>();
     this->alg_displacement_computation_grid = std::make_shared<algorithm_displacement_computation>();
+    this->alg_displacement_assess_grid = std::make_shared<algorithm_displacement_assessment>();
 
     this->alg_displacement_creation_geometry = std::make_shared<algorithm_displacement_creation>();
     this->alg_displacement_precomputation_geometry = std::make_shared<algorithm_displacement_precomputation>();
     this->alg_displacement_computation_geometry = std::make_shared<algorithm_displacement_computation>();
+    this->alg_displacement_assess_geometry = std::make_shared<algorithm_displacement_assessment>();
 
     this->alg_line_output_creation = std::make_shared<algorithm_line_output_creation>();
     this->alg_line_output_update = std::make_shared<algorithm_line_output_update>();
@@ -183,12 +187,15 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
     this->alg_displacement_creation_lines->be_quiet(quiet);
     this->alg_displacement_precomputation_lines->be_quiet(quiet);
     this->alg_displacement_computation_lines->be_quiet(quiet);
+    this->alg_displacement_assess_lines->be_quiet(quiet);
     this->alg_displacement_creation_grid->be_quiet(quiet);
     this->alg_displacement_precomputation_grid->be_quiet(quiet);
     this->alg_displacement_computation_grid->be_quiet(quiet);
+    this->alg_displacement_assess_grid->be_quiet(quiet);
     this->alg_displacement_creation_geometry->be_quiet(quiet);
     this->alg_displacement_precomputation_geometry->be_quiet(quiet);
     this->alg_displacement_computation_geometry->be_quiet(quiet);
+    this->alg_displacement_assess_geometry->be_quiet(quiet);
     this->alg_line_output_creation->be_quiet(quiet);
     this->alg_line_output_update->be_quiet(quiet);
     this->alg_line_output_set->be_quiet(quiet);
@@ -305,16 +312,20 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
 
     // Displace points
     const std::array<std::tuple<std::string, std::shared_ptr<algorithm_input>, std::shared_ptr<algorithm_displacement_creation>,
-        std::shared_ptr<algorithm_displacement_precomputation>, std::shared_ptr<algorithm_displacement_computation>>, 3> displacement_inputs
+        std::shared_ptr<algorithm_displacement_precomputation>, std::shared_ptr<algorithm_displacement_computation>,
+        std::shared_ptr<algorithm_displacement_assessment>>, 3> displacement_inputs
     {
         std::make_tuple("line", std::static_pointer_cast<algorithm_input>(this->alg_line_input),
-            this->alg_displacement_creation_lines, this->alg_displacement_precomputation_lines, this->alg_displacement_computation_lines),
+            this->alg_displacement_creation_lines, this->alg_displacement_precomputation_lines,
+            this->alg_displacement_computation_lines, this->alg_displacement_assess_lines),
 
         std::make_tuple("grid", std::static_pointer_cast<algorithm_input>(this->alg_grid_input),
-            this->alg_displacement_creation_grid, this->alg_displacement_precomputation_grid, this->alg_displacement_computation_grid),
+            this->alg_displacement_creation_grid, this->alg_displacement_precomputation_grid,
+            this->alg_displacement_computation_grid, this->alg_displacement_assess_grid),
 
         std::make_tuple("geometry", std::static_pointer_cast<algorithm_input>(this->alg_geometry_input),
-            this->alg_displacement_creation_geometry, this->alg_displacement_precomputation_geometry, this->alg_displacement_computation_geometry),
+            this->alg_displacement_creation_geometry, this->alg_displacement_precomputation_geometry,
+            this->alg_displacement_computation_geometry, this->alg_displacement_assess_geometry),
     };
 
     for (const auto& displacement_input : displacement_inputs)
@@ -336,6 +347,12 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
 
             std::get<4>(displacement_input)->run(std::get<2>(displacement_input), this->alg_smoothing,
                 this->parameters.displacement_method, this->parameters.displacement_parameters);
+
+            __next_perf_measure("assess quality on GPU");
+
+            std::get<5>(displacement_input)->run(std::get<4>(displacement_input), this->alg_smoothing,
+                this->parameters.displacement_method, this->parameters.displacement_parameters,
+                this->parameters.bspline_parameters, this->parameters.assess_mapping);
         }
     }
 
@@ -349,7 +366,7 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
     __next_perf_measure("update output feature lines");
 
     this->alg_line_output_update->run(this->alg_line_output_creation, this->alg_displacement_computation_lines,
-        this->parameters.displacement_method, this->parameters.output_bspline_distance);
+        this->alg_displacement_assess_lines, this->parameters.displacement_method, this->parameters.output_bspline_distance);
 
     __next_perf_measure("output feature lines");
 
@@ -363,7 +380,7 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
     __next_perf_measure("update output geometry");
 
     this->alg_geometry_output_update->run(this->alg_geometry_output_creation, this->alg_displacement_computation_geometry,
-        this->parameters.displacement_method, this->parameters.output_bspline_distance);
+        this->alg_displacement_assess_geometry, this->parameters.displacement_method, this->parameters.output_bspline_distance);
 
     __next_perf_measure("output geometry");
 
@@ -379,7 +396,7 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
         __next_perf_measure("update output grid");
 
         this->alg_grid_output_update->run(this->alg_grid_input, this->alg_grid_output_creation, this->alg_displacement_computation_grid,
-            this->alg_compute_tearing, this->parameters.remove_cells, this->parameters.remove_cells_scalar);
+            this->alg_displacement_assess_grid, this->alg_compute_tearing, this->parameters.remove_cells, this->parameters.remove_cells_scalar);
 
         if (this->parameters.output_vector_field)
         {
@@ -540,6 +557,11 @@ void feature_deformation::process_parameters(double time)
     __set_parameter(volume_percentage, this->VolumePercentage);
     __set_parameter(num_subdivisions, this->GaussSubdivisions);
     __set_parameter_bool(compute_tearing, this->ComputeTearing);
+
+    // Assessment parameters
+    __log_header("assessment");
+
+    __set_parameter_bool(assess_mapping, this->AssessMapping);
 
     // Output parameters
     __log_header("output");

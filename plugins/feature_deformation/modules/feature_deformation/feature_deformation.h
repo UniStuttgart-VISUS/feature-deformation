@@ -4,6 +4,7 @@
 
 #include "algorithm_compute_gauss.h"
 #include "algorithm_compute_tearing.h"
+#include "algorithm_displacement_assessment.h"
 #include "algorithm_displacement_computation.h"
 #include "algorithm_displacement_creation.h"
 #include "algorithm_displacement_precomputation.h"
@@ -109,6 +110,9 @@ public:
     vtkGetMacro(ComputeTearing, int);
     vtkSetMacro(ComputeTearing, int);
 
+    vtkGetMacro(AssessMapping, int);
+    vtkSetMacro(AssessMapping, int);
+
     vtkGetMacro(OutputBSplineDistance, int);
     vtkSetMacro(OutputBSplineDistance, int);
 
@@ -189,6 +193,9 @@ private:
     int GaussSubdivisions;
     int ComputeTearing;
 
+    /// Assessment options
+    int AssessMapping;
+
     /// Output options
     int OutputBSplineDistance;
     int OutputDeformedGrid;
@@ -228,6 +235,8 @@ private:
         int num_subdivisions;
         bool compute_tearing;
 
+        bool assess_mapping;
+
         bool output_bspline_distance;
         bool output_deformed_grid;
         bool output_vector_field;
@@ -255,6 +264,8 @@ private:
         alg_displacement_precomputation_grid, alg_displacement_precomputation_geometry;
     std::shared_ptr<algorithm_displacement_computation> alg_displacement_computation_lines,
         alg_displacement_computation_grid, alg_displacement_computation_geometry;
+    std::shared_ptr<algorithm_displacement_assessment> alg_displacement_assess_lines,
+        alg_displacement_assess_grid, alg_displacement_assess_geometry;
 
     // Output algorithms
     std::shared_ptr<algorithm_line_output_creation> alg_line_output_creation;

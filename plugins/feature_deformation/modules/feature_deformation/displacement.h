@@ -54,6 +54,10 @@ namespace cuda
         /// Perform precomputation for B-Splines
         void precompute(parameter_t parameters, const std::vector<std::array<float, 4>>& positions);
 
+        /// Assess the quality of the results for B-Splines
+        void assess_quality(parameter_t parameters, const std::vector<std::array<float, 4>>& positions,
+            const std::vector<std::array<float, 4>>& displacements);
+
         /// Displace all points using interpolation
         void displace(method_t method, parameter_t parameters, const std::vector<std::array<float, 4>>& positions,
             const std::vector<std::array<float, 4>>& displacements);
@@ -92,5 +96,6 @@ namespace cuda
         float3* cuda_res_mapping_point;
         float3* cuda_res_mapping_tangent;
         float* cuda_res_mapping_arc_position;
+        float* cuda_res_mapping_arc_position_displaced;
     };
 }

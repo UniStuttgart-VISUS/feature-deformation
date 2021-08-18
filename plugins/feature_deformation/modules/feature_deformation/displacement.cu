@@ -6,6 +6,7 @@
 #include <math_constants.h>
 #include <vector_types.h>
 
+#include <algorithm>
 #include <array>
 #include <iostream>
 #include <sstream>
@@ -225,11 +226,10 @@ float3 compute_rotation(float3 point, int index)
 /**
 * Precompute the mapping of points onto the B-Spline
 *
-* @param in_points              De Boor points
+* @param in_points              Point positions
 * @param point_mapping          Corresponding point on the B-Spline
 * @param tangent_mapping        Corresponding tangent on the B-Spline
 * @param arc_position_mapping   Corresponding arc position on the B-Spline
-* @param infos                  Information about the displacement
 * @param num_points             Number of points
 * @param num_displacements      Number of de Boor points
 * @param iterations             Number of iterations to find the corresponding point on the B-spline
@@ -251,7 +251,6 @@ void precompute_mapping_kernel(const float3* in_points, float3* point_mapping, f
         float min_arc_position = 0.0f;
         float min_distance = CUDART_NORM_HUGE_F;
 
-        const float end_arc_position = fetch1D(textures[4], num_displacements);
         const float delta = fetch1D(textures[4], degree + 1) - fetch1D(textures[4], degree);
 
         for (int index = degree; index < num_displacements; ++index)
@@ -309,6 +308,90 @@ void precompute_mapping_kernel(const float3* in_points, float3* point_mapping, f
         point_mapping[gid] = origin;
         tangent_mapping[gid] = tangent;
         arc_position_mapping[gid] = min_arc_position;
+    }
+}
+
+/**
+* Assess quality by mapping of displaced points onto the straightened B-Spline
+*
+* @param in_points              Point positions
+* @param infos                  Output arc position on the B-Spline to infos
+* @param num_points             Number of points
+* @param num_displacements      Number of de Boor points
+* @param iterations             Number of iterations to find the corresponding point on the B-spline
+* @param degree                 B-Spline degree
+*/
+__global__
+void assess_mapping_kernel(const float3* in_points, float4* infos, const int num_points,
+    const int num_displacements, const int iterations, const int degree)
+{
+    __get_kernel__parameters__
+
+    if (gid < num_points)
+    {
+        // Get point
+        float3 point = in_points[gid];
+        float4 info = infos[gid];
+
+        // Find parameter for which the distance from the point to the B-Spline, defined by the input positions, is minimal
+        // Try to find a local minimum by subdividing the segments
+        float min_arc_position = 0.0f;
+        float min_distance = CUDART_NORM_HUGE_F;
+
+        const float delta = fetch1D(textures[4], degree + 1) - fetch1D(textures[4], degree);
+
+        for (int index = degree; index < num_displacements; ++index)
+        {
+            // Start at the center of the segment
+            auto u_left = fetch1D(textures[4], index);
+            auto u_right = u_left + delta;
+            auto u = u_left + 0.5f * delta;
+
+            // Loop a few times
+            bool good_match = false;
+
+            for (int i = 0; i < iterations && !good_match; ++i)
+            {
+                // The subdivision plane is defined by the position and the tangent at u
+                const auto position = compute_point(u, degree, num_displacements, 0);
+                const auto tangent = compute_point(u, degree, num_displacements, 1, 1);
+
+                const auto direction = dot(tangent, point - position);
+
+                if (fabsf(direction) < 0.00001f)
+                {
+                    good_match = true;
+                }
+                else if (direction > 0.0f)
+                {
+                    // In front of the plane
+                    u_left = u;
+                }
+                else
+                {
+                    // Behind the plane
+                    u_right = u;
+                }
+
+                u = 0.5f * (u_left + u_right);
+            }
+
+            // Calculate distance and set new if its is smaller
+            const auto position = compute_point(u, degree, num_displacements, 0);
+            const auto distance = length(point - position);
+
+            if (distance < min_distance)
+            {
+                min_arc_position = u;
+                min_distance = distance;
+            }
+        }
+
+        info.x = min_arc_position;
+        info.y = fabsf(info.x - info.w);
+
+        // Store results
+        infos[gid] = info;
     }
 }
 
@@ -887,7 +970,8 @@ namespace
 
 cuda::displacement::displacement(std::vector<std::array<float, 3>> points) :
     points(std::move(points)), cuda_res_input_points(nullptr), cuda_res_output_points(nullptr), cuda_res_info(nullptr),
-    cuda_res_mapping_point(nullptr), cuda_res_mapping_tangent(nullptr), cuda_res_mapping_arc_position(nullptr)
+    cuda_res_mapping_point(nullptr), cuda_res_mapping_tangent(nullptr), cuda_res_mapping_arc_position(nullptr),
+    cuda_res_mapping_arc_position_displaced(nullptr)
 {
     upload_points();
 }
@@ -901,6 +985,7 @@ cuda::displacement::~displacement()
     if (this->cuda_res_mapping_point != nullptr) cudaFree(this->cuda_res_mapping_point);
     if (this->cuda_res_mapping_tangent != nullptr) cudaFree(this->cuda_res_mapping_tangent);
     if (this->cuda_res_mapping_arc_position != nullptr) cudaFree(this->cuda_res_mapping_arc_position);
+    if (this->cuda_res_mapping_arc_position_displaced != nullptr) cudaFree(this->cuda_res_mapping_arc_position_displaced);
 }
 
 void cuda::displacement::upload_points()
@@ -1007,6 +1092,16 @@ void cuda::displacement::upload_points()
             throw std::runtime_error(ss.str());
         }
     }
+    {
+        const auto err = cudaMalloc((void**)&this->cuda_res_mapping_arc_position_displaced, this->points.size() * sizeof(float));
+
+        if (err)
+        {
+            std::stringstream ss;
+            ss << "Error allocating memory using cudaMalloc for arc positions of assessed mapping" << " (" << cudaGetErrorName(err) << ": " << cudaGetErrorString(err) << ")";
+            throw std::runtime_error(ss.str());
+        }
+    }
 }
 
 void cuda::displacement::precompute(const parameter_t parameters, const std::vector<std::array<float, 4>>& positions)
@@ -1049,6 +1144,70 @@ void cuda::displacement::precompute(const parameter_t parameters, const std::vec
     // Run precomputation
     precompute_mapping_kernel __kernel__parameters__(this->cuda_res_input_points, this->cuda_res_mapping_point, this->cuda_res_mapping_tangent,
         this->cuda_res_mapping_arc_position, static_cast<int>(this->points.size()), static_cast<int>(positions.size()),
+        parameters.b_spline.iterations, parameters.b_spline.degree);
+
+    // Destroy resources
+    cudaDestroyTextureObject(cuda_tex_first_derivative);
+    cudaFree(cuda_res_first_derivative);
+
+    cudaDestroyTextureObject(cuda_tex_knot_vector);
+    cudaFree(cuda_res_knot_vector);
+
+    cudaDestroyTextureObject(cuda_tex_positions);
+    cudaFree(cuda_res_positions);
+}
+
+void cuda::displacement::assess_quality(const parameter_t parameters, const std::vector<std::array<float, 4>>& _positions,
+    const std::vector<std::array<float, 4>>& displacements)
+{
+    if (_positions.empty()) return;
+
+    std::vector<std::array<float, 4>> positions(_positions.begin(), _positions.end());
+
+    for (std::size_t i = 0; i < positions.size(); ++i)
+    {
+        positions[i][0] += displacements[i][0];
+        positions[i][1] += displacements[i][1];
+        positions[i][2] += displacements[i][2];
+        positions[i][3] += displacements[i][3];
+    }
+
+    // CUDA kernel parameters
+    int num_threads = 128;
+    int num_blocks = static_cast<int>(this->points.size()) / num_threads
+        + (static_cast<int>(this->points.size()) % num_threads == 0 ? 0 : 1);
+
+    // Upload positions to GPU
+    cudaTextureObject_t cuda_tex_positions;
+    float4* cuda_res_positions;
+
+    initialize_texture((void*)positions.data(), static_cast<int>(positions.size()),
+        sizeof(float), sizeof(float), sizeof(float), sizeof(float), &cuda_tex_positions, (void**)&cuda_res_positions);
+
+    cudaMemcpyToSymbol(textures, &cuda_tex_positions, sizeof(cudaTextureObject_t), 0 * sizeof(cudaTextureObject_t));
+
+    // Create knot vector, compute B-Spline derivative, and upload them to the GPU
+    const auto knot_vector = create_knot_vector(parameters.b_spline.degree, positions);
+    const auto positions_first_derivative = compute_derivative(positions, knot_vector.cbegin(), parameters.b_spline.degree);
+
+    cudaTextureObject_t cuda_tex_first_derivative;
+    cudaTextureObject_t cuda_tex_knot_vector;
+
+    float4* cuda_res_first_derivative;
+    float* cuda_res_knot_vector;
+
+    initialize_texture((void*)positions_first_derivative.data(), static_cast<int>(positions_first_derivative.size()),
+        sizeof(float), sizeof(float), sizeof(float), sizeof(float), &cuda_tex_first_derivative, (void**)&cuda_res_first_derivative);
+
+    initialize_texture((void*)knot_vector.data(), static_cast<int>(knot_vector.size()),
+        sizeof(float), 0, 0, 0, &cuda_tex_knot_vector, (void**)&cuda_res_knot_vector);
+
+    cudaMemcpyToSymbol(textures, &cuda_tex_first_derivative, sizeof(cudaTextureObject_t), 1 * sizeof(cudaTextureObject_t));
+    cudaMemcpyToSymbol(textures, &cuda_tex_knot_vector, sizeof(cudaTextureObject_t), 4 * sizeof(cudaTextureObject_t));
+
+    // Run precomputation
+    assess_mapping_kernel __kernel__parameters__(this->cuda_res_output_points, this->cuda_res_info,
+        static_cast<int>(this->points.size()), static_cast<int>(positions.size()),
         parameters.b_spline.iterations, parameters.b_spline.degree);
 
     // Destroy resources

@@ -332,6 +332,13 @@
                 </Documentation>
             </IntVectorProperty>
 
+            <IntVectorProperty name="AssessMapping" label="Assess b-spline mapping" command="SetAssessMapping" number_of_elements="1" default_values="0">
+                <BooleanDomain name="bool"/>
+                <Documentation>
+                    Calculate mapping of displaced positions to displaced B-spline for assessment of the deformation process. Results are stored in "Displacement Information" (0: mapping, 1: absolute difference to mapping of undeformed positions to original B-spline)
+                </Documentation>
+            </IntVectorProperty>
+
             <IntVectorProperty name="OutputBSplineDistance" label="Output B-spline distance" command="SetOutputBSplineDistance" number_of_elements="1" default_values="0">
                 <BooleanDomain name="bool"/>
                 <Documentation>
@@ -436,6 +443,10 @@
                 <Property name="VolumePercentage" />
                 <Property name="GaussSubdivisions" />
                 <Property name="ComputeTearing" />
+            </PropertyGroup>
+
+            <PropertyGroup label="Assessment">
+                <Property name="AssessMapping" />
             </PropertyGroup>
 
             <PropertyGroup label="Output">

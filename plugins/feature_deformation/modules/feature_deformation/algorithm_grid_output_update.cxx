@@ -26,11 +26,13 @@
 void algorithm_grid_output_update::set_input(const std::shared_ptr<const algorithm_grid_input> input_grid,
     const std::shared_ptr<const algorithm_grid_output_creation> output_grid,
     const std::shared_ptr<const algorithm_displacement_computation> displacement,
+    const std::shared_ptr<const algorithm_displacement_assessment> assessment,
     const std::shared_ptr<const algorithm_compute_tearing> tearing, const bool remove_cells, const float remove_cells_scalar)
 {
     this->input_grid = input_grid;
     this->output_grid = output_grid;
     this->displacement = displacement;
+    this->assessment = assessment;
     this->tearing = tearing;
     this->remove_cells = remove_cells;
     this->remove_cells_scalar = remove_cells_scalar;
@@ -43,7 +45,8 @@ std::uint32_t algorithm_grid_output_update::calculate_hash() const
         return -1;
     }
 
-    return jenkins_hash(this->displacement->get_hash(), this->tearing->get_hash(), this->remove_cells, this->remove_cells_scalar);
+    return jenkins_hash(this->displacement->get_hash(), this->assessment->get_hash(),
+        this->tearing->get_hash(), this->remove_cells, this->remove_cells_scalar);
 }
 
 bool algorithm_grid_output_update::run_computation()
