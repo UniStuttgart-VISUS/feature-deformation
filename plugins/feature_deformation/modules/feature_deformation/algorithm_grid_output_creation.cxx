@@ -115,10 +115,38 @@ bool algorithm_grid_output_creation::run_computation()
     velocities->SetName("Deformed Velocities");
     velocities->FillValue(0.0);
 
+    auto orig_divergence = vtkSmartPointer<vtkDoubleArray>::New();
+    orig_divergence->SetNumberOfComponents(1);
+    orig_divergence->SetNumberOfTuples(num_points);
+    orig_divergence->SetName("Divergence (Original)");
+    orig_divergence->FillValue(0.0);
+
+    auto orig_curl = vtkSmartPointer<vtkDoubleArray>::New();
+    orig_curl->SetNumberOfComponents(3);
+    orig_curl->SetNumberOfTuples(num_points);
+    orig_curl->SetName("Curl (Original)");
+    orig_curl->FillValue(0.0);
+
+    auto def_divergence = vtkSmartPointer<vtkDoubleArray>::New();
+    def_divergence->SetNumberOfComponents(1);
+    def_divergence->SetNumberOfTuples(num_points);
+    def_divergence->SetName("Divergence (Deformed)");
+    def_divergence->FillValue(0.0);
+
+    auto def_curl = vtkSmartPointer<vtkDoubleArray>::New();
+    def_curl->SetNumberOfComponents(3);
+    def_curl->SetNumberOfTuples(num_points);
+    def_curl->SetName("Curl (Deformed)");
+    def_curl->FillValue(0.0);
+
     output_deformed_grid->GetPointData()->AddArray(displacement_id_array);
     output_deformed_grid->GetPointData()->AddArray(displacement_map);
     output_deformed_grid->GetPointData()->AddArray(jacobian);
     output_deformed_grid->GetPointData()->AddArray(velocities);
+    output_deformed_grid->GetPointData()->AddArray(orig_divergence);
+    output_deformed_grid->GetPointData()->AddArray(orig_curl);
+    output_deformed_grid->GetPointData()->AddArray(def_divergence);
+    output_deformed_grid->GetPointData()->AddArray(def_curl);
 
     // Create dataset
     this->results.grid = vtkSmartPointer<vtkMultiBlockDataSet>::New();
