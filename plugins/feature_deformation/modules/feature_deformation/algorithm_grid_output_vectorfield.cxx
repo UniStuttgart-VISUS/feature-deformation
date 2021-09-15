@@ -215,9 +215,9 @@ bool algorithm_grid_output_vectorfield::run_computation()
                         + (J_vel_def(2, 2) * lame_coeff_1 * lame_coeff_2));
 
                 const Eigen::Vector3d curl_def = (1.0 / (lame_coeff_1 * lame_coeff_2 * lame_coeff_3)) *
-                    (((J_vel(7) - J_vel(5)) * lame_vec_1)
-                        + ((J_vel(2) - J_vel(6)) * lame_vec_2)
-                        + ((J_vel(3) - J_vel(1)) * lame_vec_3));
+                    (((J_vel_def(7) - J_vel_def(5)) * lame_vec_1)
+                        + ((J_vel_def(2) - J_vel_def(6)) * lame_vec_2)
+                        + ((J_vel_def(3) - J_vel_def(1)) * lame_vec_3));
 
                 // Store computed values
                 orig_divergence->SetComponent(index_p, 0, divergence_orig);
