@@ -4,6 +4,8 @@ cmake_minimum_required(VERSION 3.12)
 set(sources
   b-spline.h b-spline.cxx
   displacement.h displacement.cu
+  gradient.h gradient.cxx
+  grid.h grid.cxx
   hash.h
   smoothing.h smoothing.cxx
 
@@ -72,5 +74,5 @@ set_target_properties(CGAL PROPERTIES MAP_IMPORTED_CONFIG_RELWITHDEBINFO Release
 target_link_libraries(${feature_deformation_target} PUBLIC CGAL::CGAL)
 
 # Configure CUDA
-set_target_properties(${feature_deformation_target} PROPERTIES CUDA_STANDARD 14)
+set_target_properties(${feature_deformation_target} PROPERTIES CUDA_STANDARD 17)
 target_include_directories(${feature_deformation_target} PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
