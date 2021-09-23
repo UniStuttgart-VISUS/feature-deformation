@@ -30,7 +30,11 @@ Eigen::Vector3d grid::h_plus(const std::array<int, 3>& coords) const
     }
     else
     {
-        return this->spacing;
+        const auto h_x = (coords[0] < this->dimension[0] - 1) ? this->spacing[0] : 0.0;
+        const auto h_y = (coords[1] < this->dimension[1] - 1) ? this->spacing[1] : 0.0;
+        const auto h_z = (coords[2] < this->dimension[2] - 1) ? this->spacing[2] : 0.0;
+
+        return Eigen::Vector3d(h_x, h_y, h_z);
     }
 }
 
@@ -52,7 +56,11 @@ Eigen::Vector3d grid::h_minus(const std::array<int, 3>& coords) const
     }
     else
     {
-        return this->spacing;
+        const auto h_x = (coords[0] > 0) ? this->spacing[0] : 0.0;
+        const auto h_y = (coords[1] > 0) ? this->spacing[1] : 0.0;
+        const auto h_z = (coords[2] > 0) ? this->spacing[2] : 0.0;
+
+        return Eigen::Vector3d(h_x, h_y, h_z);
     }
 }
 

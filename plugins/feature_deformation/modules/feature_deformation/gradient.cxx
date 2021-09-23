@@ -27,11 +27,16 @@ Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> gradient(const grid& data,
     const auto h_fwd = data.h_plus(coords);
     const auto h_bck = data.h_minus(coords);
 
-    const Eigen::VectorXd diff_right = (data.value(data.right(coords)) - data.value(coords)) / h_fwd[0];
-    const Eigen::VectorXd diff_left = (data.value(coords) - data.value(data.left(coords))) / h_bck[0];
+    Eigen::VectorXd diff_right = (data.value(data.right(coords)) - data.value(coords)) / h_fwd[0];
+    Eigen::VectorXd diff_left = (data.value(coords) - data.value(data.left(coords))) / h_bck[0];
 
-    const Eigen::VectorXd diff_top = (data.value(data.top(coords)) - data.value(coords)) / h_fwd[1];
-    const Eigen::VectorXd diff_bottom = (data.value(coords) - data.value(data.bottom(coords))) / h_bck[1];
+    Eigen::VectorXd diff_top = (data.value(data.top(coords)) - data.value(coords)) / h_fwd[1];
+    Eigen::VectorXd diff_bottom = (data.value(coords) - data.value(data.bottom(coords))) / h_bck[1];
+
+    if (h_fwd[0] == 0.0) diff_right = diff_left;
+    if (h_bck[0] == 0.0) diff_left = diff_right;
+    if (h_fwd[1] == 0.0) diff_top = diff_bottom;
+    if (h_bck[1] == 0.0) diff_bottom = diff_top;
 
     if (h_fwd[2] == 0 && h_bck[2] == 0) // 2D case
     {
@@ -54,8 +59,11 @@ Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> gradient(const grid& data,
     }
     else // 3D case
     {
-        const auto diff_front = (data.value(data.front(coords)) - data.value(coords)) / h_fwd[2];
-        const auto diff_back = (data.value(coords) - data.value(data.back(coords))) / h_bck[2];
+        Eigen::VectorXd diff_front = (data.value(data.front(coords)) - data.value(coords)) / h_fwd[2];
+        Eigen::VectorXd diff_back = (data.value(coords) - data.value(data.back(coords))) / h_bck[2];
+
+        if (h_fwd[2] == 0.0) diff_front = diff_back;
+        if (h_bck[2] == 0.0) diff_back = diff_front;
 
         gradient_fwd.resize((data.components() == 1) ? 1 : 3, 3);
         gradient_bck.resize((data.components() == 1) ? 1 : 3, 3);
