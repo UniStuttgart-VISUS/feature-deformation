@@ -52,8 +52,16 @@ Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> gradient(const grid& data,
             {
                 const auto basis_vec = jacobian.col(i).head(2);
 
-                gradient_fwd += inverse_metric(i, j) * ((j == 0) ? diff_right : diff_top) * basis_vec.norm() * basis_vec.transpose();
-                gradient_bck += inverse_metric(i, j) * ((j == 0) ? diff_left : diff_bottom) * basis_vec.norm() * basis_vec.transpose();
+                if (data.components() == 1)
+                {
+                    gradient_fwd += inverse_metric(i, j) * ((j == 0) ? diff_right : diff_top) * basis_vec.norm() * basis_vec.transpose();
+                    gradient_bck += inverse_metric(i, j) * ((j == 0) ? diff_left : diff_bottom) * basis_vec.norm() * basis_vec.transpose();
+                }
+                else
+                {
+                    gradient_fwd += inverse_metric(i, j) * ((j == 0) ? diff_right.head(2) : diff_top.head(2)) * basis_vec.norm() * basis_vec.transpose();
+                    gradient_bck += inverse_metric(i, j) * ((j == 0) ? diff_left.head(2) : diff_bottom.head(2)) * basis_vec.norm() * basis_vec.transpose();
+                }
             }
         }
     }
@@ -83,11 +91,36 @@ Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> gradient(const grid& data,
         }
     }
 
-    if (data.components() == 1)
-    {
-        gradient_fwd.transpose();
-        gradient_bck.transpose();
-    }
+    // Combine forward and backward into "central difference"
+    Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> gradient = 0.5 * (gradient_fwd + gradient_bck);
 
-    return 0.5 * (gradient_fwd + gradient_bck);
+    if (h_fwd[2] == 0 && h_bck[2] == 0) // 2D case
+    {
+        Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> gradient_3D;
+        gradient_3D.resize(3, (data.components() == 1) ? 1 : 3);
+        gradient_3D.setZero();
+
+        if (data.components() == 1)
+        {
+            gradient_3D.block(0, 0, 2, 1) = gradient.transpose();
+        }
+        else
+        {
+            gradient_3D.block(0, 0, 2, 2) = gradient;
+            gradient_3D(2, 2) = 1.0;
+        }
+
+        return gradient_3D;
+    }
+    else
+    {
+        if (data.components() == 1)
+        {
+            return gradient.transpose();
+        }
+        else
+        {
+            return gradient;
+        }
+    }
 }
