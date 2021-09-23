@@ -1,0 +1,9 @@
+NAME
+  VISUSfeature_deformation::curvature
+LIBRARY_NAME
+  curvature
+DEPENDS
+  VTK::CommonCore
+  VTK::CommonDataModel
+  VTK::CommonExecutionModel
+  VTK::FiltersCore

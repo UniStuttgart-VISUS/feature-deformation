@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.12)
 # Create VTK module
 set(sources
   b-spline.h b-spline.cxx
+  curvature.h curvature.cxx
   displacement.h displacement.cu
   gradient.h gradient.cxx
   grid.h grid.cxx

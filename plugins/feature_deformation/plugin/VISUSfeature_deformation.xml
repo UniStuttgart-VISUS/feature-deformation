@@ -2,6 +2,63 @@
     <ProxyGroup name="filters">
         <!--
 
+        Curvature.
+
+        Compute streamline curvature and torsion for every grid node.
+
+        -->
+        <SourceProxy name="Curvature" class="curvature" label="Curvature">
+            <Documentation>
+                Compute streamline curvature and torsion for every grid node.
+            </Documentation>
+
+            <InputProperty name="Input" label="Vector field" command="SetInputConnection" port_index="0">
+                <ProxyGroupDomain name="groups">
+                    <Group name="sources"/>
+                    <Group name="filters"/>
+                </ProxyGroupDomain>
+                <DataTypeDomain name="input_type">
+                    <DataType value="vtkStructuredGrid"/>
+                </DataTypeDomain>
+                <InputArrayDomain attribute_type="point" name="vector_array" number_of_components="3"/>
+                <InputArrayDomain attribute_type="point" name="jacobian_array" number_of_components="9" optional="1"/>
+                <Documentation>
+                    Grid containing the vector field for which curvature and torsion is computed.
+                </Documentation>
+            </InputProperty>
+
+            <StringVectorProperty name="Vectors" label="Vectors" command="SetInputArrayToProcess" number_of_elements="5" element_types="0 0 0 0 2" animateable="0" default_values="0">
+                <ArrayListDomain name="array_list" attribute_type="Vectors" input_domain_name="vector_array">
+                    <RequiredProperties>
+                        <Property name="Input" function="Input" />
+                    </RequiredProperties>
+                </ArrayListDomain>
+                <Documentation>
+                    Vector field for which curvature and torsion is computed.
+                </Documentation>
+            </StringVectorProperty>
+            <StringVectorProperty name="Jacobian" label="Jacobian" command="SetInputArrayToProcess" number_of_elements="5" element_types="0 0 0 0 2" animateable="0" default_values="1">
+                <ArrayListDomain name="array_list" attribute_type="Vectors" input_domain_name="jacobian_array" none_string="None">
+                    <RequiredProperties>
+                        <Property name="Input" function="Input" />
+                    </RequiredProperties>
+                </ArrayListDomain>
+                <Hints>
+                    <NoDefault />
+                </Hints>
+                <Documentation>
+                    Jacobians of the deformation.
+                </Documentation>
+            </StringVectorProperty>
+
+            <Hints>
+                <ShowInMenu category="VISUS Feature Deformation"/>
+            </Hints>
+        </SourceProxy>
+
+
+        <!--
+
         Feature Deformation.
 
         Deform a feature and its surrounding space.

@@ -12,6 +12,19 @@ grid::grid(std::array<int, 3> dimension, const Eigen::Vector3d& spacing, vtkData
 grid::grid(std::array<int, 3> dimension, vtkDataArray* positions, vtkDataArray* data)
     : dimension(dimension), data(data), deformed(true), positions(positions) { }
 
+grid::grid(const grid& grid, vtkDataArray* data)
+    : dimension(grid.dimension), data(data), deformed(grid.deformed)
+{
+    if (this->deformed)
+    {
+        this->positions = grid.positions;
+    }
+    else
+    {
+        this->spacing = grid.spacing;
+    }
+}
+
 Eigen::Vector3d grid::h_plus(const std::array<int, 3>& coords) const
 {
     if (this->deformed)
@@ -81,6 +94,11 @@ Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> grid::matrix(const std::ar
     this->data->GetTuple(index(coords), mat.data());
 
     return mat;
+}
+
+const std::array<int, 3>& grid::dimensions() const
+{
+    return this->dimension;
 }
 
 int grid::components() const

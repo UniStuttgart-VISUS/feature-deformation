@@ -11,6 +11,7 @@ class grid
 public:
     grid(std::array<int, 3> dimension, const Eigen::Vector3d& spacing, vtkDataArray* data);
     grid(std::array<int, 3> dimension, vtkDataArray* positions, vtkDataArray* data);
+    grid(const grid& grid, vtkDataArray* data);
 
     Eigen::Vector3d h_plus(const std::array<int, 3>& coords) const;
     Eigen::Vector3d h_minus(const std::array<int, 3>& coords) const;
@@ -18,6 +19,7 @@ public:
     Eigen::Matrix<double, Eigen::Dynamic, 1> value(const std::array<int, 3>& coords) const;
     Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> matrix(const std::array<int, 3>& coords) const;
 
+    const std::array<int, 3>& dimensions() const;
     int components() const;
 
     std::array<int, 3> left(const std::array<int, 3>& coords) const;
