@@ -13,6 +13,7 @@ struct curvature_and_torsion_t
     vtkSmartPointer<vtkDoubleArray> curvature;
     vtkSmartPointer<vtkDoubleArray> curvature_vector;
     vtkSmartPointer<vtkDoubleArray> torsion;
+    vtkSmartPointer<vtkDoubleArray> torsion_vector;
 };
 
 curvature_and_torsion_t curvature_and_torsion(const grid& vector_field, vtkDataArray* jacobians);

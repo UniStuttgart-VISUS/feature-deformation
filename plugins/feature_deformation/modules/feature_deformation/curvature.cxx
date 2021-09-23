@@ -93,6 +93,11 @@ curvature_and_torsion_t curvature_and_torsion(const grid& vector_field, vtkDataA
     torsion->SetNumberOfComponents(1);
     torsion->SetNumberOfTuples(dim_x * dim_y * dim_z);
 
+    auto torsion_vector = vtkSmartPointer<vtkDoubleArray>::New();
+    torsion_vector->SetName("Torsion Vector");
+    torsion_vector->SetNumberOfComponents(3);
+    torsion_vector->SetNumberOfTuples(dim_x * dim_y * dim_z);
+
     for (int z = 0; z < dim_z; ++z)
     {
         for (int y = 0; y < dim_y; ++y)
@@ -107,16 +112,20 @@ curvature_and_torsion_t curvature_and_torsion(const grid& vector_field, vtkDataA
 
                 const Eigen::Vector3d curv = vector.cross(first_derivative);
                 const Eigen::Vector3d curv_vec = (curv.norm() / std::pow(vector.norm(), 3.0)) * curv.cross(vector).normalized();
+
                 const double tors = curv.dot(second_derivative) / curv.squaredNorm();
+                const Eigen::Vector3d tors_vec = tors * curv.normalized();
 
                 curvature->SetValue(index, curv.norm() / std::pow(vector.norm(), 3.0));
                 curvature_vector->SetTuple(index, curv_vec.data());
+
                 torsion->SetValue(index, tors);
+                torsion_vector->SetTuple(index, tors_vec.data());
 
                 ++index;
             }
         }
     }
 
-    return curvature_and_torsion_t{ curvature, curvature_vector, torsion };
+    return curvature_and_torsion_t{ curvature, curvature_vector, torsion, torsion_vector };
 }

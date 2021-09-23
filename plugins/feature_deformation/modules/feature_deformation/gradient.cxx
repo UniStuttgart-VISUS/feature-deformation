@@ -2,6 +2,10 @@
 
 #include "grid.h"
 
+#include "vtkDataArray.h"
+#include "vtkDoubleArray.h"
+#include "vtkSmartPointer.h"
+
 #include "Eigen/Dense"
 
 #include <array>
@@ -123,4 +127,38 @@ Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> gradient(const grid& data,
             return gradient;
         }
     }
+}
+
+vtkSmartPointer<vtkDoubleArray> gradient_field(const grid& data, vtkDataArray* jacobian_field)
+{
+    const auto dim_x = data.dimensions()[0];
+    const auto dim_y = data.dimensions()[1];
+    const auto dim_z = data.dimensions()[2];
+
+    Eigen::Matrix3d jacobian;
+    std::size_t index = 0;
+
+    // First derivative
+    auto field = vtkSmartPointer<vtkDoubleArray>::New();
+    field->SetNumberOfComponents(data.components() == 1 ? 3 : 9);
+    field->SetNumberOfTuples(dim_x * dim_y * dim_z);
+
+    for (int z = 0; z < dim_z; ++z)
+    {
+        for (int y = 0; y < dim_y; ++y)
+        {
+            for (int x = 0; x < dim_x; ++x)
+            {
+                jacobian_field->GetTuple(index, jacobian.data());
+
+                const Eigen::MatrixXd derivative = gradient(data, { x, y, z }, jacobian);
+
+                field->SetTuple(index, derivative.data());
+
+                ++index;
+            }
+        }
+    }
+
+    return field;
 }
