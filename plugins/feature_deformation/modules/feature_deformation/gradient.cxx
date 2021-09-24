@@ -10,18 +10,10 @@
 
 #include <array>
 
-Eigen::Matrix3d unit()
-{
-    Eigen::Matrix3d mat;
-    mat.setZero();
-    mat.diagonal().setOnes();
-
-    return mat;
-}
-
 Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> gradient(const grid& data,
-    const std::array<int, 3>& coords, const Eigen::Matrix3d& jacobian)
+    const std::array<int, 3>& coords)
 {
+    const auto jacobian = data.jacobian(coords);
     const auto metric_tensor = jacobian.transpose() * jacobian;
     const auto inverse_metric = metric_tensor.inverse();
 
@@ -129,13 +121,12 @@ Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> gradient(const grid& data,
     }
 }
 
-vtkSmartPointer<vtkDoubleArray> gradient_field(const grid& data, vtkDataArray* jacobian_field)
+vtkSmartPointer<vtkDoubleArray> gradient_field(const grid& data)
 {
     const auto dim_x = data.dimensions()[0];
     const auto dim_y = data.dimensions()[1];
     const auto dim_z = data.dimensions()[2];
 
-    Eigen::Matrix3d jacobian;
     std::size_t index = 0;
 
     // First derivative
@@ -149,9 +140,7 @@ vtkSmartPointer<vtkDoubleArray> gradient_field(const grid& data, vtkDataArray* j
         {
             for (int x = 0; x < dim_x; ++x)
             {
-                jacobian_field->GetTuple(index, jacobian.data());
-
-                const Eigen::MatrixXd derivative = gradient(data, { x, y, z }, jacobian);
+                const Eigen::MatrixXd derivative = gradient(data, { x, y, z });
 
                 field->SetTuple(index, derivative.data());
 

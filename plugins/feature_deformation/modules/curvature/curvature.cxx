@@ -59,72 +59,20 @@ int curvature::RequestData(vtkInformation* vtkNotUsed(request), vtkInformationVe
         return 0;
     }
 
-    bool own_jacobian = false;
-
-    if (jacobian_field == nullptr)
-    {
-        std::cout << "No Jacobian field provided, assuming no deformation." << std::endl;
-
-        jacobian_field = vtkDoubleArray::New();
-        jacobian_field->SetNumberOfComponents(9);
-        jacobian_field->SetNumberOfTuples(vector_field->GetNumberOfTuples());
-
-        const std::array<double, 9> unit_matrix{ 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0 };
-
-        for (vtkIdType i = 0; i < jacobian_field->GetNumberOfTuples(); ++i)
-        {
-            jacobian_field->SetTuple(i, unit_matrix.data());
-        }
-
-        own_jacobian = true;
-    }
-
-    std::array<int, 3> dimensions;
-    vtk_grid->GetDimensions(dimensions.data());
-
-    // Get positions
-    auto positions = vtkSmartPointer<vtkDoubleArray>::New();
-    positions->SetNumberOfComponents(3);
-    positions->SetNumberOfTuples(vtk_grid->GetNumberOfPoints());
-
-    std::array<double, 3> point;
-
-    for (vtkIdType i = 0; i < vtk_grid->GetNumberOfPoints(); ++i)
-    {
-        vtk_grid->GetPoint(i, point.data());
-        positions->SetTuple(i, point.data());
-    }
-
     // Compute
-    const grid vector_grid(dimensions, positions, vector_field);
+    const grid vector_grid(vtk_grid, vector_field, jacobian_field);
 
-    const auto curvature = curvature_and_torsion(vector_grid, jacobian_field);
-
-    // Compute curvature and torsion gradients
-    const grid curvature_grid(dimensions, positions, curvature.curvature);
-    const grid torsion_grid(dimensions, positions, curvature.torsion);
-
-    auto curvature_gradient = gradient_field(curvature_grid, jacobian_field);
-    auto torsion_gradient = gradient_field(torsion_grid, jacobian_field);
-
-    curvature_gradient->SetName("Curvature Gradient");
-    torsion_gradient->SetName("Torsion Gradient");
+    const auto curvature = curvature_and_torsion(vector_grid);
 
     // Set output
     auto output_grid = vtkStructuredGrid::SafeDownCast(output_vector->GetInformationObject(0)->Get(vtkDataObject::DATA_OBJECT()));
     output_grid->ShallowCopy(vtk_grid);
     output_grid->GetPointData()->AddArray(curvature.curvature);
     output_grid->GetPointData()->AddArray(curvature.curvature_vector);
+    output_grid->GetPointData()->AddArray(curvature.curvature_gradient);
     output_grid->GetPointData()->AddArray(curvature.torsion);
     output_grid->GetPointData()->AddArray(curvature.torsion_vector);
-    output_grid->GetPointData()->AddArray(curvature_gradient);
-    output_grid->GetPointData()->AddArray(torsion_gradient);
-
-    // Cleanup
-    if (own_jacobian)
-    {
-        jacobian_field->Delete();
-    }
+    output_grid->GetPointData()->AddArray(curvature.torsion_gradient);
 
     return 1;
 }

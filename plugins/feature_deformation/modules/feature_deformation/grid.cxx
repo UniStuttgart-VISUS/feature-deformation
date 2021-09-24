@@ -1,19 +1,53 @@
 #include "grid.h"
 
 #include "vtkDataArray.h"
+#include "vtkDoubleArray.h"
+#include "vtkStructuredGrid.h"
 
 #include "Eigen/Dense"
 
 #include <array>
 
-grid::grid(std::array<int, 3> dimension, const Eigen::Vector3d& spacing, vtkDataArray* data)
-    : dimension(dimension), data(data), deformed(false), spacing(spacing) { }
+Eigen::Matrix3d unit()
+{
+    Eigen::Matrix3d mat;
+    mat.setZero();
+    mat.diagonal().setOnes();
 
-grid::grid(std::array<int, 3> dimension, vtkDataArray* positions, vtkDataArray* data)
-    : dimension(dimension), data(data), deformed(true), positions(positions) { }
+    return mat;
+}
+
+grid::grid(std::array<int, 3> dimension, const Eigen::Vector3d& spacing, vtkDataArray* data, vtkDataArray* jacobians)
+    : dimension(dimension), data(data), deformed(false), spacing(spacing), jacobians(jacobians) { }
+
+grid::grid(std::array<int, 3> dimension, vtkDataArray* positions, vtkDataArray* data, vtkDataArray* jacobians)
+    : dimension(dimension), data(data), deformed(true), positions(positions), jacobians(jacobians) { }
+
+grid::grid(vtkStructuredGrid* vtk_grid, vtkDataArray* data, vtkDataArray* jacobians) : data(data), jacobians(jacobians)
+{
+    std::array<int, 3> dimensions;
+    vtk_grid->GetDimensions(dimensions.data());
+
+    // Get positions
+    auto positions = vtkSmartPointer<vtkDoubleArray>::New();
+    positions->SetNumberOfComponents(3);
+    positions->SetNumberOfTuples(vtk_grid->GetNumberOfPoints());
+
+    std::array<double, 3> point;
+
+    for (vtkIdType i = 0; i < vtk_grid->GetNumberOfPoints(); ++i)
+    {
+        vtk_grid->GetPoint(i, point.data());
+        positions->SetTuple(i, point.data());
+    }
+
+    this->dimension = dimension;
+    this->deformed = true;
+    this->positions = positions;
+}
 
 grid::grid(const grid& grid, vtkDataArray* data)
-    : dimension(grid.dimension), data(data), deformed(grid.deformed)
+    : dimension(grid.dimension), data(data), deformed(grid.deformed), jacobians(grid.jacobians)
 {
     if (this->deformed)
     {
@@ -94,6 +128,18 @@ Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> grid::matrix(const std::ar
     this->data->GetTuple(index(coords), mat.data());
 
     return mat;
+}
+
+Eigen::Matrix3d grid::jacobian(const std::array<int, 3>& coords) const
+{
+    Eigen::Matrix3d jac = unit();
+
+    if (this->jacobians != nullptr)
+    {
+        this->jacobians->GetTuple(index(coords), jac.data());
+    }
+
+    return jac;
 }
 
 const std::array<int, 3>& grid::dimensions() const

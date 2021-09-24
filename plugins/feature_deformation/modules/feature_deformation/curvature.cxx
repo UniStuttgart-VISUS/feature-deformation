@@ -12,13 +12,12 @@
 #include <cmath>
 #include <utility>
 
-curvature_and_torsion_t curvature_and_torsion(const grid& vector_field, vtkDataArray* jacobians)
+curvature_and_torsion_t curvature_and_torsion(const grid& vector_field)
 {
     const auto dim_x = vector_field.dimensions()[0];
     const auto dim_y = vector_field.dimensions()[1];
     const auto dim_z = vector_field.dimensions()[2];
 
-    Eigen::Matrix3d jacobian;
     std::size_t index = 0;
 
     // First derivative
@@ -32,9 +31,7 @@ curvature_and_torsion_t curvature_and_torsion(const grid& vector_field, vtkDataA
         {
             for (int x = 0; x < dim_x; ++x)
             {
-                jacobians->GetTuple(index, jacobian.data());
-
-                const Eigen::Matrix3d derivative = gradient(vector_field, { x, y, z }, jacobian);
+                const Eigen::Matrix3d derivative = gradient(vector_field, { x, y, z });
                 const Eigen::Vector3d vector = vector_field.value({ x, y, z });
 
                 const Eigen::Vector3d first_derivative = derivative * vector;
@@ -61,9 +58,7 @@ curvature_and_torsion_t curvature_and_torsion(const grid& vector_field, vtkDataA
         {
             for (int x = 0; x < dim_x; ++x)
             {
-                jacobians->GetTuple(index, jacobian.data());
-
-                const Eigen::Matrix3d derivative = gradient(derivative_field, { x, y, z }, jacobian);
+                const Eigen::Matrix3d derivative = gradient(derivative_field, { x, y, z });
                 const Eigen::Vector3d vector = vector_field.value({ x, y, z });
 
                 const Eigen::Vector3d second_derivative = derivative * vector;
@@ -127,5 +122,16 @@ curvature_and_torsion_t curvature_and_torsion(const grid& vector_field, vtkDataA
         }
     }
 
-    return curvature_and_torsion_t{ curvature, curvature_vector, torsion, torsion_vector };
+    // Compute curvature and torsion gradients
+    const grid curvature_grid(vector_field, curvature);
+    const grid torsion_grid(vector_field, torsion);
+
+    auto curvature_gradient = gradient_field(curvature_grid);
+    auto torsion_gradient = gradient_field(torsion_grid);
+
+    curvature_gradient->SetName("Curvature Gradient");
+    torsion_gradient->SetName("Torsion Gradient");
+
+    return curvature_and_torsion_t{ curvature, curvature_vector, curvature_gradient,
+        torsion, torsion_vector, torsion_gradient };
 }
