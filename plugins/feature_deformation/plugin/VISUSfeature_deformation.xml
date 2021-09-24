@@ -56,7 +56,6 @@
             </Hints>
         </SourceProxy>
 
-
         <!--
 
         Feature Deformation.
@@ -535,6 +534,98 @@
                     Deformed grid.
                 </Documentation>
             </OutputPort>
+
+            <Hints>
+                <ShowInMenu category="VISUS Feature Deformation"/>
+            </Hints>
+        </SourceProxy>
+
+        <!--
+
+        Optimizer.
+
+        Adjusts deformed grid in a way such that the gradient different is minimized.
+
+        -->
+        <SourceProxy name="Optimizer" class="optimizer" label="Optimizer">
+            <Documentation>
+                Adjusts deformed grid in a way such that the gradient different is minimized.
+            </Documentation>
+
+            <InputProperty name="Input" label="Original" command="SetInputConnection" port_index="0">
+                <ProxyGroupDomain name="groups">
+                    <Group name="sources"/>
+                    <Group name="filters"/>
+                </ProxyGroupDomain>
+                <DataTypeDomain name="input_type">
+                    <DataType value="vtkStructuredGrid"/>
+                </DataTypeDomain>
+                <InputArrayDomain attribute_type="point" name="vector_original_array" number_of_components="3"/>
+                <Documentation>
+                    Original grid containing gradient information.
+                </Documentation>
+            </InputProperty>
+            <InputProperty name="Deformed" label="Deformed" command="SetInputConnection" port_index="1">
+                <ProxyGroupDomain name="groups">
+                    <Group name="sources"/>
+                    <Group name="filters"/>
+                </ProxyGroupDomain>
+                <DataTypeDomain name="input_type">
+                    <DataType value="vtkStructuredGrid"/>
+                </DataTypeDomain>
+                <InputArrayDomain attribute_type="point" name="vector_deformed_array" number_of_components="3"/>
+                <InputArrayDomain attribute_type="point" name="jacobian_array" number_of_components="9"/>
+                <Documentation>
+                    Deformed grid containing gradient information and information about deformation.
+                </Documentation>
+            </InputProperty>
+
+            <StringVectorProperty name="Original" label="Gradient (original)" command="SetInputArrayToProcess" number_of_elements="5" element_types="0 0 0 0 2" animateable="0" default_values="0">
+                <ArrayListDomain name="array_list" attribute_type="Vectors" input_domain_name="vector_original_array">
+                    <RequiredProperties>
+                        <Property name="Input" function="Input" />
+                    </RequiredProperties>
+                </ArrayListDomain>
+                <Documentation>
+                    Vector field for which curvature and torsion is computed.
+                </Documentation>
+            </StringVectorProperty>
+            <StringVectorProperty name="Deformed" label="Gradient (deformed)" command="SetInputArrayToProcess" number_of_elements="5" element_types="0 0 0 0 2" animateable="0" default_values="1">
+                <ArrayListDomain name="array_list" attribute_type="Vectors" input_domain_name="vector_deformed_array">
+                    <RequiredProperties>
+                        <Property name="Deformed" function="Input" />
+                    </RequiredProperties>
+                </ArrayListDomain>
+                <Documentation>
+                    Vector field for which curvature and torsion is computed.
+                </Documentation>
+            </StringVectorProperty>
+            <StringVectorProperty name="Jacobian" label="Jacobian" command="SetInputArrayToProcess" number_of_elements="5" element_types="0 0 0 0 2" animateable="0" default_values="2">
+                <ArrayListDomain name="array_list" attribute_type="Vectors" input_domain_name="jacobian_array">
+                    <RequiredProperties>
+                        <Property name="Deformed" function="Input" />
+                    </RequiredProperties>
+                </ArrayListDomain>
+                <Documentation>
+                    Jacobians of the deformation.
+                </Documentation>
+            </StringVectorProperty>
+            
+            <IntVectorProperty name="NumSteps" label="Number of steps" command="SetNumSteps" number_of_elements="1" default_values="10">
+                <Documentation>
+                    Maximum number of iterations.
+                </Documentation>
+            </IntVectorProperty>
+            <DoubleVectorProperty name="StepSize" label="Step size" command="SetStepSize" number_of_elements="1" default_values="0.1">
+                <Documentation>
+                    Step size for each iteration.
+                </Documentation>
+            </DoubleVectorProperty>
+            <DoubleVectorProperty name="Error" label="Error threshold" command="SetError" number_of_elements="1" default_values="1e-6">
+                <Documentation>
+                    Error threshold for which algorithm is stopped.
+                </Documentation>
+            </DoubleVectorProperty>
 
             <Hints>
                 <ShowInMenu category="VISUS Feature Deformation"/>

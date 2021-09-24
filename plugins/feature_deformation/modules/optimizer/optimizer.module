@@ -1,0 +1,9 @@
+NAME
+  VISUSfeature_deformation::optimizer
+LIBRARY_NAME
+  optimizer
+DEPENDS
+  VTK::CommonCore
+  VTK::CommonDataModel
+  VTK::CommonExecutionModel
+  VTK::FiltersCore
