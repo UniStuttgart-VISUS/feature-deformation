@@ -289,7 +289,7 @@ int optimizer::RequestData(vtkInformation* vtkNotUsed(request), vtkInformationVe
                                 {
                                     // Move node first in respective direction
                                     new_position_block->SetComponent(index_block, d,
-                                        new_position_block->GetComponent(index_block, d) + this->StepSize); // TODO: Step size?
+                                        new_position_block->GetComponent(index_block, d) + this->StepSize);
 
                                     // Compute Jacobians of deformation
                                     auto jacobians = gradient_field(block_deformation);
@@ -320,11 +320,11 @@ int optimizer::RequestData(vtkInformation* vtkNotUsed(request), vtkInformationVe
                                     const auto difference = (deformed_gradient - original_gradient).norm();
 
                                     gradient_descent->SetComponent(index_orig, d, gradient_descent->GetComponent(index_orig, d)
-                                        - /* TODO: Step size? */ node_weight *(difference - gradient_difference->GetValue(index_orig))); // TODO: weight?
+                                        - node_weight *(difference - gradient_difference->GetValue(index_orig))); // TODO: weight?
 
                                     // Reset new positions
                                     new_position_block->SetComponent(index_block, d,
-                                        new_position_block->GetComponent(index_block, d) - this->StepSize); // TODO: Step size?
+                                        new_position_block->GetComponent(index_block, d) - this->StepSize);
                                 }
                             }
                         }
@@ -454,6 +454,8 @@ int optimizer::RequestData(vtkInformation* vtkNotUsed(request), vtkInformationVe
         deformed_positions->GetTuple(i, point.data());
         points->SetPoint(i, point.data());
     }
+
+    jacobian_field->SetName("Jacobian");
 
     auto output_grid = vtkStructuredGrid::GetData(output_vector);
     output_grid->SetDimensions(deformed_vector_field.dimensions().data());
