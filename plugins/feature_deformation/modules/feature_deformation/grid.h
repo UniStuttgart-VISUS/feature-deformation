@@ -17,6 +17,8 @@ public:
     grid(vtkStructuredGrid* vtk_grid, vtkDataArray* data, vtkDataArray* jacobians = nullptr);
     grid(const grid& grid, vtkDataArray* data);
 
+    virtual ~grid() noexcept;
+
     Eigen::Vector3d h_plus(const std::array<int, 3>& coords) const;
     Eigen::Vector3d h_minus(const std::array<int, 3>& coords) const;
 
@@ -48,6 +50,8 @@ private:
     };
 
     vtkDataArray* jacobians;
+
+    bool own_positions;
 
     std::size_t index(const std::array<int, 3>& coords) const;
 };

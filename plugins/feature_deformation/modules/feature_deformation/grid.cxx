@@ -18,22 +18,22 @@ Eigen::Matrix3d unit()
 }
 
 grid::grid(std::array<int, 3> dimension, const Eigen::Vector3d& spacing, vtkDataArray* data, vtkDataArray* jacobians)
-    : dimension(dimension), data(data), deformed(false), spacing(spacing), jacobians(jacobians) { }
+    : dimension(dimension), data(data), deformed(false), spacing(spacing), jacobians(jacobians), own_positions(false){ }
 
 grid::grid(std::array<int, 3> dimension, vtkDataArray* positions, vtkDataArray* data, vtkDataArray* jacobians)
-    : dimension(dimension), data(data), deformed(true), positions(positions), jacobians(jacobians) { }
+    : dimension(dimension), data(data), deformed(true), positions(positions), jacobians(jacobians), own_positions(false) { }
 
-grid::grid(vtkStructuredGrid* vtk_grid, vtkDataArray* data, vtkDataArray* jacobians) : data(data), jacobians(jacobians)
+grid::grid(vtkStructuredGrid* vtk_grid, vtkDataArray* data, vtkDataArray* jacobians)
+    : data(data), jacobians(jacobians), own_positions(true)
 {
-    std::array<int, 3> dimensions;
-    vtk_grid->GetDimensions(dimensions.data());
+    vtk_grid->GetDimensions(dimension.data());
 
     // Get positions
-    auto positions = vtkSmartPointer<vtkDoubleArray>::New();
+    auto positions = vtkDoubleArray::New();
     positions->SetNumberOfComponents(3);
     positions->SetNumberOfTuples(vtk_grid->GetNumberOfPoints());
 
-    std::array<double, 3> point;
+    std::array<double, 3> point{};
 
     for (vtkIdType i = 0; i < vtk_grid->GetNumberOfPoints(); ++i)
     {
@@ -41,13 +41,12 @@ grid::grid(vtkStructuredGrid* vtk_grid, vtkDataArray* data, vtkDataArray* jacobi
         positions->SetTuple(i, point.data());
     }
 
-    this->dimension = dimension;
     this->deformed = true;
     this->positions = positions;
 }
 
 grid::grid(const grid& grid, vtkDataArray* data)
-    : dimension(grid.dimension), data(data), deformed(grid.deformed), jacobians(grid.jacobians)
+    : dimension(grid.dimension), data(data), deformed(grid.deformed), jacobians(grid.jacobians), own_positions(false)
 {
     if (this->deformed)
     {
@@ -56,6 +55,14 @@ grid::grid(const grid& grid, vtkDataArray* data)
     else
     {
         this->spacing = grid.spacing;
+    }
+}
+
+grid::~grid() noexcept
+{
+    if (this->own_positions)
+    {
+        positions->Delete();
     }
 }
 
