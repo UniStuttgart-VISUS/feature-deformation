@@ -142,31 +142,25 @@ int optimizer::RequestData(vtkInformation* vtkNotUsed(request), vtkInformationVe
     bool converged = false;
 
     const bool twoD = original_vector_field.dimensions()[2] == 1;
-
     const auto block_offset = 3;
-    const auto block_size = 2 * block_offset + 1;
-    const auto block_center = block_offset + block_size
-        * (block_offset + (twoD ? 0 : (block_size * block_offset)));
-
-    const std::array<int, 3> dimension{ block_size, block_size, twoD ? 1 : block_size };
-    const auto num_nodes = dimension[0] * dimension[1] * dimension[2];
-    const auto node_weight = 1.0 / num_nodes;
+    const auto block_size = (2 * block_offset + 1);
+    const auto node_weight = 1.0 / (block_size * block_size * (twoD ? 1 : block_size));
 
     auto original_position_block = vtkSmartPointer<vtkDoubleArray>::New();
     original_position_block->SetNumberOfComponents(3);
-    original_position_block->SetNumberOfTuples(num_nodes);
+    original_position_block->SetNumberOfTuples(0);
 
     auto original_vector_block = vtkSmartPointer<vtkDoubleArray>::New();
     original_vector_block->SetNumberOfComponents(3);
-    original_vector_block->SetNumberOfTuples(num_nodes);
+    original_vector_block->SetNumberOfTuples(0);
 
     auto new_position_block = vtkSmartPointer<vtkDoubleArray>::New();
     new_position_block->SetNumberOfComponents(3);
-    new_position_block->SetNumberOfTuples(num_nodes);
+    new_position_block->SetNumberOfTuples(0);
 
     auto new_vector_block = vtkSmartPointer<vtkDoubleArray>::New();
     new_vector_block->SetNumberOfComponents(3);
-    new_vector_block->SetNumberOfTuples(num_nodes);
+    new_vector_block->SetNumberOfTuples(0);
 
     auto gradient_descent = vtkSmartPointer<vtkDoubleArray>::New();
     gradient_descent->SetNumberOfComponents(3);
@@ -205,41 +199,61 @@ int optimizer::RequestData(vtkInformation* vtkNotUsed(request), vtkInformationVe
         start_inner = std::chrono::steady_clock::now();
 
         const auto num_blocks =
-            (original_vector_field.dimensions()[0] - 2 * block_offset) *
-            (original_vector_field.dimensions()[1] - 2 * block_offset) *
-            (original_vector_field.dimensions()[2] - (twoD ? 0 : 2 * block_offset));
+            original_vector_field.dimensions()[0] *
+            original_vector_field.dimensions()[1] *
+            original_vector_field.dimensions()[2];
         std::size_t block_index = 0;
 
-        for (int z = (twoD ? 0 : block_offset); z < original_vector_field.dimensions()[2] - (twoD ? 0 : block_offset); ++z)
+        for (int z = 0; z < original_vector_field.dimensions()[2]; ++z)
         {
-            for (int y = block_offset; y < original_vector_field.dimensions()[1] - block_offset; ++y)
+            for (int y = 0; y < original_vector_field.dimensions()[1]; ++y)
             {
-                for (int x = block_offset; x < original_vector_field.dimensions()[0] - block_offset; ++x)
+                for (int x = 0; x < original_vector_field.dimensions()[0]; ++x)
                 {
                     std::cout << "    Block: " << (++block_index) << "/" << num_blocks;
 
                     start_block = std::chrono::steady_clock::now();
 
+                    const std::array<std::array<int, 2>, 3> block_offsets{
+                        std::array<int, 2>{std::min(x - block_offset, 0) + block_offset,
+                            block_offset - (std::max(x + block_offset, original_vector_field.dimensions()[0] - 1) - (original_vector_field.dimensions()[0] - 1))},
+                        std::array<int, 2>{std::min(y - block_offset, 0) + block_offset,
+                            block_offset - (std::max(y + block_offset, original_vector_field.dimensions()[1] - 1) - (original_vector_field.dimensions()[1] - 1))},
+                        std::array<int, 2>{std::min(z - block_offset, 0) + block_offset,
+                            block_offset - (std::max(z + block_offset, original_vector_field.dimensions()[2] - 1) - (original_vector_field.dimensions()[2] - 1))} };
+
+                    const std::array<int, 3> block_sizes{
+                        block_offsets[0][1] + block_offsets[0][0] + 1,
+                        block_offsets[1][1] + block_offsets[1][0] + 1,
+                        block_offsets[2][1] + block_offsets[2][0] + 1 };
+
+                    const auto block_size = block_sizes[0] * block_sizes[1] * block_sizes[2];
+
+                    original_position_block->SetNumberOfTuples(block_size);
+                    original_vector_block->SetNumberOfTuples(block_size);
+                    new_position_block->SetNumberOfTuples(block_size);
+                    new_vector_block->SetNumberOfTuples(block_size);
+
                     // Create grid block
                     std::chrono::time_point<std::chrono::steady_clock> start_block_part;
                     start_block_part = std::chrono::steady_clock::now();
 
-                    for (int zz = (twoD ? 0 : -block_offset); zz <= (twoD ? 0 : block_offset); ++zz)
+                    for (int zz = (twoD ? 0 : -block_offsets[2][0]); zz <= (twoD ? 0 : block_offsets[2][1]); ++zz)
                     {
-                        const auto index_zz = zz + (twoD ? 0 : block_offset);
+                        const auto index_zz = zz + (twoD ? 0 : block_offsets[2][0]);
                         const auto index_z = z + zz;
 
-                        for (int yy = -block_offset; yy <= block_offset; ++yy)
+                        for (int yy = -block_offsets[1][0]; yy <= block_offsets[1][1]; ++yy)
                         {
-                            const auto index_yy = yy + block_offset;
+                            const auto index_yy = yy + block_offsets[1][0];
                             const auto index_y = y + yy;
 
-                            for (int xx = -block_offset; xx <= block_offset; ++xx)
+                            for (int xx = -block_offsets[0][0]; xx <= block_offsets[0][1]; ++xx)
                             {
-                                const auto index_xx = xx + block_offset;
+                                const auto index_xx = xx + block_offsets[0][0];
                                 const auto index_x = x + xx;
 
-                                const auto index_block = index_xx + block_size * (index_yy + block_size * index_zz);
+                                const auto index_block = index_xx + block_sizes[0] * (index_yy + block_sizes[1] * index_zz);
                                 const auto index_orig = index_x + original_vector_field.dimensions()[0]
                                     * (index_y + original_vector_field.dimensions()[1] * index_z);
 
@@ -261,27 +275,29 @@ int optimizer::RequestData(vtkInformation* vtkNotUsed(request), vtkInformationVe
                     // For each degree of freedom, calculate derivative
                     start_block_part = std::chrono::steady_clock::now();
 
-                    grid block_deformation(dimension, original_position_block, new_position_block);
+                    grid block_deformation(block_sizes, original_position_block, new_position_block);
 
                     Eigen::Vector3d temp_vector{};
                     Eigen::Matrix3d temp_jacobian{};
 
-                    for (int zz = (twoD ? 0 : -block_offset); zz <= (twoD ? 0 : block_offset); ++zz)
+                    for (int zz = (twoD ? 0 : -block_offsets[2][0]); zz <= (twoD ? 0 : block_offsets[2][1]); ++zz)
                     {
-                        const auto index_zz = zz + (twoD ? 0 : block_offset);
+                        const auto index_zz = zz + (twoD ? 0 : block_offsets[2][0]);
                         const auto index_z = z + zz;
 
-                        for (int yy = -block_offset; yy <= block_offset; ++yy)
+                        for (int yy = -block_offsets[1][0]; yy <= block_offsets[1][1]; ++yy)
                         {
-                            const auto index_yy = yy + block_offset;
+                            const auto index_yy = yy + block_offsets[1][0];
                             const auto index_y = y + yy;
 
-                            for (int xx = -block_offset; xx <= block_offset; ++xx)
+                            for (int xx = -block_offsets[0][0]; xx <= block_offsets[0][1]; ++xx)
                             {
-                                const auto index_xx = xx + block_offset;
+                                const auto index_xx = xx + block_offsets[0][0];
                                 const auto index_x = x + xx;
 
-                                const auto index_block = index_xx + block_size * (index_yy + block_size * index_zz);
+                                const auto index_block = index_xx + block_sizes[0] * (index_yy + block_sizes[1] * index_zz);
+                                const auto index_block_center = block_offsets[0][0] + block_sizes[0]
+                                    * (block_offsets[1][0] + block_sizes[1] * block_offsets[2][0]);
                                 const auto index_orig = index_x + original_vector_field.dimensions()[0]
                                     * (index_y + original_vector_field.dimensions()[1] * index_z);
 
@@ -306,7 +322,7 @@ int optimizer::RequestData(vtkInformation* vtkNotUsed(request), vtkInformationVe
                                     }
 
                                     // Calculate cuvature and torsion
-                                    grid block(dimension, new_position_block, new_vector_block, jacobians);
+                                    grid block(block_sizes, new_position_block, new_vector_block, jacobians);
 
                                     const auto curvature = curvature_and_torsion(block);
 
@@ -315,7 +331,7 @@ int optimizer::RequestData(vtkInformation* vtkNotUsed(request), vtkInformationVe
                                         * (y + original_vector_field.dimensions()[1] * z);
 
                                     original_curvature.curvature_gradient->GetTuple(index_center, original_gradient.data());
-                                    curvature.curvature_gradient->GetTuple(block_center, deformed_gradient.data());
+                                    curvature.curvature_gradient->GetTuple(index_block_center, deformed_gradient.data());
 
                                     const auto difference = (deformed_gradient - original_gradient).norm();
 
