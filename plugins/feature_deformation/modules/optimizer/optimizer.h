@@ -2,8 +2,14 @@
 
 #include "vtkStructuredGridAlgorithm.h"
 
+#include "vtkDataArray.h"
+#include "vtkDoubleArray.h"
 #include "vtkInformation.h"
 #include "vtkInformationVector.h"
+#include "vtkSmartPointer.h"
+#include "vtkStructuredGrid.h"
+
+#include <vector>
 
 class VTK_EXPORT optimizer : public vtkStructuredGridAlgorithm
 {
@@ -33,7 +39,14 @@ private:
     optimizer(const optimizer&);
     void operator=(const optimizer&);
 
+    void compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* deformed_grid,
+        vtkDataArray* vector_field_original, vtkSmartPointer<vtkDoubleArray> vector_field_deformed,
+        vtkSmartPointer<vtkDoubleArray> jacobian_field);
+
     int NumSteps;
     double StepSize;
     double Error;
+
+    std::uint32_t hash;
+    std::vector<vtkSmartPointer<vtkStructuredGrid>> results;
 };

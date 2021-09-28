@@ -1,5 +1,7 @@
 #include "optimizer.h"
 
+#include "common/hash.h"
+
 #include "../feature_deformation/curvature.h"
 #include "../feature_deformation/gradient.h"
 #include "../feature_deformation/grid.h"
@@ -12,16 +14,21 @@
 #include "vtkObjectFactory.h"
 #include "vtkPointData.h"
 #include "vtkSmartPointer.h"
+#include "vtkStreamingDemandDrivenPipeline.h"
 #include "vtkStructuredGrid.h"
 
+#include <algorithm>
 #include <array>
 #include <chrono>
+#include <cmath>
 #include <iostream>
 #include <limits>
+#include <numeric>
+#include <vector>
 
 vtkStandardNewMacro(optimizer);
 
-optimizer::optimizer()
+optimizer::optimizer() : hash(-1)
 {
     this->SetNumberOfInputPorts(2);
     this->SetNumberOfOutputPorts(1);
@@ -33,6 +40,16 @@ optimizer::~optimizer()
 
 int optimizer::RequestInformation(vtkInformation*, vtkInformationVector**, vtkInformationVector* output_vector)
 {
+    const std::array<double, 2> time_range{ 0.0, static_cast<double>(this->NumSteps) };
+
+    std::vector<double> timesteps(this->NumSteps + 1);
+    std::iota(timesteps.begin(), timesteps.end(), 0);
+
+    output_vector->GetInformationObject(0)->Set(vtkStreamingDemandDrivenPipeline::TIME_RANGE(), time_range.data(), 2);
+    output_vector->GetInformationObject(0)->Set(vtkStreamingDemandDrivenPipeline::TIME_STEPS(), timesteps.data(), static_cast<int>(timesteps.size()));
+
+    this->results.resize(this->NumSteps + 1uLL);
+
     return 1;
 }
 
@@ -54,15 +71,6 @@ int optimizer::FillInputPortInformation(int port, vtkInformation* info)
 
 int optimizer::RequestData(vtkInformation* vtkNotUsed(request), vtkInformationVector** input_vector, vtkInformationVector* output_vector)
 {
-    using duration_t = std::chrono::milliseconds;
-    const std::string duration_str(" ms");
-
-    std::chrono::time_point<std::chrono::steady_clock> start, start_inner, start_block;
-
-    // Get input grid and data
-    std::cout << "Reading data...";
-    start = std::chrono::steady_clock::now();
-
     auto original_grid = vtkStructuredGrid::GetData(input_vector[0]);
     auto deformed_grid = vtkStructuredGrid::GetData(input_vector[1]);
 
@@ -82,17 +90,45 @@ int optimizer::RequestData(vtkInformation* vtkNotUsed(request), vtkInformationVe
         return 0;
     }
 
-    auto vector_field_deformed = vtkSmartPointer<vtkDoubleArray>::New();
-    vector_field_deformed->DeepCopy(vector_field_deformed_);
+    const auto hash = joaat_hash(this->NumSteps, this->StepSize, this->Error,
+        vector_field_original->GetMTime(), vector_field_deformed_->GetMTime(),
+        jacobian_field_->GetMTime());
 
-    auto jacobian_field = vtkSmartPointer<vtkDoubleArray>::New();
-    jacobian_field->DeepCopy(jacobian_field_);
+    if (hash != this->hash)
+    {
+        auto vector_field_deformed = vtkSmartPointer<vtkDoubleArray>::New();
+        vector_field_deformed->DeepCopy(vector_field_deformed_);
 
+        auto jacobian_field = vtkSmartPointer<vtkDoubleArray>::New();
+        jacobian_field->DeepCopy(jacobian_field_);
+
+        compute(original_grid, deformed_grid, vector_field_original, vector_field_deformed, jacobian_field);
+
+        this->hash = hash;
+    }
+
+    const auto time = output_vector->GetInformationObject(0)->Get(vtkStreamingDemandDrivenPipeline::UPDATE_TIME_STEP());
+
+    auto output_grid = vtkStructuredGrid::GetData(output_vector);
+    output_grid->ShallowCopy(this->results[static_cast<std::size_t>(time)]);
+
+    std::cout << "Showing step: " << static_cast<std::size_t>(time) << std::endl;
+
+    return 1;
+}
+
+void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* deformed_grid,
+    vtkDataArray* vector_field_original, vtkSmartPointer<vtkDoubleArray> vector_field_deformed,
+    vtkSmartPointer<vtkDoubleArray> jacobian_field)
+{
+    using duration_t = std::chrono::milliseconds;
+    const std::string duration_str(" ms");
+
+    std::chrono::time_point<std::chrono::steady_clock> start, start_inner, start_block;
+
+    // Get input grid and data
     const grid original_vector_field(original_grid, vector_field_original);
     const grid deformed_vector_field(deformed_grid, vector_field_deformed, jacobian_field);
-
-    std::cout << "  " << std::chrono::duration_cast<duration_t>(std::chrono::steady_clock::now()
-        - start).count() << duration_str << std::endl;
 
     // Calculate initial gradient difference
     std::cout << "Calculating initial gradient difference...";
@@ -163,6 +199,7 @@ int optimizer::RequestData(vtkInformation* vtkNotUsed(request), vtkInformationVe
     new_vector_block->SetNumberOfTuples(0);
 
     auto gradient_descent = vtkSmartPointer<vtkDoubleArray>::New();
+    gradient_descent->SetName("Gradient Descent");
     gradient_descent->SetNumberOfComponents(3);
     gradient_descent->SetNumberOfTuples(vector_field_original->GetNumberOfTuples());
 
@@ -182,9 +219,75 @@ int optimizer::RequestData(vtkInformation* vtkNotUsed(request), vtkInformationVe
     std::cout << "  " << std::chrono::duration_cast<duration_t>(std::chrono::steady_clock::now()
         - start).count() << duration_str << std::endl;
 
+    {
+        // Set output for this step
+        std::cout << "Setting initial output..." << std::endl;
+
+        this->results[0] = vtkSmartPointer<vtkStructuredGrid>::New();
+
+        auto points = vtkSmartPointer<vtkPoints>::New();
+        points->SetNumberOfPoints(deformed_positions->GetNumberOfTuples());
+
+        for (vtkIdType i = 0; i < deformed_positions->GetNumberOfTuples(); ++i)
+        {
+            deformed_positions->GetTuple(i, point.data());
+            points->SetPoint(i, point.data());
+        }
+
+        jacobian_field->SetName("Jacobian");
+
+        this->results[0]->SetDimensions(deformed_vector_field.dimensions().data());
+        this->results[0]->SetPoints(points);
+
+        auto vector_field_deformed_out = vtkSmartPointer<vtkDoubleArray>::New();
+        vector_field_deformed_out->DeepCopy(vector_field_deformed);
+
+        auto jacobian_field_out = vtkSmartPointer<vtkDoubleArray>::New();
+        jacobian_field_out->DeepCopy(jacobian_field);
+
+        auto deformed_positions_out = vtkSmartPointer<vtkDoubleArray>::New();
+        deformed_positions_out->DeepCopy(deformed_positions);
+
+        auto gradient_difference_out = vtkSmartPointer<vtkDoubleArray>::New();
+        gradient_difference_out->DeepCopy(gradient_difference);
+
+        auto curvature_out = vtkSmartPointer<vtkDoubleArray>::New();
+        curvature_out->DeepCopy(deformed_curvature.curvature);
+
+        auto curvature_vector_out = vtkSmartPointer<vtkDoubleArray>::New();
+        curvature_vector_out->DeepCopy(deformed_curvature.curvature_vector);
+
+        auto curvature_gradient_out = vtkSmartPointer<vtkDoubleArray>::New();
+        curvature_gradient_out->DeepCopy(deformed_curvature.curvature_gradient);
+
+        auto torsion_out = vtkSmartPointer<vtkDoubleArray>::New();
+        torsion_out->DeepCopy(deformed_curvature.torsion);
+
+        auto torsion_vector_out = vtkSmartPointer<vtkDoubleArray>::New();
+        torsion_vector_out->DeepCopy(deformed_curvature.torsion_vector);
+
+        auto torsion_gradient_out = vtkSmartPointer<vtkDoubleArray>::New();
+        torsion_gradient_out->DeepCopy(deformed_curvature.torsion_gradient);
+
+        this->results[0]->GetPointData()->AddArray(vector_field_deformed_out);
+        this->results[0]->GetPointData()->AddArray(jacobian_field_out);
+        this->results[0]->GetPointData()->AddArray(deformed_positions_out);
+        this->results[0]->GetPointData()->AddArray(gradient_difference_out);
+        this->results[0]->GetPointData()->AddArray(original_gradient_difference);
+
+        this->results[0]->GetPointData()->AddArray(curvature_out);
+        this->results[0]->GetPointData()->AddArray(curvature_vector_out);
+        this->results[0]->GetPointData()->AddArray(curvature_gradient_out);
+        this->results[0]->GetPointData()->AddArray(torsion_out);
+        this->results[0]->GetPointData()->AddArray(torsion_vector_out);
+        this->results[0]->GetPointData()->AddArray(torsion_gradient_out);
+    }
+
     Eigen::Vector3d temp;
 
-    for (int step = 0; step < this->NumSteps && !converged; ++step)
+    int step;
+
+    for (step = 0; step < this->NumSteps && !converged; ++step)
     {
         std::cout << "Optimization step: " << (step + 1) << "/" << this->NumSteps << std::endl;
         start = std::chrono::steady_clock::now();
@@ -336,7 +439,7 @@ int optimizer::RequestData(vtkInformation* vtkNotUsed(request), vtkInformationVe
                                     const auto difference = (deformed_gradient - original_gradient).norm();
 
                                     gradient_descent->SetComponent(index_orig, d, gradient_descent->GetComponent(index_orig, d)
-                                        - node_weight *(difference - gradient_difference->GetValue(index_orig))); // TODO: weight?
+                                        - node_weight * (difference - gradient_difference->GetValue(index_orig))); // TODO: weight?
 
                                     // Reset new positions
                                     new_position_block->SetComponent(index_block, d,
@@ -450,44 +553,94 @@ int optimizer::RequestData(vtkInformation* vtkNotUsed(request), vtkInformationVe
         if (error_max < this->Error)
         {
             converged = true;
-
-            std::cout << "  Optimization converged." << std::endl;
         }
 
         std::cout << "  Optimization step complete after " <<
             std::chrono::duration_cast<duration_t>(std::chrono::steady_clock::now()
                 - start).count() << duration_str << std::endl;
+
+        // Set output for this step
+        std::cout << "  Setting output..." << std::endl;
+
+        this->results[step + 1uLL] = vtkSmartPointer<vtkStructuredGrid>::New();
+
+        auto points = vtkSmartPointer<vtkPoints>::New();
+        points->SetNumberOfPoints(deformed_positions->GetNumberOfTuples());
+
+        for (vtkIdType i = 0; i < deformed_positions->GetNumberOfTuples(); ++i)
+        {
+            deformed_positions->GetTuple(i, point.data());
+            points->SetPoint(i, point.data());
+        }
+
+        jacobian_field->SetName("Jacobian");
+
+        this->results[step + 1uLL]->SetDimensions(deformed_vector_field.dimensions().data());
+        this->results[step + 1uLL]->SetPoints(points);
+
+        auto vector_field_deformed_out = vtkSmartPointer<vtkDoubleArray>::New();
+        vector_field_deformed_out->DeepCopy(vector_field_deformed);
+
+        auto jacobian_field_out = vtkSmartPointer<vtkDoubleArray>::New();
+        jacobian_field_out->DeepCopy(jacobian_field);
+
+        auto deformed_positions_out = vtkSmartPointer<vtkDoubleArray>::New();
+        deformed_positions_out->DeepCopy(deformed_positions);
+
+        auto gradient_difference_out = vtkSmartPointer<vtkDoubleArray>::New();
+        gradient_difference_out->DeepCopy(gradient_difference);
+
+        auto curvature_out = vtkSmartPointer<vtkDoubleArray>::New();
+        curvature_out->DeepCopy(deformed_curvature.curvature);
+
+        auto curvature_vector_out = vtkSmartPointer<vtkDoubleArray>::New();
+        curvature_vector_out->DeepCopy(deformed_curvature.curvature_vector);
+
+        auto curvature_gradient_out = vtkSmartPointer<vtkDoubleArray>::New();
+        curvature_gradient_out->DeepCopy(deformed_curvature.curvature_gradient);
+
+        auto torsion_out = vtkSmartPointer<vtkDoubleArray>::New();
+        torsion_out->DeepCopy(deformed_curvature.torsion);
+
+        auto torsion_vector_out = vtkSmartPointer<vtkDoubleArray>::New();
+        torsion_vector_out->DeepCopy(deformed_curvature.torsion_vector);
+
+        auto torsion_gradient_out = vtkSmartPointer<vtkDoubleArray>::New();
+        torsion_gradient_out->DeepCopy(deformed_curvature.torsion_gradient);
+
+        auto gradient_descent_out = vtkSmartPointer<vtkDoubleArray>::New();
+        gradient_descent_out->DeepCopy(gradient_descent);
+
+        this->results[step + 1uLL]->GetPointData()->AddArray(vector_field_deformed_out);
+        this->results[step + 1uLL]->GetPointData()->AddArray(jacobian_field_out);
+        this->results[step + 1uLL]->GetPointData()->AddArray(deformed_positions_out);
+        this->results[step + 1uLL]->GetPointData()->AddArray(gradient_difference_out);
+        this->results[step + 1uLL]->GetPointData()->AddArray(original_gradient_difference);
+
+        this->results[step + 1uLL]->GetPointData()->AddArray(curvature_out);
+        this->results[step + 1uLL]->GetPointData()->AddArray(curvature_vector_out);
+        this->results[step + 1uLL]->GetPointData()->AddArray(curvature_gradient_out);
+        this->results[step + 1uLL]->GetPointData()->AddArray(torsion_out);
+        this->results[step + 1uLL]->GetPointData()->AddArray(torsion_vector_out);
+        this->results[step + 1uLL]->GetPointData()->AddArray(torsion_gradient_out);
+
+        this->results[step]->GetPointData()->AddArray(gradient_descent_out);
     }
 
-    // Set output
-    std::cout << "Setting output..." << std::endl;
+    this->results[step]->GetPointData()->AddArray(gradient_descent);
 
-    auto points = vtkSmartPointer<vtkPoints>::New();
-    points->SetNumberOfPoints(deformed_positions->GetNumberOfTuples());
-
-    for (vtkIdType i = 0; i < deformed_positions->GetNumberOfTuples(); ++i)
+    // If converged, later results stay the same
+    if (converged)
     {
-        deformed_positions->GetTuple(i, point.data());
-        points->SetPoint(i, point.data());
+        std::cout << "Optimization converged." << std::endl;
+
+        for (std::size_t i = step + 1uLL; i <= this->NumSteps; ++i)
+        {
+            this->results[i] = this->results[step];
+        }
     }
-
-    jacobian_field->SetName("Jacobian");
-
-    auto output_grid = vtkStructuredGrid::GetData(output_vector);
-    output_grid->SetDimensions(deformed_vector_field.dimensions().data());
-    output_grid->SetPoints(points);
-
-    output_grid->GetPointData()->AddArray(vector_field_deformed);
-    output_grid->GetPointData()->AddArray(jacobian_field);
-    output_grid->GetPointData()->AddArray(deformed_positions);
-    output_grid->GetPointData()->AddArray(gradient_difference);
-    output_grid->GetPointData()->AddArray(original_gradient_difference);
-    output_grid->GetPointData()->AddArray(deformed_curvature.curvature);
-    output_grid->GetPointData()->AddArray(deformed_curvature.curvature_vector);
-    output_grid->GetPointData()->AddArray(deformed_curvature.curvature_gradient);
-    output_grid->GetPointData()->AddArray(deformed_curvature.torsion);
-    output_grid->GetPointData()->AddArray(deformed_curvature.torsion_vector);
-    output_grid->GetPointData()->AddArray(deformed_curvature.torsion_gradient);
-
-    return 1;
+    else
+    {
+        std::cout << "Finished computation without convergence." << std::endl;
+    }
 }
