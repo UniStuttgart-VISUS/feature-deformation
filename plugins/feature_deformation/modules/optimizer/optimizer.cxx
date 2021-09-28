@@ -108,11 +108,12 @@ int optimizer::RequestData(vtkInformation* vtkNotUsed(request), vtkInformationVe
     }
 
     const auto time = output_vector->GetInformationObject(0)->Get(vtkStreamingDemandDrivenPipeline::UPDATE_TIME_STEP());
+    const auto time_step = std::min(std::max(static_cast<std::size_t>(time), 0uLL), static_cast<std::size_t>(this->NumSteps));
 
     auto output_grid = vtkStructuredGrid::GetData(output_vector);
-    output_grid->ShallowCopy(this->results[static_cast<std::size_t>(time)]);
+    output_grid->ShallowCopy(this->results[static_cast<std::size_t>(time_step)]);
 
-    std::cout << "Showing step: " << static_cast<std::size_t>(time) << std::endl;
+    std::cout << "Showing step: " << static_cast<std::size_t>(time_step) << std::endl;
 
     return 1;
 }
@@ -124,16 +125,26 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
     using duration_t = std::chrono::milliseconds;
     const std::string duration_str(" ms");
 
-    std::chrono::time_point<std::chrono::steady_clock> start, start_inner, start_block;
+    std::chrono::time_point<std::chrono::steady_clock> start_inner, start_block;
 
     // Get input grid and data
     const grid original_vector_field(original_grid, vector_field_original);
     const grid deformed_vector_field(deformed_grid, vector_field_deformed, jacobian_field);
 
-    // Calculate initial gradient difference
-    std::cout << "Calculating initial gradient difference...";
-    start = std::chrono::steady_clock::now();
+    const bool twoD = original_vector_field.dimensions()[2] == 1;
 
+    Eigen::Vector3d origin, right, top, front;
+    original_grid->GetPoint(0, origin.data());
+    original_grid->GetPoint(1, right.data());
+    original_grid->GetPoint(original_vector_field.dimensions()[0], top.data());
+    original_grid->GetPoint(twoD ? 0 : (original_vector_field.dimensions()[0] * original_vector_field.dimensions()[1]), front.data());
+
+    const std::array<double, 3> cell_sizes{ right[0] - origin[0], top[1] - origin[1], front[2] - origin[2] };
+    const auto infinitesimal_step = 1.0e-3;
+    const std::array<double, 3> infinitesimal_steps{ infinitesimal_step * cell_sizes[0],
+        infinitesimal_step * cell_sizes[1], infinitesimal_step * cell_sizes[2] };
+
+    // Calculate initial gradient difference
     auto original_curvature = curvature_and_torsion(original_vector_field);
     auto deformed_curvature = curvature_and_torsion(deformed_vector_field);
 
@@ -168,19 +179,11 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
         error_max = std::max(error_max, difference);
     }
 
-    std::cout << "  " << std::chrono::duration_cast<duration_t>(std::chrono::steady_clock::now()
-        - start).count() << duration_str << std::endl;
-
     // Iterative optimization
-    std::cout << "Initializing optimization...";
-    start = std::chrono::steady_clock::now();
-
     bool converged = false;
 
-    const bool twoD = original_vector_field.dimensions()[2] == 1;
     const auto block_offset = 3;
     const auto block_size = (2 * block_offset + 1);
-    const auto node_weight = 1.0 / (block_size * block_size * (twoD ? 1 : block_size));
 
     auto original_position_block = vtkSmartPointer<vtkDoubleArray>::New();
     original_position_block->SetNumberOfComponents(3);
@@ -215,9 +218,6 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
         deformed_grid->GetPoint(i, point.data());
         deformed_positions->SetTuple(i, point.data());
     }
-
-    std::cout << "  " << std::chrono::duration_cast<duration_t>(std::chrono::steady_clock::now()
-        - start).count() << duration_str << std::endl;
 
     {
         // Set output for this step
@@ -290,7 +290,6 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
     for (step = 0; step < this->NumSteps && !converged; ++step)
     {
         std::cout << "Optimization step: " << (step + 1) << "/" << this->NumSteps << std::endl;
-        start = std::chrono::steady_clock::now();
 
         gradient_descent->Fill(0.0);
 
@@ -298,7 +297,6 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
         // curvature gradient difference in direction of the degrees of freedom.
         // Use gradient descent to perform a single step for respective center
         // vertex, minimizing its curvature gradient difference.
-        std::cout << "  Computing gradient descent..." << std::endl;
         start_inner = std::chrono::steady_clock::now();
 
         const auto num_blocks =
@@ -338,9 +336,6 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
                     new_vector_block->SetNumberOfTuples(block_size);
 
                     // Create grid block
-                    std::chrono::time_point<std::chrono::steady_clock> start_block_part;
-                    start_block_part = std::chrono::steady_clock::now();
-
                     for (int zz = (twoD ? 0 : -block_offsets[2][0]); zz <= (twoD ? 0 : block_offsets[2][1]); ++zz)
                     {
                         const auto index_zz = zz + (twoD ? 0 : block_offsets[2][0]);
@@ -372,12 +367,7 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
                         }
                     }
 
-                    std::cout << "  " << std::chrono::duration_cast<duration_t>(std::chrono::steady_clock::now()
-                        - start_block_part).count() << duration_str;
-
                     // For each degree of freedom, calculate derivative
-                    start_block_part = std::chrono::steady_clock::now();
-
                     grid block_deformation(block_sizes, original_position_block, new_position_block);
 
                     Eigen::Vector3d temp_vector{};
@@ -408,7 +398,7 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
                                 {
                                     // Move node first in respective direction
                                     new_position_block->SetComponent(index_block, d,
-                                        new_position_block->GetComponent(index_block, d) + this->StepSize);
+                                        new_position_block->GetComponent(index_block, d) + infinitesimal_steps[d]);
 
                                     // Compute Jacobians of deformation
                                     auto jacobians = gradient_field(block_deformation);
@@ -437,22 +427,19 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
                                     curvature.curvature_gradient->GetTuple(index_block_center, deformed_gradient.data());
 
                                     const auto difference = (deformed_gradient - original_gradient).norm();
+                                    const auto gradient = (difference - gradient_difference->GetValue(index_orig)) / infinitesimal_steps[d];
 
-                                    gradient_descent->SetComponent(index_orig, d, gradient_descent->GetComponent(index_orig, d)
-                                        - node_weight * (difference - gradient_difference->GetValue(index_orig))); // TODO: weight?
+                                    gradient_descent->SetComponent(index_orig, d, gradient_descent->GetComponent(index_orig, d) - gradient);
 
                                     // Reset new positions
                                     new_position_block->SetComponent(index_block, d,
-                                        new_position_block->GetComponent(index_block, d) - this->StepSize);
+                                        new_position_block->GetComponent(index_block, d) - infinitesimal_steps[d]);
                                 }
                             }
                         }
                     }
 
-                    std::cout << "  " << std::chrono::duration_cast<duration_t>(std::chrono::steady_clock::now()
-                        - start_block_part).count() << duration_str;
-
-                    std::cout << "  -> " << std::chrono::duration_cast<duration_t>(std::chrono::steady_clock::now()
+                    std::cout << "  Time: " << std::chrono::duration_cast<duration_t>(std::chrono::steady_clock::now()
                         - start_block).count() << duration_str << std::endl;
                 }
             }
@@ -462,9 +449,6 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
             std::chrono::duration_cast<duration_t>(std::chrono::steady_clock::now() - start_inner).count() << duration_str << std::endl;
 
         // Apply gradient descent
-        std::cout << "  Applying gradient descent...";
-        start_inner = std::chrono::steady_clock::now();
-
         Eigen::Vector3d position, descent;
 
         for (int z = 0; z < original_vector_field.dimensions()[2]; ++z)
@@ -479,8 +463,10 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
                     deformed_positions->GetTuple(index, position.data());
                     gradient_descent->GetTuple(index, descent.data());
 
+                    descent *= this->StepSize;
                     position += descent;
 
+                    gradient_descent->SetTuple(index, descent.data());
                     deformed_positions->SetTuple(index, position.data());
                 }
             }
@@ -534,9 +520,6 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
             new_error_max = std::max(new_error_max, difference);
         }
 
-        std::cout << "  " << std::chrono::duration_cast<duration_t>(std::chrono::steady_clock::now()
-            - start_inner).count() << duration_str << std::endl;
-
         // Calculate new min, max error
         if (new_error_min > error_min)
         {
@@ -555,13 +538,7 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
             converged = true;
         }
 
-        std::cout << "  Optimization step complete after " <<
-            std::chrono::duration_cast<duration_t>(std::chrono::steady_clock::now()
-                - start).count() << duration_str << std::endl;
-
         // Set output for this step
-        std::cout << "  Setting output..." << std::endl;
-
         this->results[step + 1uLL] = vtkSmartPointer<vtkStructuredGrid>::New();
 
         auto points = vtkSmartPointer<vtkPoints>::New();
