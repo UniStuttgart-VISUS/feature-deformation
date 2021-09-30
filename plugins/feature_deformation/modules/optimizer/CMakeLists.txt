@@ -8,6 +8,13 @@ set(sources
 
 pv_module(optimizer ${PROJECT_NAME} "${sources}" optimizer_target)
 
+# Find and link OpenMP
+find_package(OpenMP)
+
+if(OpenMP_CXX_FOUND)
+  target_link_libraries(${optimizer_target} PRIVATE OpenMP::OpenMP_CXX)
+endif()
+
 # Find and link Eigen
 find_package(Eigen3 REQUIRED NO_MODULE)
 

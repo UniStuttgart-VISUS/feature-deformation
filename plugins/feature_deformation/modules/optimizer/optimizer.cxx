@@ -236,8 +236,9 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
 
         const auto step_size_adjustment = 0.5; // TODO: parameter
         const auto max_adjustments = 5; // TODO: parameter
+        const auto error_threshold = 1.01; // TODO: parameter
 
-        if (new_error_max > error_max || new_error_avg > error_avg)
+        if (new_error_max > error_threshold * error_max || new_error_avg > error_threshold * error_avg)
         {
             if (step_size > std::pow(2.0, -max_adjustments) * original_step_size)
             {
@@ -299,7 +300,7 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
 
         for (std::size_t i = step; i <= this->NumSteps; ++i)
         {
-            this->results[i] = this->results[step - 1];
+            this->results[i] = this->results[step - 1uLL];
         }
     }
     else
@@ -344,35 +345,11 @@ vtkSmartPointer<vtkDoubleArray> optimizer::compute_gradient_descent(const std::a
     const auto block_inner_offset = (block_offset + 1) / 2;
     const auto block_size = (2 * block_offset + 1);
 
-    auto original_position_block = vtkSmartPointer<vtkDoubleArray>::New();
-    original_position_block->SetNumberOfComponents(3);
-    original_position_block->SetNumberOfTuples(0);
-
-    auto original_vector_block = vtkSmartPointer<vtkDoubleArray>::New();
-    original_vector_block->SetNumberOfComponents(3);
-    original_vector_block->SetNumberOfTuples(0);
-
-    auto new_position_block = vtkSmartPointer<vtkDoubleArray>::New();
-    new_position_block->SetNumberOfComponents(3);
-    new_position_block->SetNumberOfTuples(0);
-
-    auto new_vector_block = vtkSmartPointer<vtkDoubleArray>::New();
-    new_vector_block->SetNumberOfComponents(3);
-    new_vector_block->SetNumberOfTuples(0);
-
     const auto num_blocks = dimension[0] * dimension[1] * dimension[2];
-    std::size_t block_index = 0;
-
-    // Temporary variables
-    Eigen::VectorXd original_gradient, deformed_gradient;
-    Eigen::Matrix3d jacobian;
-    original_gradient.resize(original_curvature.curvature_gradient->GetNumberOfComponents(), 1);
-    deformed_gradient.resize(original_curvature.curvature_gradient->GetNumberOfComponents(), 1);
-
-    Eigen::Vector3d temp;
 
     for (int z = 0; z < dimension[2]; ++z)
     {
+        #pragma omp parallel for
         for (int y = 0; y < dimension[1]; ++y)
         {
             for (int x = 0; x < dimension[0]; ++x)
@@ -393,7 +370,31 @@ vtkSmartPointer<vtkDoubleArray> optimizer::compute_gradient_descent(const std::a
 
                 const auto block_size = block_sizes[0] * block_sizes[1] * block_sizes[2];
 
+                // Temporary variables
+                Eigen::VectorXd original_gradient, deformed_gradient;
+                Eigen::Matrix3d jacobian;
+                original_gradient.resize(original_curvature.curvature_gradient->GetNumberOfComponents(), 1);
+                deformed_gradient.resize(original_curvature.curvature_gradient->GetNumberOfComponents(), 1);
+
+                Eigen::Vector3d temp;
+
                 // Create grid block
+                auto original_position_block = vtkSmartPointer<vtkDoubleArray>::New();
+                original_position_block->SetNumberOfComponents(3);
+                original_position_block->SetNumberOfTuples(0);
+
+                auto original_vector_block = vtkSmartPointer<vtkDoubleArray>::New();
+                original_vector_block->SetNumberOfComponents(3);
+                original_vector_block->SetNumberOfTuples(0);
+
+                auto new_position_block = vtkSmartPointer<vtkDoubleArray>::New();
+                new_position_block->SetNumberOfComponents(3);
+                new_position_block->SetNumberOfTuples(0);
+
+                auto new_vector_block = vtkSmartPointer<vtkDoubleArray>::New();
+                new_vector_block->SetNumberOfComponents(3);
+                new_vector_block->SetNumberOfTuples(0);
+
                 original_position_block->SetNumberOfTuples(block_size);
                 original_vector_block->SetNumberOfTuples(block_size);
                 new_position_block->SetNumberOfTuples(block_size);
@@ -542,14 +543,15 @@ std::pair<vtkSmartPointer<vtkDoubleArray>, vtkSmartPointer<vtkDoubleArray>> opti
     adjusted_gradient_descent->SetNumberOfComponents(3);
     adjusted_gradient_descent->SetNumberOfTuples(gradient_descent->GetNumberOfTuples());
 
-    Eigen::Vector3d position, descent;
-
     const bool twoD = dimension[2] == 1;
 
     for (int z = 0; z < dimension[2]; ++z)
     {
+        #pragma omp parallel for
         for (int y = 0; y < dimension[1]; ++y)
         {
+            Eigen::Vector3d position, descent;
+
             for (int x = 0; x < dimension[0]; ++x)
             {
                 const auto index = x + dimension[0] * (y + dimension[1] * z);
