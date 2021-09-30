@@ -133,7 +133,7 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
 
     // Calculate initial gradient difference
     const auto original_curvature = curvature_and_torsion(original_vector_field);
-    auto deformed_curvature = curvature_and_torsion(deformed_vector_field);
+    const auto deformed_curvature = curvature_and_torsion(deformed_vector_field);
 
     vtkSmartPointer<vtkDoubleArray> gradient_difference;
     double error_avg, error_max;
@@ -142,8 +142,6 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
         = calculate_gradient_difference(original_curvature, deformed_curvature, jacobian_field);
 
     // Iterative optimization
-    bool converged = false;
-
     auto positions = vtkSmartPointer<vtkDoubleArray>::New();
     positions->SetName("Deformed Position");
     positions->SetNumberOfComponents(3);
@@ -171,9 +169,14 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
         deformed_curvature.torsion_vector, deformed_curvature.torsion_gradient);
 
     // Apply optimization
+    bool converged = false;
+    bool stopped = false;
+
+    const auto original_step_size = this->StepSize;
+    double step_size = this->StepSize;
     int step;
 
-    for (step = 0; step < this->NumSteps && !converged; ++step)
+    for (step = 0; step < this->NumSteps && !converged && !stopped; ++step)
     {
         std::cout << "Optimization step: " << (step + 1) << "/" << this->NumSteps << std::endl;
 
@@ -183,9 +186,9 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
             vector_field_original, positions, gradient_difference, original_curvature);
 
         std::tie(deformed_positions, gradient_descent) = apply_gradient_descent(dimension,
-            positions, gradient_difference, gradient_descent);
+            step_size, positions, gradient_difference, gradient_descent);
 
-        // Update jacobians and vector field to build an updated grid
+        // Update jacobians and vector field
         const grid new_deformation(original_grid, deformed_positions);
 
         jacobian_field = gradient_field(new_deformation);
@@ -214,7 +217,7 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
         // Calculate new gradient difference
         const grid new_deformed_vector_field(dimension, deformed_positions, vector_field_deformed, jacobian_field);
 
-        deformed_curvature = curvature_and_torsion(new_deformed_vector_field);
+        const auto deformed_curvature = curvature_and_torsion(new_deformed_vector_field);
 
         vtkSmartPointer<vtkDoubleArray> new_gradient_difference;
         double new_error_avg, new_error_max;
@@ -229,6 +232,24 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
         if (new_error_avg > error_avg)
         {
             std::cout << "New average error increased from " << error_avg << " to " << new_error_avg << "." << std::endl;
+        }
+
+        const auto step_size_adjustment = 0.5; // TODO: parameter
+        const auto max_adjustments = 5; // TODO: parameter
+
+        if (new_error_max > error_max || new_error_avg > error_avg)
+        {
+            if (step_size > std::pow(2.0, -max_adjustments) * original_step_size)
+            {
+                step_size *= step_size_adjustment;
+                --step;
+                continue;
+            }
+            else
+            {
+                stopped = true;
+                continue;
+            }
         }
 
         error_max = new_error_max;
@@ -255,6 +276,11 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
         // Prepare next iteration
         positions = deformed_positions;
         gradient_difference = new_gradient_difference;
+
+        if (step_size < original_step_size)
+        {
+            step_size /= step_size_adjustment;
+        }
     }
 
     // If converged, later results stay the same
@@ -265,6 +291,15 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
         for (std::size_t i = step + 1uLL; i <= this->NumSteps; ++i)
         {
             this->results[i] = this->results[step];
+        }
+    }
+    else if (stopped)
+    {
+        std::cout << "Optimization stopped." << std::endl;
+
+        for (std::size_t i = step; i <= this->NumSteps; ++i)
+        {
+            this->results[i] = this->results[step - 1];
         }
     }
     else
@@ -494,7 +529,7 @@ vtkSmartPointer<vtkDoubleArray> optimizer::compute_gradient_descent(const std::a
 }
 
 std::pair<vtkSmartPointer<vtkDoubleArray>, vtkSmartPointer<vtkDoubleArray>> optimizer::apply_gradient_descent(
-    const std::array<int, 3>& dimension, const vtkDataArray* positions,
+    const std::array<int, 3>& dimension, const double step_size, const vtkDataArray* positions,
     const vtkDataArray* gradient_difference, const vtkDataArray* gradient_descent) const
 {
     auto deformed_positions = vtkSmartPointer<vtkDoubleArray>::New();
@@ -560,7 +595,7 @@ std::pair<vtkSmartPointer<vtkDoubleArray>, vtkSmartPointer<vtkDoubleArray>> opti
                     descent *= error / descent.norm();
                 }
 
-                descent *= this->StepSize;
+                descent *= step_size;
                 position += descent;
 
                 adjusted_gradient_descent->SetTuple(index, descent.data());

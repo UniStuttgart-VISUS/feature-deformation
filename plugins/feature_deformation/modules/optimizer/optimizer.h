@@ -54,7 +54,7 @@ private:
         const vtkDataArray* gradient_difference, const curvature_and_torsion_t& original_curvature) const;
 
     std::pair<vtkSmartPointer<vtkDoubleArray>, vtkSmartPointer<vtkDoubleArray>> apply_gradient_descent(
-        const std::array<int, 3>& dimension, const vtkDataArray* positions,
+        const std::array<int, 3>& dimension, double step_size, const vtkDataArray* positions,
         const vtkDataArray* gradient_difference, const vtkDataArray* gradient_descent) const;
 
     std::tuple<vtkSmartPointer<vtkDoubleArray>, double, double> calculate_gradient_difference(
