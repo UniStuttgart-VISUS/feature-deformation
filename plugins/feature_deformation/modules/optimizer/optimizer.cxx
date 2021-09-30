@@ -125,8 +125,6 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
     using duration_t = std::chrono::milliseconds;
     const std::string duration_str(" ms");
 
-    std::chrono::time_point<std::chrono::steady_clock> start_inner, start_block;
-
     // Get input grid and data
     const grid original_vector_field(original_grid, vector_field_original);
     const grid deformed_vector_field(deformed_grid, vector_field_deformed, jacobian_field);
@@ -183,6 +181,7 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
     bool converged = false;
 
     const auto block_offset = 3;
+    const auto block_inner_offset = (block_offset + 1) / 2;
     const auto block_size = (2 * block_offset + 1);
 
     auto original_position_block = vtkSmartPointer<vtkDoubleArray>::New();
@@ -297,7 +296,7 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
         // curvature gradient difference in direction of the degrees of freedom.
         // Use gradient descent to perform a single step for respective center
         // vertex, minimizing its curvature gradient difference.
-        start_inner = std::chrono::steady_clock::now();
+        const auto start_inner = std::chrono::steady_clock::now();
 
         const auto num_blocks =
             original_vector_field.dimensions()[0] *
@@ -311,10 +310,10 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
             {
                 for (int x = 0; x < original_vector_field.dimensions()[0]; ++x)
                 {
-                    std::cout << "    Block: " << (++block_index) << "/" << num_blocks;
+                    //std::cout << "    Block: " << (++block_index) << "/" << num_blocks;
+                    //const auto start_block = std::chrono::steady_clock::now();
 
-                    start_block = std::chrono::steady_clock::now();
-
+                    // Define block extent
                     const std::array<std::array<int, 2>, 3> block_offsets{
                         std::array<int, 2>{std::min(x - block_offset, 0) + block_offset,
                             block_offset - (std::max(x + block_offset, original_vector_field.dimensions()[0] - 1) - (original_vector_field.dimensions()[0] - 1))},
@@ -330,12 +329,12 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
 
                     const auto block_size = block_sizes[0] * block_sizes[1] * block_sizes[2];
 
+                    // Create grid block
                     original_position_block->SetNumberOfTuples(block_size);
                     original_vector_block->SetNumberOfTuples(block_size);
                     new_position_block->SetNumberOfTuples(block_size);
                     new_vector_block->SetNumberOfTuples(block_size);
 
-                    // Create grid block
                     for (int zz = (twoD ? 0 : -block_offsets[2][0]); zz <= (twoD ? 0 : block_offsets[2][1]); ++zz)
                     {
                         const auto index_zz = zz + (twoD ? 0 : block_offsets[2][0]);
@@ -373,74 +372,83 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
                     Eigen::Vector3d temp_vector{};
                     Eigen::Matrix3d temp_jacobian{};
 
-                    for (int zz = (twoD ? 0 : -block_offsets[2][0]); zz <= (twoD ? 0 : block_offsets[2][1]); ++zz)
+                    const auto index_block_center = block_offsets[0][0] + block_sizes[0]
+                        * (block_offsets[1][0] + block_sizes[1] * block_offsets[2][0]);
+                    const auto index_center = x + original_vector_field.dimensions()[0]
+                        * (y + original_vector_field.dimensions()[1] * z);
+
+                    for (int d = 0; d < (twoD ? 2 : 3); ++d)
                     {
-                        const auto index_zz = zz + (twoD ? 0 : block_offsets[2][0]);
-                        const auto index_z = z + zz;
+                        // Move node in respective direction
+                        new_position_block->SetComponent(index_block_center, d,
+                            new_position_block->GetComponent(index_block_center, d) + infinitesimal_steps[d]);
 
-                        for (int yy = -block_offsets[1][0]; yy <= block_offsets[1][1]; ++yy)
+                        // Compute Jacobians of deformation
+                        auto jacobians = gradient_field(block_deformation);
+
+                        // Compute new vectors after deformation
+                        for (vtkIdType i = 0; i < new_vector_block->GetNumberOfTuples(); ++i)
                         {
-                            const auto index_yy = yy + block_offsets[1][0];
-                            const auto index_y = y + yy;
+                            original_vector_block->GetTuple(i, temp_vector.data());
+                            jacobians->GetTuple(i, temp_jacobian.data());
 
-                            for (int xx = -block_offsets[0][0]; xx <= block_offsets[0][1]; ++xx)
+                            temp_vector = temp_jacobian * temp_vector;
+
+                            new_vector_block->SetTuple(i, temp_vector.data());
+                        }
+
+                        // Calculate cuvature and torsion
+                        grid block(block_sizes, new_position_block, new_vector_block, jacobians);
+
+                        const auto curvature = curvature_and_torsion(block);
+
+                        // Calculate difference between original and deformed curvature gradient for all neighboring nodes
+                        const auto num_block_nodes =
+                            (std::min(block_inner_offset, block_offsets[0][1]) + std::min(block_inner_offset, block_offsets[0][0]) + 1) *
+                            (std::min(block_inner_offset, block_offsets[1][1]) + std::min(block_inner_offset, block_offsets[1][0]) + 1) *
+                            (twoD ? 1 : (std::min(block_inner_offset, block_offsets[2][1]) + std::min(block_inner_offset, block_offsets[2][0]) + 1));
+
+                        for (int zz = (twoD ? 0 : -std::min(block_inner_offset, block_offsets[2][0]));
+                            zz <= (twoD ? 0 : std::min(block_inner_offset, block_offsets[2][1])); ++zz)
+                        {
+                            const auto index_zz = zz + (twoD ? 0 : block_offsets[2][0]);
+                            const auto index_z = z + zz;
+
+                            for (int yy = -std::min(block_inner_offset, block_offsets[1][0]);
+                                yy <= std::min(block_inner_offset, block_offsets[1][1]); ++yy)
                             {
-                                const auto index_xx = xx + block_offsets[0][0];
-                                const auto index_x = x + xx;
+                                const auto index_yy = yy + block_offsets[1][0];
+                                const auto index_y = y + yy;
 
-                                const auto index_block = index_xx + block_sizes[0] * (index_yy + block_sizes[1] * index_zz);
-                                const auto index_block_center = block_offsets[0][0] + block_sizes[0]
-                                    * (block_offsets[1][0] + block_sizes[1] * block_offsets[2][0]);
-                                const auto index_orig = index_x + original_vector_field.dimensions()[0]
-                                    * (index_y + original_vector_field.dimensions()[1] * index_z);
-
-                                for (int d = 0; d < (twoD ? 2 : 3); ++d)
+                                for (int xx = -std::min(block_inner_offset, block_offsets[0][0]);
+                                    xx <= std::min(block_inner_offset, block_offsets[0][1]); ++xx)
                                 {
-                                    // Move node first in respective direction
-                                    new_position_block->SetComponent(index_block, d,
-                                        new_position_block->GetComponent(index_block, d) + infinitesimal_steps[d]);
+                                    const auto index_xx = xx + block_offsets[0][0];
+                                    const auto index_x = x + xx;
 
-                                    // Compute Jacobians of deformation
-                                    auto jacobians = gradient_field(block_deformation);
+                                    const auto index_block = index_xx + block_sizes[0] * (index_yy + block_sizes[1] * index_zz);
+                                    const auto index_orig = index_x + original_vector_field.dimensions()[0]
+                                        * (index_y + original_vector_field.dimensions()[1] * index_z);
 
-                                    // Compute new vectors after deformation
-                                    for (vtkIdType i = 0; i < new_vector_block->GetNumberOfTuples(); ++i)
-                                    {
-                                        original_vector_block->GetTuple(i, temp_vector.data());
-                                        jacobians->GetTuple(i, temp_jacobian.data());
-
-                                        temp_vector = temp_jacobian * temp_vector;
-
-                                        new_vector_block->SetTuple(i, temp_vector.data());
-                                    }
-
-                                    // Calculate cuvature and torsion
-                                    grid block(block_sizes, new_position_block, new_vector_block, jacobians);
-
-                                    const auto curvature = curvature_and_torsion(block);
-
-                                    // Calculate difference between original and deformed curvature gradient for central node
-                                    const auto index_center = x + original_vector_field.dimensions()[0]
-                                        * (y + original_vector_field.dimensions()[1] * z);
-
-                                    original_curvature.curvature_gradient->GetTuple(index_center, original_gradient.data());
-                                    curvature.curvature_gradient->GetTuple(index_block_center, deformed_gradient.data());
+                                    original_curvature.curvature_gradient->GetTuple(index_orig, original_gradient.data());
+                                    curvature.curvature_gradient->GetTuple(index_block, deformed_gradient.data());
 
                                     const auto difference = (deformed_gradient - original_gradient).norm();
                                     const auto gradient = (difference - gradient_difference->GetValue(index_orig)) / infinitesimal_steps[d];
 
-                                    gradient_descent->SetComponent(index_orig, d, gradient_descent->GetComponent(index_orig, d) - gradient);
-
-                                    // Reset new positions
-                                    new_position_block->SetComponent(index_block, d,
-                                        new_position_block->GetComponent(index_block, d) - infinitesimal_steps[d]);
+                                    gradient_descent->SetComponent(index_center, d,
+                                        gradient_descent->GetComponent(index_center, d) - gradient / num_block_nodes);
                                 }
                             }
                         }
+
+                        // Reset new positions
+                        new_position_block->SetComponent(index_block_center, d,
+                            new_position_block->GetComponent(index_block_center, d) - infinitesimal_steps[d]);
                     }
 
-                    std::cout << "  Time: " << std::chrono::duration_cast<duration_t>(std::chrono::steady_clock::now()
-                        - start_block).count() << duration_str << std::endl;
+                    //std::cout << "  Time: " << std::chrono::duration_cast<duration_t>(std::chrono::steady_clock::now()
+                    //    - start_block).count() << duration_str << std::endl;
                 }
             }
         }
