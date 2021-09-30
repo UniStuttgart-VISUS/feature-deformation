@@ -157,6 +157,7 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
     original_gradient_difference->SetNumberOfTuples(original_curvature.curvature_gradient->GetNumberOfTuples());
 
     Eigen::VectorXd original_gradient, deformed_gradient;
+    Eigen::Matrix3d jacobian;
     original_gradient.resize(original_curvature.curvature_gradient->GetNumberOfComponents(), 1);
     deformed_gradient.resize(original_curvature.curvature_gradient->GetNumberOfComponents(), 1);
 
@@ -167,6 +168,13 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
     {
         original_curvature.curvature_gradient->GetTuple(i, original_gradient.data());
         deformed_curvature.curvature_gradient->GetTuple(i, deformed_gradient.data());
+
+        if (original_curvature.curvature_gradient->GetNumberOfComponents() == 3)
+        {
+            jacobian_field->GetTuple(i, jacobian.data());
+
+            deformed_gradient = jacobian.inverse() * deformed_gradient;
+        }
 
         const auto difference = (deformed_gradient - original_gradient).norm();
 
@@ -433,6 +441,13 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
                                     original_curvature.curvature_gradient->GetTuple(index_orig, original_gradient.data());
                                     curvature.curvature_gradient->GetTuple(index_block, deformed_gradient.data());
 
+                                    if (original_curvature.curvature_gradient->GetNumberOfComponents() == 3)
+                                    {
+                                        jacobians->GetTuple(index_block, jacobian.data());
+
+                                        deformed_gradient = jacobian.inverse() * deformed_gradient;
+                                    }
+
                                     const auto difference = (deformed_gradient - original_gradient).norm();
                                     const auto gradient = (difference - gradient_difference->GetValue(index_orig)) / infinitesimal_steps[d];
 
@@ -519,6 +534,13 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
         {
             original_curvature.curvature_gradient->GetTuple(i, original_gradient.data());
             deformed_curvature.curvature_gradient->GetTuple(i, deformed_gradient.data());
+
+            if (original_curvature.curvature_gradient->GetNumberOfComponents() == 3)
+            {
+                jacobian_field->GetTuple(i, jacobian.data());
+
+                deformed_gradient = jacobian.inverse() * deformed_gradient;
+            }
 
             const auto difference = (deformed_gradient - original_gradient).norm();
 
