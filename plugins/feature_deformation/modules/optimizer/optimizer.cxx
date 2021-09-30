@@ -137,10 +137,9 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
     original_grid->GetPoint(original_vector_field.dimensions()[0], top.data());
     original_grid->GetPoint(twoD ? 0 : (original_vector_field.dimensions()[0] * original_vector_field.dimensions()[1]), front.data());
 
-    const std::array<double, 3> cell_sizes{ right[0] - origin[0], top[1] - origin[1], front[2] - origin[2] };
+    const Eigen::Vector3d cell_sizes(right[0] - origin[0], top[1] - origin[1], front[2] - origin[2]);
     const auto infinitesimal_step = 1.0e-3;
-    const std::array<double, 3> infinitesimal_steps{ infinitesimal_step * cell_sizes[0],
-        infinitesimal_step * cell_sizes[1], infinitesimal_step * cell_sizes[2] };
+    const Eigen::Vector3d infinitesimal_steps = infinitesimal_step * cell_sizes;
 
     // Calculate initial gradient difference
     auto original_curvature = curvature_and_torsion(original_vector_field);
@@ -161,8 +160,8 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
     original_gradient.resize(original_curvature.curvature_gradient->GetNumberOfComponents(), 1);
     deformed_gradient.resize(original_curvature.curvature_gradient->GetNumberOfComponents(), 1);
 
-    double error_min = std::numeric_limits<double>::max();
     double error_max = std::numeric_limits<double>::min();
+    double error_avg = 0.0;
 
     for (vtkIdType i = 0; i < original_curvature.curvature_gradient->GetNumberOfTuples(); ++i)
     {
@@ -181,9 +180,11 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
         gradient_difference->SetValue(i, difference);
         original_gradient_difference->SetValue(i, difference);
 
-        error_min = std::min(error_min, difference);
         error_max = std::max(error_max, difference);
+        error_avg += difference;
     }
+
+    error_avg /= original_curvature.curvature_gradient->GetNumberOfTuples();
 
     // Iterative optimization
     bool converged = false;
@@ -438,21 +439,24 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
                                     const auto index_orig = index_x + original_vector_field.dimensions()[0]
                                         * (index_y + original_vector_field.dimensions()[1] * index_z);
 
-                                    original_curvature.curvature_gradient->GetTuple(index_orig, original_gradient.data());
-                                    curvature.curvature_gradient->GetTuple(index_block, deformed_gradient.data());
-
-                                    if (original_curvature.curvature_gradient->GetNumberOfComponents() == 3)
+                                    if (gradient_difference->GetValue(index_orig) > this->Error)
                                     {
-                                        jacobians->GetTuple(index_block, jacobian.data());
+                                        original_curvature.curvature_gradient->GetTuple(index_orig, original_gradient.data());
+                                        curvature.curvature_gradient->GetTuple(index_block, deformed_gradient.data());
 
-                                        deformed_gradient = jacobian.inverse() * deformed_gradient;
+                                        if (original_curvature.curvature_gradient->GetNumberOfComponents() == 3)
+                                        {
+                                            jacobians->GetTuple(index_block, jacobian.data());
+
+                                            deformed_gradient = jacobian.inverse() * deformed_gradient;
+                                        }
+
+                                        const auto difference = (deformed_gradient - original_gradient).norm();
+                                        const auto gradient = (difference - gradient_difference->GetValue(index_orig)) / infinitesimal_steps[d];
+
+                                        gradient_descent->SetComponent(index_center, d,
+                                            gradient_descent->GetComponent(index_center, d) - gradient / num_block_nodes);
                                     }
-
-                                    const auto difference = (deformed_gradient - original_gradient).norm();
-                                    const auto gradient = (difference - gradient_difference->GetValue(index_orig)) / infinitesimal_steps[d];
-
-                                    gradient_descent->SetComponent(index_center, d,
-                                        gradient_descent->GetComponent(index_center, d) - gradient / num_block_nodes);
                                 }
                             }
                         }
@@ -485,6 +489,43 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
 
                     deformed_positions->GetTuple(index, position.data());
                     gradient_descent->GetTuple(index, descent.data());
+
+                    if (descent.norm() != 0.0)
+                    {
+                        auto error_sum = 0.0;
+                        auto error_num = 0;
+
+                        for (int zz = (twoD ? 0 : -block_inner_offset); zz <= (twoD ? 0 : block_inner_offset); ++zz)
+                        {
+                            const auto index_z = z + zz;
+
+                            if (index_z < 0 || index_z >= original_vector_field.dimensions()[2]) continue;
+
+                            for (int yy = -block_inner_offset; yy <= block_inner_offset; ++yy)
+                            {
+                                const auto index_y = y + yy;
+
+                                if (index_y < 0 || index_y >= original_vector_field.dimensions()[1]) continue;
+
+                                for (int xx = -block_inner_offset; xx <= block_inner_offset; ++xx)
+                                {
+                                    const auto index_x = x + xx;
+
+                                    if (index_x < 0 || index_x >= original_vector_field.dimensions()[0]) continue;
+
+                                    const auto index_kernel = index_x + original_vector_field.dimensions()[0]
+                                        * (index_y + original_vector_field.dimensions()[1] * index_z);
+
+                                    error_sum += gradient_difference->GetValue(index_kernel);
+                                    ++error_num;
+                                }
+                            }
+                        }
+
+                        const auto error = error_sum / error_num;
+
+                        descent *= error / descent.norm();
+                    }
 
                     descent *= this->StepSize;
                     position += descent;
@@ -527,8 +568,8 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
 
         deformed_curvature = curvature_and_torsion(new_deformed_vector_field);
 
-        double new_error_min = std::numeric_limits<double>::max();
         double new_error_max = std::numeric_limits<double>::min();
+        double new_error_avg = 0.0;
 
         for (vtkIdType i = 0; i < original_curvature.curvature_gradient->GetNumberOfTuples(); ++i)
         {
@@ -546,22 +587,24 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
 
             gradient_difference->SetValue(i, difference);
 
-            new_error_min = std::min(new_error_min, difference);
             new_error_max = std::max(new_error_max, difference);
+            new_error_avg += difference;
         }
 
+        new_error_avg /= original_curvature.curvature_gradient->GetNumberOfTuples();
+
         // Calculate new min, max error
-        if (new_error_min > error_min)
-        {
-            std::cout << "New minimum error increased from " << error_min << " to " << new_error_min << "." << std::endl;
-        }
         if (new_error_max > error_max)
         {
             std::cout << "New maximum error increased from " << error_max << " to " << new_error_max << "." << std::endl;
         }
+        if (new_error_avg > error_avg)
+        {
+            std::cout << "New average error increased from " << error_avg << " to " << new_error_avg << "." << std::endl;
+        }
 
-        error_min = new_error_min;
         error_max = new_error_max;
+        error_avg = new_error_avg;
 
         if (error_max < this->Error)
         {
