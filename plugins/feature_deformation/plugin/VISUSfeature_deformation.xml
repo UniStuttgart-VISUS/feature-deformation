@@ -621,11 +621,95 @@
                     Step size for each iteration.
                 </Documentation>
             </DoubleVectorProperty>
+            <IntVectorProperty name="StepSizeMethod" command="SetStepSizeMethod" label="Step size method" number_of_elements="1" default_values="2">
+                <EnumerationDomain name="enum">
+                    <Entry value="0" text="Normalized"/>
+                    <Entry value="1" text="Gradient norm"/>
+                    <Entry value="2" text="Local error"/>
+                </EnumerationDomain>
+                <Documentation>
+                    Method of calculating the step size.
+                </Documentation>
+            </IntVectorProperty>
+            <IntVectorProperty name="StepSizeControl" command="SetStepSizeControl" label="Step size control" number_of_elements="1" default_values="0">
+                <EnumerationDomain name="enum">
+                    <Entry value="0" text="Dynamic"/>
+                    <Entry value="1" text="Fixed"/>
+                </EnumerationDomain>
+                <Documentation>
+                    Dynamically adjust step size or keep it static.
+                </Documentation>
+            </IntVectorProperty>
             <DoubleVectorProperty name="Error" label="Error threshold" command="SetError" number_of_elements="1" default_values="1e-6">
                 <Documentation>
-                    Error threshold for which algorithm is stopped.
+                    Error threshold to determine convergence.
                 </Documentation>
             </DoubleVectorProperty>
+
+            <DoubleVectorProperty name="Adjustment" label="Adjustment scalar" command="SetAdjustment" number_of_elements="1" default_values="0.5">
+                <Hints>
+                    <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="StepSizeControl" value="0" />
+                </Hints>
+                <Documentation>
+                    If step size has to be adjusted, it is multiplied with this adjustment value.
+                </Documentation>
+            </DoubleVectorProperty>
+            <IntVectorProperty name="MaxAdjustments" label="Maximum number of adjustments" command="SetMaxAdjustments" number_of_elements="1" default_values="5">
+                <Hints>
+                    <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="StepSizeControl" value="0" />
+                </Hints>
+                <Documentation>
+                    Maximum number of adjustments.
+                </Documentation>
+            </IntVectorProperty>
+            <DoubleVectorProperty name="Threshold" label="Adjustment threshold" command="SetThreshold" number_of_elements="1" default_values="1.01">
+                <Hints>
+                    <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="StepSizeControl" value="0" />
+                </Hints>
+                <Documentation>
+                    Adjust if new error is larger than the old error time this value.
+                </Documentation>
+            </DoubleVectorProperty>
+            <IntVectorProperty name="Increase" label="Try to increase step size" command="SetIncrease" number_of_elements="1" default_values="1">
+                <BooleanDomain name="bool"/>
+                <Hints>
+                    <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="StepSizeControl" value="0" />
+                </Hints>
+                <Documentation>
+                    Try to increase step size after each iteration.
+                </Documentation>
+            </IntVectorProperty>
+            <IntVectorProperty name="Stop" label="Stop if still exceeding error" command="SetStop" number_of_elements="1" default_values="1">
+                <BooleanDomain name="bool"/>
+                <Hints>
+                    <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="StepSizeControl" value="0" />
+                </Hints>
+                <Documentation>
+                    Stop algorithm if even after adjusting the step size, the error increases.
+                </Documentation>
+            </IntVectorProperty>
+
+            <PropertyGroup label="Input">
+                <Property name="OriginalVectors" />
+                <Property name="DeformedVectors" />
+                <Property name="Jacobian" />
+            </PropertyGroup>
+
+            <PropertyGroup label="Step size">
+                <Property name="NumSteps" />
+                <Property name="StepSize" />
+                <Property name="StepSizeMethod" />
+                <Property name="StepSizeControl" />
+                <Property name="Error" />
+            </PropertyGroup>
+
+            <PropertyGroup label="Dynamic step size control">
+                <Property name="Adjustment" />
+                <Property name="MaxAdjustments" />
+                <Property name="Threshold" />
+                <Property name="Increase" />
+                <Property name="Stop" />
+            </PropertyGroup>
 
             <Hints>
                 <ShowInMenu category="VISUS Feature Deformation"/>

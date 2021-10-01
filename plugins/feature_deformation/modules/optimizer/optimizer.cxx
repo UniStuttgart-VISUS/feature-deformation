@@ -92,7 +92,8 @@ int optimizer::RequestData(vtkInformation* vtkNotUsed(request), vtkInformationVe
         return 0;
     }
 
-    const auto hash = joaat_hash(this->NumSteps, this->StepSize, this->Error,
+    const auto hash = joaat_hash(this->NumSteps, this->StepSize, this-StepSizeMethod, this->StepSizeControl,
+        this->Error, this->Adjustment, this->MaxAdjustments, this->Threshold, this->Stop,
         vector_field_original->GetMTime(), vector_field_deformed_->GetMTime(),
         jacobian_field_->GetMTime());
 
@@ -234,19 +235,18 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
             std::cout << "New average error increased from " << error_avg << " to " << new_error_avg << "." << std::endl;
         }
 
-        const auto step_size_adjustment = 0.5; // TODO: parameter
-        const auto max_adjustments = 5; // TODO: parameter
-        const auto error_threshold = 1.01; // TODO: parameter
+        const auto step_size_control = static_cast<step_size_control_t>(this->StepSizeControl);
 
-        if (new_error_max > error_threshold * error_max || new_error_avg > error_threshold * error_avg)
+        if (step_size_control == step_size_control_t::dynamic &&
+            (new_error_max > this->Threshold * error_max || new_error_avg > this->Threshold * error_avg))
         {
-            if (step_size > std::pow(2.0, -max_adjustments) * original_step_size)
+            if (step_size > std::pow(2.0, -this->MaxAdjustments) * original_step_size)
             {
-                step_size *= step_size_adjustment;
+                step_size *= this->Adjustment;
                 --step;
                 continue;
             }
-            else
+            else if (this->Stop)
             {
                 stopped = true;
                 continue;
@@ -278,9 +278,9 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
         positions = deformed_positions;
         gradient_difference = new_gradient_difference;
 
-        if (step_size < original_step_size)
+        if (step_size_control == step_size_control_t::dynamic && this->Increase)
         {
-            step_size /= step_size_adjustment;
+            step_size /= this->Adjustment;
         }
     }
 
@@ -341,7 +341,7 @@ vtkSmartPointer<vtkDoubleArray> optimizer::compute_gradient_descent(const std::a
     // curvature gradient difference in direction of the degrees of freedom.
     // Use gradient descent to perform a single step for respective center
     // vertex, minimizing its curvature gradient difference.
-    const auto block_offset = 3;
+    const auto block_offset = 2;
     const auto block_inner_offset = (block_offset + 1) / 2;
     const auto block_size = (2 * block_offset + 1);
 
@@ -545,6 +545,8 @@ std::pair<vtkSmartPointer<vtkDoubleArray>, vtkSmartPointer<vtkDoubleArray>> opti
 
     const bool twoD = dimension[2] == 1;
 
+    const auto step_size_method = static_cast<step_size_method_t>(this->StepSizeMethod);
+
     for (int z = 0; z < dimension[2]; ++z)
     {
         #pragma omp parallel for
@@ -559,7 +561,7 @@ std::pair<vtkSmartPointer<vtkDoubleArray>, vtkSmartPointer<vtkDoubleArray>> opti
                 const_cast<vtkDataArray*>(positions)->GetTuple(index, position.data());
                 const_cast<vtkDataArray*>(gradient_descent)->GetTuple(index, descent.data());
 
-                if (descent.norm() != 0.0)
+                if (step_size_method == step_size_method_t::error && descent.norm() != 0.0)
                 {
                     auto error_sum = 0.0;
                     auto error_num = 0;
@@ -595,6 +597,10 @@ std::pair<vtkSmartPointer<vtkDoubleArray>, vtkSmartPointer<vtkDoubleArray>> opti
                     const auto error = error_sum / error_num;
 
                     descent *= error / descent.norm();
+                }
+                else if (step_size_method == step_size_method_t::normalized && descent.norm() != 0.0)
+                {
+                    descent /= descent.norm();
                 }
 
                 descent *= step_size;

@@ -29,8 +29,29 @@ public:
     vtkGetMacro(StepSize, double);
     vtkSetMacro(StepSize, double);
 
+    vtkGetMacro(StepSizeMethod, int);
+    vtkSetMacro(StepSizeMethod, int);
+
+    vtkGetMacro(StepSizeControl, int);
+    vtkSetMacro(StepSizeControl, int);
+
     vtkGetMacro(Error, double);
     vtkSetMacro(Error, double);
+
+    vtkGetMacro(Adjustment, double);
+    vtkSetMacro(Adjustment, double);
+
+    vtkGetMacro(MaxAdjustments, int);
+    vtkSetMacro(MaxAdjustments, int);
+
+    vtkGetMacro(Threshold, double);
+    vtkSetMacro(Threshold, double);
+
+    vtkGetMacro(Increase, int);
+    vtkSetMacro(Increase, int);
+
+    vtkGetMacro(Stop, int);
+    vtkSetMacro(Stop, int);
 
 protected:
     optimizer();
@@ -80,8 +101,26 @@ private:
 
     int NumSteps;
     double StepSize;
+    int StepSizeMethod;
+    int StepSizeControl;
     double Error;
+
+    double Adjustment;
+    int MaxAdjustments;
+    double Threshold;
+    int Increase;
+    int Stop;
 
     std::uint32_t hash;
     std::vector<vtkSmartPointer<vtkStructuredGrid>> results;
+
+    enum class step_size_method_t
+    {
+        normalized, norm, error
+    };
+
+    enum class step_size_control_t
+    {
+        dynamic, fixed
+    };
 };
