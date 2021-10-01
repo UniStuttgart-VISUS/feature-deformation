@@ -67,8 +67,7 @@ private:
     void operator=(const optimizer&);
 
     void compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* deformed_grid,
-        vtkDataArray* vector_field_original, vtkSmartPointer<vtkDoubleArray> vector_field_deformed,
-        vtkSmartPointer<vtkDoubleArray> jacobian_field);
+        vtkDataArray* vector_field_original);
 
     vtkSmartPointer<vtkDoubleArray> compute_gradient_descent(const std::array<int, 3>& dimension,
         const vtkStructuredGrid* original_grid, const vtkDataArray* vector_field_original, const vtkDataArray* positions,

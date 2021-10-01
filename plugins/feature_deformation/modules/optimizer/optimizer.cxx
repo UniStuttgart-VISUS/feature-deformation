@@ -83,29 +83,20 @@ int optimizer::RequestData(vtkInformation* vtkNotUsed(request), vtkInformationVe
     }
 
     auto vector_field_original = GetInputArrayToProcess(0, original_grid);
-    auto vector_field_deformed_ = GetInputArrayToProcess(1, deformed_grid);
-    auto jacobian_field_ = GetInputArrayToProcess(2, deformed_grid);
 
-    if (vector_field_original == nullptr || vector_field_deformed_ == nullptr || jacobian_field_ == nullptr)
+    if (vector_field_original == nullptr)
     {
-        std::cerr << std::endl << "All input fields must be provided." << std::endl;
+        std::cerr << std::endl << "Input vector field must be provided." << std::endl;
         return 0;
     }
 
     const auto hash = joaat_hash(this->NumSteps, this->StepSize, this-StepSizeMethod, this->StepSizeControl,
         this->Error, this->Adjustment, this->MaxAdjustments, this->Threshold, this->Increase, this->Stop,
-        vector_field_original->GetMTime(), vector_field_deformed_->GetMTime(),
-        jacobian_field_->GetMTime());
+        vector_field_original->GetMTime(), deformed_grid->GetMTime());
 
     if (hash != this->hash)
     {
-        auto vector_field_deformed = vtkSmartPointer<vtkDoubleArray>::New();
-        vector_field_deformed->DeepCopy(vector_field_deformed_);
-
-        auto jacobian_field = vtkSmartPointer<vtkDoubleArray>::New();
-        jacobian_field->DeepCopy(jacobian_field_);
-
-        compute(original_grid, deformed_grid, vector_field_original, vector_field_deformed, jacobian_field);
+        compute(original_grid, deformed_grid, vector_field_original);
 
         this->hash = hash;
     }
@@ -122,11 +113,56 @@ int optimizer::RequestData(vtkInformation* vtkNotUsed(request), vtkInformationVe
 }
 
 void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* deformed_grid,
-    vtkDataArray* vector_field_original, vtkSmartPointer<vtkDoubleArray> vector_field_deformed,
-    vtkSmartPointer<vtkDoubleArray> jacobian_field)
+    vtkDataArray* vector_field_original)
 {
     // Get input grid and data
     const grid original_vector_field(original_grid, vector_field_original);
+
+    const auto num_nodes = original_grid->GetNumberOfPoints();
+
+    if (num_nodes != deformed_grid->GetNumberOfPoints())
+    {
+        std::cerr << "Number of grid nodes must match." << std::endl;
+        return;
+    }
+
+    // Get initial node positions, and compute deformation
+    auto positions = vtkSmartPointer<vtkDoubleArray>::New();
+    positions->SetName("Deformed Position");
+    positions->SetNumberOfComponents(3);
+    positions->SetNumberOfTuples(num_nodes);
+
+    std::array<double, 3> point{};
+
+    for (vtkIdType i = 0; i < num_nodes; ++i)
+    {
+        deformed_grid->GetPoint(i, point.data());
+        positions->SetTuple(i, point.data());
+    }
+
+    const grid deformation_field(original_grid, positions);
+
+    auto jacobian_field = gradient_field(deformation_field);
+    jacobian_field->SetName("Jacobian");
+
+    auto vector_field_deformed = vtkSmartPointer<vtkDoubleArray>::New();
+    vector_field_deformed->SetName("Deformed Vectors");
+    vector_field_deformed->SetNumberOfComponents(3);
+    vector_field_deformed->SetNumberOfTuples(num_nodes);
+
+    Eigen::Matrix3d jacobian;
+    Eigen::Vector3d vector;
+
+    for (vtkIdType i = 0; i < num_nodes; ++i)
+    {
+        jacobian_field->GetTuple(i, jacobian.data());
+        vector_field_original->GetTuple(i, vector.data());
+
+        vector = jacobian * vector;
+
+        vector_field_deformed->SetTuple(i, vector.data());
+    }
+
     const grid deformed_vector_field(deformed_grid, vector_field_deformed, jacobian_field);
 
     const std::array<int, 3> dimension = original_vector_field.dimensions();
@@ -142,34 +178,17 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
     std::tie(gradient_difference, error_avg, error_max)
         = calculate_gradient_difference(original_curvature, deformed_curvature, jacobian_field);
 
-    // Get initial node positions
-    auto positions = vtkSmartPointer<vtkDoubleArray>::New();
-    positions->SetName("Deformed Position");
-    positions->SetNumberOfComponents(3);
-    positions->SetNumberOfTuples(vector_field_original->GetNumberOfTuples());
-
-    std::array<double, 3> point{};
-
-    for (vtkIdType i = 0; i < vector_field_original->GetNumberOfTuples(); ++i)
-    {
-        deformed_grid->GetPoint(i, point.data());
-        positions->SetTuple(i, point.data());
-    }
-
     // Set initial step sizes
     auto step_sizes = vtkSmartPointer<vtkDoubleArray>::New();
     step_sizes->SetName("Step Sizes");
     step_sizes->SetNumberOfComponents(1);
-    step_sizes->SetNumberOfTuples(vector_field_original->GetNumberOfTuples());
+    step_sizes->SetNumberOfTuples(num_nodes);
     step_sizes->Fill(this->StepSize);
 
     // Set initial output
     std::cout << "Setting initial output..." << std::endl;
 
     this->results[0] = create_output(dimension, positions);
-
-    vector_field_deformed->SetName("Deformed Vectors");
-    jacobian_field->SetName("Jacobian");
 
     output_copy(this->results[0], vector_field_deformed, jacobian_field, positions, step_sizes,
         gradient_difference, deformed_curvature.curvature, deformed_curvature.curvature_vector,
@@ -199,11 +218,12 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
         const grid new_deformation(original_grid, deformed_positions);
 
         jacobian_field = gradient_field(new_deformation);
+        jacobian_field->SetName("Jacobian");
 
         Eigen::Matrix3d jacobian;
         Eigen::Vector3d vector;
 
-        for (vtkIdType i = 0; i < original_curvature.curvature_gradient->GetNumberOfTuples(); ++i)
+        for (vtkIdType i = 0; i < num_nodes; ++i)
         {
              jacobian_field->GetTuple(i, jacobian.data());
              vector_field_original->GetTuple(i, vector.data());
@@ -254,7 +274,7 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
 
             if (new_error_max > this->Threshold * error_max || new_error_avg > this->Threshold * error_avg)
             {
-                for (vtkIdType i = 0; i < step_sizes->GetNumberOfTuples(); ++i)
+                for (vtkIdType i = 0; i < num_nodes; ++i)
                 {
                     const auto new_error = new_gradient_difference->GetComponent(i, 0);
                     const auto old_error = gradient_difference->GetComponent(i, 0);
@@ -296,9 +316,6 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
         // Set output for this step
         this->results[step + 1uLL] = create_output(dimension, deformed_positions);
 
-        vector_field_deformed->SetName("Deformed Vectors");
-        jacobian_field->SetName("Jacobian");
-
         output_copy(this->results[step + 1uLL], vector_field_deformed, jacobian_field, deformed_positions, step_sizes,
             new_gradient_difference, deformed_curvature.curvature, deformed_curvature.curvature_vector,
             deformed_curvature.curvature_gradient, deformed_curvature.torsion,
@@ -312,7 +329,7 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
 
         if (step_size_control == step_size_control_t::dynamic && this->Increase)
         {
-            for (vtkIdType i = 0; i < step_sizes->GetNumberOfTuples(); ++i)
+            for (vtkIdType i = 0; i < num_nodes; ++i)
             {
                 step_sizes->SetComponent(i, 0, step_sizes->GetComponent(i, 0) / this->Adjustment);
             }
