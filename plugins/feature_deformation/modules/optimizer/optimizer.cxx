@@ -350,7 +350,7 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
     {
         std::cout << "Optimization stopped." << std::endl;
 
-        for (std::size_t i = step; i <= this->NumSteps; ++i)
+        for (std::size_t i = std::max(1, step); i <= this->NumSteps; ++i)
         {
             this->results[i] = this->results[step - 1uLL];
         }
