@@ -573,14 +573,12 @@
                 <DataTypeDomain name="input_type">
                     <DataType value="vtkStructuredGrid"/>
                 </DataTypeDomain>
-                <InputArrayDomain attribute_type="point" name="vector_deformed_array" number_of_components="3"/>
-                <InputArrayDomain attribute_type="point" name="jacobian_array" number_of_components="9"/>
                 <Documentation>
                     Deformed grid containing gradient information and information about deformation.
                 </Documentation>
             </InputProperty>
 
-            <StringVectorProperty name="OriginalVectors" label="Vector field (original)" command="SetInputArrayToProcess" number_of_elements="5" element_types="0 0 0 0 2" animateable="0" default_values="0">
+            <StringVectorProperty name="OriginalVectors" label="Vector field" command="SetInputArrayToProcess" number_of_elements="5" element_types="0 0 0 0 2" animateable="0" default_values="0">
                 <ArrayListDomain name="array_list" attribute_type="Vectors" input_domain_name="vector_original_array">
                     <RequiredProperties>
                         <Property name="Input" function="Input" />
@@ -588,26 +586,6 @@
                 </ArrayListDomain>
                 <Documentation>
                     Vector field for which curvature and torsion is computed.
-                </Documentation>
-            </StringVectorProperty>
-            <StringVectorProperty name="DeformedVectors" label="Vector field (deformed)" command="SetInputArrayToProcess" number_of_elements="5" element_types="0 0 0 0 2" animateable="0" default_values="1">
-                <ArrayListDomain name="array_list" attribute_type="Vectors" input_domain_name="vector_deformed_array">
-                    <RequiredProperties>
-                        <Property name="Deformed" function="Input" />
-                    </RequiredProperties>
-                </ArrayListDomain>
-                <Documentation>
-                    Vector field for which curvature and torsion is computed.
-                </Documentation>
-            </StringVectorProperty>
-            <StringVectorProperty name="Jacobian" label="Jacobian" command="SetInputArrayToProcess" number_of_elements="5" element_types="0 0 0 0 2" animateable="0" default_values="2">
-                <ArrayListDomain name="array_list" attribute_type="Vectors" input_domain_name="jacobian_array">
-                    <RequiredProperties>
-                        <Property name="Deformed" function="Input" />
-                    </RequiredProperties>
-                </ArrayListDomain>
-                <Documentation>
-                    Jacobians of the deformation.
                 </Documentation>
             </StringVectorProperty>
             
@@ -662,7 +640,7 @@
                     Maximum number of adjustments.
                 </Documentation>
             </IntVectorProperty>
-            <DoubleVectorProperty name="Threshold" label="Adjustment threshold" command="SetThreshold" number_of_elements="1" default_values="1.01">
+            <DoubleVectorProperty name="Threshold" label="Adjustment threshold" command="SetThreshold" number_of_elements="1" default_values="1.0">
                 <Hints>
                     <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="StepSizeControl" value="0" />
                 </Hints>
@@ -691,8 +669,6 @@
 
             <PropertyGroup label="Input">
                 <Property name="OriginalVectors" />
-                <Property name="DeformedVectors" />
-                <Property name="Jacobian" />
             </PropertyGroup>
 
             <PropertyGroup label="Step size">
