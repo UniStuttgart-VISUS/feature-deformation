@@ -10,6 +10,9 @@
 
 #include <array>
 
+#define __use_least_squares
+
+#ifndef __use_least_squares
 Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> gradient(const grid& data,
     const std::array<int, 3>& coords)
 {
@@ -120,6 +123,121 @@ Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> gradient(const grid& data,
         }
     }
 }
+#else
+Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> gradient(const grid& data,
+    const std::array<int, 3>& coords)
+{
+    Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> gradient;
+
+    if (data.components() == 1)
+    {
+        gradient.resize(3, 1);
+    }
+    else
+    {
+        gradient.resize(data.components(), 3);
+    }
+
+    const auto h_fwd = data.h_plus(coords);
+    const auto h_bck = data.h_minus(coords);
+
+    const auto twoD = h_fwd[2] == 0.0 && h_bck[2] == 0.0;
+
+    const auto get_num_neighbors = [&data, &coords, &h_fwd, &h_bck](const int dimension) -> int
+    {
+        auto num_neighbors = static_cast<int>(std::pow(3.0, dimension)) - 1;
+
+        if (h_fwd[0] == 0.0) num_neighbors -= static_cast<int>(std::pow(3.0, dimension - 1));
+        else if (h_bck[0] == 0.0) num_neighbors -= static_cast<int>(std::pow(3.0, dimension - 1));
+
+        if (h_fwd[1] == 0.0 && h_fwd[0] == 0.0) num_neighbors -= static_cast<int>(std::pow(3.0, dimension - 1)) - static_cast<int>(std::pow(3.0, dimension - 2));
+        else if (h_fwd[1] == 0.0 && h_bck[0] == 0.0) num_neighbors -= static_cast<int>(std::pow(3.0, dimension - 1)) - static_cast<int>(std::pow(3.0, dimension - 2));
+        else if (h_fwd[1] == 0.0) num_neighbors -= static_cast<int>(std::pow(3.0, dimension - 1));
+        else if (h_bck[1] == 0.0 && h_fwd[0] == 0.0) num_neighbors -= static_cast<int>(std::pow(3.0, dimension - 1)) - static_cast<int>(std::pow(3.0, dimension - 2));
+        else if (h_bck[1] == 0.0 && h_bck[0] == 0.0) num_neighbors -= static_cast<int>(std::pow(3.0, dimension - 1)) - static_cast<int>(std::pow(3.0, dimension - 2));
+        else if (h_bck[1] == 0.0) num_neighbors -= static_cast<int>(std::pow(3.0, dimension - 1));
+
+        return num_neighbors;
+    };
+
+    const auto num_neighbors = get_num_neighbors(data.dimensions()[2] == 1 ? 2 : 3);
+
+    // Create matrix A, weight matrix W and right-hand side b
+    Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> A;
+    A.resize(num_neighbors, 3);
+
+    Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> W;
+    W.resize(num_neighbors, num_neighbors);
+    W.setZero();
+
+    Eigen::Matrix<double, Eigen::Dynamic, 1> b;
+    b.resize(num_neighbors, Eigen::NoChange);
+
+    for (int c = 0; c < data.components(); ++c)
+    {
+        Eigen::Index j = 0;
+
+        for (int zz = -1; zz <= 1; ++zz)
+        {
+            for (int yy = -1; yy <= 1; ++yy)
+            {
+                for (int xx = -1; xx <= 1; ++xx)
+                {
+                    const std::array<int, 3> kernel_coords{ coords[0] + xx, coords[1] + yy, coords[2] + zz };
+
+                    if ((xx == 0 && yy == 0 && zz == 0) || kernel_coords[0] < 0 || kernel_coords[1] < 0 || kernel_coords[2] < 0 ||
+                        kernel_coords[0] >= data.dimensions()[0] || kernel_coords[1] >= data.dimensions()[1] || kernel_coords[2] >= data.dimensions()[2]) continue;
+
+                    const auto neighbor_offset = data.offset(coords, kernel_coords);
+
+                    A.row(j) = neighbor_offset;
+                    W(j, j) = neighbor_offset.squaredNorm();
+                    b(j) = (data.value(kernel_coords) - data.value(coords))[c];
+
+                    ++j;
+                }
+            }
+        }
+
+        // Calculate weighted matrix and vectors
+        Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> X;
+        X.resize(num_neighbors, 3);
+
+        X = W * A;
+        b = W * b;
+
+        // Solve least squares for Ax = b
+        Eigen::JacobiSVD<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic>> svd(X, Eigen::ComputeFullU | Eigen::ComputeFullV);
+
+        if (data.components() == 1)
+        {
+            gradient = svd.solve(b);
+        }
+        else
+        {
+            gradient.row(c) = svd.solve(b);
+        }
+    }
+
+    if (twoD)
+    {
+        if (data.components() == 1)
+        {
+            gradient(2) = 0.0;
+        }
+        else
+        {
+            gradient(2, 0) = 0.0;
+            gradient(2, 1) = 0.0;
+            gradient(0, 2) = 0.0;
+            gradient(1, 2) = 0.0;
+            gradient(2, 2) = 1.0;
+        }
+    }
+
+    return gradient;
+}
+#endif
 
 vtkSmartPointer<vtkDoubleArray> gradient_field(const grid& data)
 {

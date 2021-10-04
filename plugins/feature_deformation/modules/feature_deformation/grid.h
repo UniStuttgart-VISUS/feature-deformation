@@ -22,6 +22,8 @@ public:
     Eigen::Vector3d h_plus(const std::array<int, 3>& coords) const;
     Eigen::Vector3d h_minus(const std::array<int, 3>& coords) const;
 
+    Eigen::Vector3d offset(const std::array<int, 3>& source, const std::array<int, 3>& target) const;
+
     Eigen::Matrix<double, Eigen::Dynamic, 1> value(const std::array<int, 3>& coords) const;
     Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> matrix(const std::array<int, 3>& coords) const;
 

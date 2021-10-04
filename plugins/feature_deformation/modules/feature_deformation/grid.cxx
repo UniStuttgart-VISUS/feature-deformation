@@ -118,6 +118,30 @@ Eigen::Vector3d grid::h_minus(const std::array<int, 3>& coords) const
     }
 }
 
+Eigen::Vector3d grid::offset(const std::array<int, 3>& source, const std::array<int, 3>& target) const
+{
+    if (this->deformed)
+    {
+        Eigen::Vector3d pos_source, pos_target;
+        this->positions->GetTuple(index(source), pos_source.data());
+        this->positions->GetTuple(index(target), pos_target.data());
+
+        return pos_target - pos_source;
+    }
+    else
+    {
+        const std::array<int, 3> coords_offset{
+            target[0] - source[0],
+            target[1] - source[1],
+            target[2] - source[2] };
+
+        return Eigen::Vector3d(
+            coords_offset[0] * this->spacing[0],
+            coords_offset[1] * this->spacing[1],
+            coords_offset[2] * this->spacing[2]);
+    }
+}
+
 Eigen::Matrix<double, Eigen::Dynamic, 1> grid::value(const std::array<int, 3>& coords) const
 {
     Eigen::VectorXd val(this->data->GetNumberOfComponents());
