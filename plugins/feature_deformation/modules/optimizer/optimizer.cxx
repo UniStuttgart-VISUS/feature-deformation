@@ -372,7 +372,7 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
 
         for (std::size_t i = std::max(1, step); i <= this->NumSteps; ++i)
         {
-            this->results[i] = this->results[step - 1uLL];
+            this->results[i] = this->results[std::max(1, step) - 1uLL];
         }
     }
     else
@@ -403,7 +403,7 @@ vtkSmartPointer<vtkDoubleArray> optimizer::compute_gradient_descent(const std::a
     const_cast<vtkStructuredGrid*>(original_grid)->GetPoint(0, origin.data());
     const_cast<vtkStructuredGrid*>(original_grid)->GetPoint(1, right.data());
     const_cast<vtkStructuredGrid*>(original_grid)->GetPoint(dimension[0], top.data());
-    const_cast<vtkStructuredGrid*>(original_grid)->GetPoint(twoD ? 0 : (dimension[0] * dimension[1]), front.data());
+    const_cast<vtkStructuredGrid*>(original_grid)->GetPoint(twoD ? 0LL : (static_cast<vtkIdType>(dimension[0]) * dimension[1]), front.data());
 
     const Eigen::Vector3d cell_sizes(right[0] - origin[0], top[1] - origin[1], front[2] - origin[2]);
     const auto infinitesimal_step = 1.0e-3;
@@ -696,7 +696,14 @@ double optimizer::calculate_error(const int index, const int index_block, const 
         deformed_gradient = jacobian.inverse() * deformed_gradient;
     }
 
-    return (deformed_gradient - original_gradient).norm();
+    // Norm of vector difference
+    //return (deformed_gradient - original_gradient).norm();
+
+    // Angle between vectors
+    return std::acos(original_gradient.normalized().dot(deformed_gradient.normalized()));
+
+    // Difference of vector norms
+    //return std::abs(deformed_gradient.norm() - original_gradient.norm());
 }
 
 std::tuple<vtkSmartPointer<vtkDoubleArray>, double, double> optimizer::calculate_error_field(

@@ -142,20 +142,27 @@ Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> gradient(const grid& data,
     const auto h_bck = data.h_minus(coords);
 
     const auto twoD = h_fwd[2] == 0.0 && h_bck[2] == 0.0;
+    const auto kernel_size = 1;
 
-    const auto get_num_neighbors = [&data, &coords, &h_fwd, &h_bck](const int dimension) -> int
+    const auto get_num_neighbors = [&data, &coords, &kernel_size](const int dimension) -> int
     {
-        auto num_neighbors = static_cast<int>(std::pow(3.0, dimension)) - 1;
+        auto num_neighbors = 0;
 
-        if (h_fwd[0] == 0.0) num_neighbors -= static_cast<int>(std::pow(3.0, dimension - 1));
-        else if (h_bck[0] == 0.0) num_neighbors -= static_cast<int>(std::pow(3.0, dimension - 1));
+        for (int zz = -kernel_size; zz <= kernel_size; ++zz)
+        {
+            for (int yy = -kernel_size; yy <= kernel_size; ++yy)
+            {
+                for (int xx = -kernel_size; xx <= kernel_size; ++xx)
+                {
+                    const std::array<int, 3> kernel_coords{ coords[0] + xx, coords[1] + yy, coords[2] + zz };
 
-        if (h_fwd[1] == 0.0 && h_fwd[0] == 0.0) num_neighbors -= static_cast<int>(std::pow(3.0, dimension - 1)) - static_cast<int>(std::pow(3.0, dimension - 2));
-        else if (h_fwd[1] == 0.0 && h_bck[0] == 0.0) num_neighbors -= static_cast<int>(std::pow(3.0, dimension - 1)) - static_cast<int>(std::pow(3.0, dimension - 2));
-        else if (h_fwd[1] == 0.0) num_neighbors -= static_cast<int>(std::pow(3.0, dimension - 1));
-        else if (h_bck[1] == 0.0 && h_fwd[0] == 0.0) num_neighbors -= static_cast<int>(std::pow(3.0, dimension - 1)) - static_cast<int>(std::pow(3.0, dimension - 2));
-        else if (h_bck[1] == 0.0 && h_bck[0] == 0.0) num_neighbors -= static_cast<int>(std::pow(3.0, dimension - 1)) - static_cast<int>(std::pow(3.0, dimension - 2));
-        else if (h_bck[1] == 0.0) num_neighbors -= static_cast<int>(std::pow(3.0, dimension - 1));
+                    if ((xx == 0 && yy == 0 && zz == 0) || kernel_coords[0] < 0 || kernel_coords[1] < 0 || kernel_coords[2] < 0 ||
+                        kernel_coords[0] >= data.dimensions()[0] || kernel_coords[1] >= data.dimensions()[1] || kernel_coords[2] >= data.dimensions()[2]) continue;
+
+                    ++num_neighbors;
+                }
+            }
+        }
 
         return num_neighbors;
     };
@@ -177,11 +184,11 @@ Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> gradient(const grid& data,
     {
         Eigen::Index j = 0;
 
-        for (int zz = -1; zz <= 1; ++zz)
+        for (int zz = -kernel_size; zz <= kernel_size; ++zz)
         {
-            for (int yy = -1; yy <= 1; ++yy)
+            for (int yy = -kernel_size; yy <= kernel_size; ++yy)
             {
-                for (int xx = -1; xx <= 1; ++xx)
+                for (int xx = -kernel_size; xx <= kernel_size; ++xx)
                 {
                     const std::array<int, 3> kernel_coords{ coords[0] + xx, coords[1] + yy, coords[2] + zz };
 
