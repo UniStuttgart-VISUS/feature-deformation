@@ -71,13 +71,16 @@ private:
 
     vtkSmartPointer<vtkDoubleArray> compute_gradient_descent(const std::array<int, 3>& dimension,
         const vtkStructuredGrid* original_grid, const vtkDataArray* vector_field_original, const vtkDataArray* positions,
-        const vtkDataArray* gradient_difference, const curvature_and_torsion_t& original_curvature) const;
+        const vtkDataArray* errors, const curvature_and_torsion_t& original_curvature) const;
 
     std::pair<vtkSmartPointer<vtkDoubleArray>, vtkSmartPointer<vtkDoubleArray>> apply_gradient_descent(
         const std::array<int, 3>& dimension, vtkDataArray* step_sizes, const vtkDataArray* positions,
-        const vtkDataArray* gradient_difference, const vtkDataArray* gradient_descent) const;
+        const vtkDataArray* errors, const vtkDataArray* gradient_descent) const;
 
-    std::tuple<vtkSmartPointer<vtkDoubleArray>, double, double> calculate_gradient_difference(
+    double calculate_error(int index, int index_block, const curvature_and_torsion_t& original_curvature,
+        const curvature_and_torsion_t& deformed_curvature, const vtkDataArray* jacobian_field) const;
+
+    std::tuple<vtkSmartPointer<vtkDoubleArray>, double, double> calculate_error_field(
         const curvature_and_torsion_t& original_curvature, const curvature_and_torsion_t& deformed_curvature,
         const vtkDataArray* jacobian_field) const;
 
