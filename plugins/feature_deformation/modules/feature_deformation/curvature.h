@@ -1,5 +1,6 @@
 #pragma once
 
+#include "gradient.h"
 #include "grid.h"
 
 #include "vtkDataArray.h"
@@ -18,4 +19,4 @@ struct curvature_and_torsion_t
     vtkSmartPointer<vtkDoubleArray> torsion_gradient;
 };
 
-curvature_and_torsion_t curvature_and_torsion(const grid& vector_field);
+curvature_and_torsion_t curvature_and_torsion(const grid& vector_field, gradient_method_t method, int kernel_size);

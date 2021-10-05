@@ -62,7 +62,7 @@ int curvature::RequestData(vtkInformation* vtkNotUsed(request), vtkInformationVe
     // Compute
     const grid vector_grid(vtk_grid, vector_field, jacobian_field);
 
-    const auto curvature = curvature_and_torsion(vector_grid);
+    const auto curvature = curvature_and_torsion(vector_grid, gradient_method_t::least_squares, 1);
 
     // Set output
     auto output_grid = vtkStructuredGrid::SafeDownCast(output_vector->GetInformationObject(0)->Get(vtkDataObject::DATA_OBJECT()));

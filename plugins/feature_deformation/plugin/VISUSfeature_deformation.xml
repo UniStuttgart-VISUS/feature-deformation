@@ -588,6 +588,16 @@
                     Vector field for which curvature and torsion is computed.
                 </Documentation>
             </StringVectorProperty>
+            <IntVectorProperty name="ErrorDefinition" label="Error definition" command="SetErrorDefinition" number_of_elements="1" default_values="0">
+                <EnumerationDomain name="enum">
+                    <Entry value="0" text="Vector difference"/>
+                    <Entry value="1" text="Angle"/>
+                    <Entry value="2" text="Length difference"/>
+                </EnumerationDomain>
+                <Documentation>
+                    Definition for calculating the error.
+                </Documentation>
+            </IntVectorProperty>
             
             <IntVectorProperty name="NumSteps" label="Number of steps" command="SetNumSteps" number_of_elements="1" default_values="10">
                 <Documentation>
@@ -599,7 +609,7 @@
                     Step size for each iteration.
                 </Documentation>
             </DoubleVectorProperty>
-            <IntVectorProperty name="StepSizeMethod" command="SetStepSizeMethod" label="Step size method" number_of_elements="1" default_values="2">
+            <IntVectorProperty name="StepSizeMethod" label="Step size method" command="SetStepSizeMethod" number_of_elements="1" default_values="2">
                 <EnumerationDomain name="enum">
                     <Entry value="0" text="Normalized"/>
                     <Entry value="1" text="Gradient norm"/>
@@ -609,7 +619,7 @@
                     Method of calculating the step size.
                 </Documentation>
             </IntVectorProperty>
-            <IntVectorProperty name="StepSizeControl" command="SetStepSizeControl" label="Step size control" number_of_elements="1" default_values="0">
+            <IntVectorProperty name="StepSizeControl" label="Step size control" command="SetStepSizeControl" number_of_elements="1" default_values="0">
                 <EnumerationDomain name="enum">
                     <Entry value="0" text="Dynamic"/>
                     <Entry value="1" text="Fixed"/>
@@ -667,8 +677,27 @@
                 </Documentation>
             </IntVectorProperty>
 
+            <IntVectorProperty name="GradientMethod" label="Gradient method" command="SetGradientMethod" number_of_elements="1" default_values="1" panel_visibility="advanced">
+                <EnumerationDomain name="enum">
+                    <Entry value="0" text="Differences"/>
+                    <Entry value="1" text="Least squares"/>
+                </EnumerationDomain>
+                <Documentation>
+                    Method for (smooth) gradient computation.
+                </Documentation>
+            </IntVectorProperty>
+            <IntVectorProperty name="GradientKernel" label="Gradient kernel" command="SetGradientKernel" number_of_elements="1" default_values="1" panel_visibility="advanced">
+                <Hints>
+                    <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="GradientMethod" value="1" />
+                </Hints>
+                <Documentation>
+                    Kernel size for (smooth) gradient computation.
+                </Documentation>
+            </IntVectorProperty>
+
             <PropertyGroup label="Input">
                 <Property name="OriginalVectors" />
+                <Property name="ErrorDefinition" />
             </PropertyGroup>
 
             <PropertyGroup label="Step size">
@@ -685,6 +714,11 @@
                 <Property name="Threshold" />
                 <Property name="Increase" />
                 <Property name="Stop" />
+            </PropertyGroup>
+
+            <PropertyGroup label="Advanced options">
+                <Property name="GradientMethod" />
+                <Property name="GradientKernel" />
             </PropertyGroup>
 
             <Hints>

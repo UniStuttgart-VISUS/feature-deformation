@@ -92,6 +92,7 @@ int optimizer::RequestData(vtkInformation*, vtkInformationVector** input_vector,
 
     const auto hash = joaat_hash(this->NumSteps, this->StepSize, this-StepSizeMethod, this->StepSizeControl,
         this->Error, this->Adjustment, this->MaxAdjustments, this->Threshold, this->Increase, this->Stop,
+        this->GradientMethod, this->GradientKernel,
         vector_field_original->GetMTime(), deformed_grid->GetMTime());
 
     if (hash != this->hash)
@@ -142,7 +143,7 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
 
     const grid deformation_field(original_grid, positions);
 
-    auto jacobian_field = gradient_field(deformation_field);
+    auto jacobian_field = gradient_field(deformation_field, static_cast<gradient_method_t>(this->GradientMethod), this->GradientKernel);
     jacobian_field->SetName("Jacobian");
 
     auto vector_field_deformed = vtkSmartPointer<vtkDoubleArray>::New();
@@ -169,14 +170,17 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
     const bool twoD = dimension[2] == 1;
 
     // Calculate initial gradient difference
-    const auto original_curvature = curvature_and_torsion(original_vector_field);
-    const auto deformed_curvature = curvature_and_torsion(deformed_vector_field);
+    const auto original_curvature = curvature_and_torsion(original_vector_field,
+        static_cast<gradient_method_t>(this->GradientMethod), this->GradientKernel);
+    const auto deformed_curvature = curvature_and_torsion(deformed_vector_field,
+        static_cast<gradient_method_t>(this->GradientMethod), this->GradientKernel);
 
     vtkSmartPointer<vtkDoubleArray> errors;
     double error_avg, error_max;
 
     std::tie(errors, error_avg, error_max)
-        = calculate_error_field(original_curvature, deformed_curvature, jacobian_field);
+        = calculate_error_field(original_curvature, deformed_curvature, jacobian_field,
+            static_cast<error_definition_t>(this->ErrorDefinition));
 
     original_curvature.curvature_gradient->SetName("Curvature Gradient (Original)");
 
@@ -220,7 +224,7 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
         // Update jacobians and vector field
         const grid new_deformation(original_grid, deformed_positions);
 
-        jacobian_field = gradient_field(new_deformation);
+        jacobian_field = gradient_field(new_deformation, static_cast<gradient_method_t>(this->GradientMethod), this->GradientKernel);
         jacobian_field->SetName("Jacobian");
 
         Eigen::Matrix3d jacobian;
@@ -239,13 +243,15 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
         // Calculate new gradient difference
         const grid new_deformed_vector_field(dimension, deformed_positions, vector_field_deformed, jacobian_field);
 
-        const auto deformed_curvature = curvature_and_torsion(new_deformed_vector_field);
+        const auto deformed_curvature = curvature_and_torsion(new_deformed_vector_field,
+            static_cast<gradient_method_t>(this->GradientMethod), this->GradientKernel);
 
         vtkSmartPointer<vtkDoubleArray> new_errors;
         double new_error_avg, new_error_max;
 
         std::tie(new_errors, new_error_avg, new_error_max)
-            = calculate_error_field(original_curvature, deformed_curvature, jacobian_field);
+            = calculate_error_field(original_curvature, deformed_curvature, jacobian_field,
+                static_cast<error_definition_t>(this->ErrorDefinition));
 
         if (new_error_max > error_max)
         {
@@ -519,7 +525,7 @@ vtkSmartPointer<vtkDoubleArray> optimizer::compute_gradient_descent(const std::a
                         new_position_block->GetComponent(index_block_center, d) + infinitesimal_steps[d]);
 
                     // Compute Jacobians of deformation
-                    auto jacobians = gradient_field(block_deformation);
+                    auto jacobians = gradient_field(block_deformation, static_cast<gradient_method_t>(this->GradientMethod), this->GradientKernel);
 
                     // Compute new vectors after deformation
                     for (vtkIdType i = 0; i < new_vector_block->GetNumberOfTuples(); ++i)
@@ -535,7 +541,7 @@ vtkSmartPointer<vtkDoubleArray> optimizer::compute_gradient_descent(const std::a
                     // Calculate cuvature and torsion
                     grid block(block_sizes, new_position_block, new_vector_block, jacobians);
 
-                    const auto curvature = curvature_and_torsion(block);
+                    const auto curvature = curvature_and_torsion(block, static_cast<gradient_method_t>(this->GradientMethod), this->GradientKernel);
 
                     // Calculate difference between original and deformed curvature gradient for all neighboring nodes
                     const auto num_block_nodes =
@@ -566,7 +572,8 @@ vtkSmartPointer<vtkDoubleArray> optimizer::compute_gradient_descent(const std::a
 
                                 if (const_cast<vtkDataArray*>(errors)->GetComponent(index_orig, 0) > this->Error)
                                 {
-                                    const auto error = calculate_error(index_orig, index_block, original_curvature, curvature, jacobians);
+                                    const auto error = calculate_error(index_orig, index_block, original_curvature, curvature, jacobians,
+                                        static_cast<error_definition_t>(this->ErrorDefinition));
 
                                     const auto gradient = (error
                                         - const_cast<vtkDataArray*>(errors)->GetComponent(index_orig, 0)) / infinitesimal_steps[d];
@@ -679,7 +686,7 @@ std::pair<vtkSmartPointer<vtkDoubleArray>, vtkSmartPointer<vtkDoubleArray>> opti
 }
 
 double optimizer::calculate_error(const int index, const int index_block, const curvature_and_torsion_t& original_curvature,
-    const curvature_and_torsion_t& deformed_curvature, const vtkDataArray* jacobian_field) const
+    const curvature_and_torsion_t& deformed_curvature, const vtkDataArray* jacobian_field, const error_definition_t error_definition) const
 {
     Eigen::VectorXd original_gradient, deformed_gradient;
     Eigen::Matrix3d jacobian;
@@ -696,19 +703,29 @@ double optimizer::calculate_error(const int index, const int index_block, const 
         deformed_gradient = jacobian.inverse() * deformed_gradient;
     }
 
-    // Norm of vector difference
-    //return (deformed_gradient - original_gradient).norm();
+    switch (error_definition)
+    {
+    case error_definition_t::vector_difference:
+        return (deformed_gradient - original_gradient).norm();
 
-    // Angle between vectors
-    return std::acos(original_gradient.normalized().dot(deformed_gradient.normalized()));
+        break;
+    case error_definition_t::angle:
+        return std::acos(original_gradient.normalized().dot(deformed_gradient.normalized()));
 
-    // Difference of vector norms
-    //return std::abs(deformed_gradient.norm() - original_gradient.norm());
+        break;
+    case error_definition_t::length_difference:
+        return std::abs(deformed_gradient.norm() - original_gradient.norm());
+
+        break;
+    default:
+        std::cerr << "Unknown error definition." << std::endl;
+        return 0.0;
+    }
 }
 
 std::tuple<vtkSmartPointer<vtkDoubleArray>, double, double> optimizer::calculate_error_field(
     const curvature_and_torsion_t& original_curvature, const curvature_and_torsion_t& deformed_curvature,
-    const vtkDataArray* jacobian_field) const
+    const vtkDataArray* jacobian_field, const error_definition_t error_definition) const
 {
     auto errors = vtkSmartPointer<vtkDoubleArray>::New();
     errors->SetName("Error");
@@ -720,7 +737,7 @@ std::tuple<vtkSmartPointer<vtkDoubleArray>, double, double> optimizer::calculate
 
     for (vtkIdType i = 0; i < original_curvature.curvature_gradient->GetNumberOfTuples(); ++i)
     {
-        const auto error = calculate_error(i, i, original_curvature, deformed_curvature, jacobian_field);
+        const auto error = calculate_error(i, i, original_curvature, deformed_curvature, jacobian_field, error_definition);
 
         errors->SetValue(i, error);
 

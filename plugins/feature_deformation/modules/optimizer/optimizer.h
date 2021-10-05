@@ -23,6 +23,9 @@ public:
     static optimizer* New();
     vtkTypeMacro(optimizer, vtkStructuredGridAlgorithm);
 
+    vtkGetMacro(ErrorDefinition, int);
+    vtkSetMacro(ErrorDefinition, int);
+
     vtkGetMacro(NumSteps, int);
     vtkSetMacro(NumSteps, int);
 
@@ -53,6 +56,12 @@ public:
     vtkGetMacro(Stop, int);
     vtkSetMacro(Stop, int);
 
+    vtkGetMacro(GradientMethod, int);
+    vtkSetMacro(GradientMethod, int);
+
+    vtkGetMacro(GradientKernel, int);
+    vtkSetMacro(GradientKernel, int);
+
 protected:
     optimizer();
     ~optimizer();
@@ -66,6 +75,21 @@ private:
     optimizer(const optimizer&);
     void operator=(const optimizer&);
 
+    enum class error_definition_t
+    {
+        vector_difference, angle, length_difference
+    };
+
+    enum class step_size_method_t
+    {
+        normalized, norm, error
+    };
+
+    enum class step_size_control_t
+    {
+        dynamic, fixed
+    };
+
     void compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* deformed_grid,
         vtkDataArray* vector_field_original);
 
@@ -78,11 +102,12 @@ private:
         const vtkDataArray* errors, const vtkDataArray* gradient_descent) const;
 
     double calculate_error(int index, int index_block, const curvature_and_torsion_t& original_curvature,
-        const curvature_and_torsion_t& deformed_curvature, const vtkDataArray* jacobian_field) const;
+        const curvature_and_torsion_t& deformed_curvature, const vtkDataArray* jacobian_field,
+        error_definition_t error_definition) const;
 
     std::tuple<vtkSmartPointer<vtkDoubleArray>, double, double> calculate_error_field(
         const curvature_and_torsion_t& original_curvature, const curvature_and_torsion_t& deformed_curvature,
-        const vtkDataArray* jacobian_field) const;
+        const vtkDataArray* jacobian_field, error_definition_t error_definition) const;
 
     vtkSmartPointer<vtkStructuredGrid> create_output(const std::array<int, 3>& dimension, const vtkDoubleArray* positions) const;
 
@@ -101,6 +126,8 @@ private:
         output_copy(grid, fields...);
     }
 
+    int ErrorDefinition;
+
     int NumSteps;
     double StepSize;
     int StepSizeMethod;
@@ -113,16 +140,9 @@ private:
     int Increase;
     int Stop;
 
+    int GradientMethod;
+    int GradientKernel;
+
     std::uint32_t hash;
     std::vector<vtkSmartPointer<vtkStructuredGrid>> results;
-
-    enum class step_size_method_t
-    {
-        normalized, norm, error
-    };
-
-    enum class step_size_control_t
-    {
-        dynamic, fixed
-    };
 };

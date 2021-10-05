@@ -10,10 +10,7 @@
 
 #include <array>
 
-#define __use_least_squares
-
-#ifndef __use_least_squares
-Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> gradient(const grid& data,
+Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> gradient_differences(const grid& data,
     const std::array<int, 3>& coords)
 {
     const auto jacobian = data.jacobian(coords);
@@ -123,9 +120,9 @@ Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> gradient(const grid& data,
         }
     }
 }
-#else
-Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> gradient(const grid& data,
-    const std::array<int, 3>& coords)
+
+Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> gradient_least_squares(const grid& data,
+    const std::array<int, 3>& coords, const int kernel_size)
 {
     Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> gradient;
 
@@ -142,7 +139,6 @@ Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> gradient(const grid& data,
     const auto h_bck = data.h_minus(coords);
 
     const auto twoD = h_fwd[2] == 0.0 && h_bck[2] == 0.0;
-    const auto kernel_size = 1;
 
     const auto get_num_neighbors = [&data, &coords, &kernel_size](const int dimension) -> int
     {
@@ -244,20 +240,40 @@ Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> gradient(const grid& data,
 
     return gradient;
 }
-#endif
 
-vtkSmartPointer<vtkDoubleArray> gradient_field(const grid& data)
+Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> gradient(const grid& data,
+    const std::array<int, 3>& coords, const gradient_method_t method, const int kernel_size)
+{
+    switch (method)
+    {
+    case gradient_method_t::differences:
+        return gradient_differences(data, coords);
+
+        break;
+    case gradient_method_t::least_squares:
+        return gradient_least_squares(data, coords, kernel_size);
+
+        break;
+    default:
+        std::cerr << "Unknown gradient computation method." << std::endl;
+        return Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic>();
+    }
+}
+
+vtkSmartPointer<vtkDoubleArray> gradient_field(const grid& data, const gradient_method_t method, const int kernel_size)
 {
     const auto dim_x = data.dimensions()[0];
     const auto dim_y = data.dimensions()[1];
     const auto dim_z = data.dimensions()[2];
+
+    const auto dim = static_cast<vtkIdType>(dim_x) * dim_y * dim_z;
 
     std::size_t index = 0;
 
     // First derivative
     auto field = vtkSmartPointer<vtkDoubleArray>::New();
     field->SetNumberOfComponents(data.components() == 1 ? 3 : 9);
-    field->SetNumberOfTuples(dim_x * dim_y * dim_z);
+    field->SetNumberOfTuples(dim);
 
     for (int z = 0; z < dim_z; ++z)
     {
@@ -265,7 +281,7 @@ vtkSmartPointer<vtkDoubleArray> gradient_field(const grid& data)
         {
             for (int x = 0; x < dim_x; ++x)
             {
-                const Eigen::MatrixXd derivative = gradient(data, { x, y, z });
+                const Eigen::MatrixXd derivative = gradient(data, { x, y, z }, method, kernel_size);
 
                 field->SetTuple(index, derivative.data());
 
