@@ -182,7 +182,22 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
         = calculate_error_field(original_curvature, deformed_curvature, jacobian_field,
             static_cast<error_definition_t>(this->ErrorDefinition));
 
-    original_curvature.curvature_gradient->SetName("Curvature Gradient (Original)");
+    auto original_curvature_gradients = vtkSmartPointer<vtkDoubleArray>::New();
+    original_curvature_gradients->SetName("Curvature Gradient (Original)");
+    original_curvature_gradients->SetNumberOfComponents(3);
+    original_curvature_gradients->SetNumberOfTuples(num_nodes);
+
+    Eigen::Vector3d original_gradient;
+
+    for (vtkIdType i = 0; i < num_nodes; ++i)
+    {
+        original_curvature.curvature_gradient->GetTuple(i, original_gradient.data());
+        jacobian_field->GetTuple(i, jacobian.data());
+
+        original_gradient = jacobian * original_gradient;
+
+        original_curvature_gradients->SetTuple(i, original_gradient.data());
+    }
 
     // Set initial step sizes
     auto step_sizes = vtkSmartPointer<vtkDoubleArray>::New();
@@ -200,7 +215,7 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
         errors, deformed_curvature.curvature, deformed_curvature.curvature_vector,
         deformed_curvature.curvature_gradient, deformed_curvature.torsion,
         deformed_curvature.torsion_vector, deformed_curvature.torsion_gradient,
-        original_curvature.curvature_gradient);
+        original_curvature_gradients);
 
     // Apply optimization
     bool converged = false;
@@ -323,19 +338,14 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
         }
 
         // Transform original curvature to deformed grid for comparison
-        auto original_gradients = vtkSmartPointer<vtkDoubleArray>::New();
-        original_gradients->DeepCopy(original_curvature.curvature_gradient);
-
-        Eigen::Vector3d original_gradient;
-
-        for (vtkIdType i = 0; i < original_gradients->GetNumberOfTuples(); ++i)
+        for (vtkIdType i = 0; i < num_nodes; ++i)
         {
-            original_gradients->GetTuple(i, original_gradient.data());
+            original_curvature.curvature_gradient->GetTuple(i, original_gradient.data());
             jacobian_field->GetTuple(i, jacobian.data());
 
             original_gradient = jacobian * original_gradient;
 
-            original_gradients->SetTuple(i, original_gradient.data());
+            original_curvature_gradients->SetTuple(i, original_gradient.data());
         }
 
         // Set output for this step
@@ -345,7 +355,7 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
             new_errors, deformed_curvature.curvature, deformed_curvature.curvature_vector,
             deformed_curvature.curvature_gradient, deformed_curvature.torsion,
             deformed_curvature.torsion_vector, deformed_curvature.torsion_gradient, gradient_descent,
-            original_gradients);
+            original_curvature_gradients);
 
         output_copy(this->results[step], gradient_descent);
 
@@ -735,6 +745,7 @@ std::tuple<vtkSmartPointer<vtkDoubleArray>, double, double> optimizer::calculate
     double error_max = std::numeric_limits<double>::min();
     double error_avg = 0.0;
 
+    #pragma omp parallel for
     for (vtkIdType i = 0; i < original_curvature.curvature_gradient->GetNumberOfTuples(); ++i)
     {
         const auto error = calculate_error(i, i, original_curvature, deformed_curvature, jacobian_field, error_definition);
