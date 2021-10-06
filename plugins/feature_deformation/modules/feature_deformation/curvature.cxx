@@ -24,6 +24,7 @@ curvature_and_torsion_t curvature_and_torsion(const grid& vector_field, const gr
 
     // First derivative
     auto first_derivatives = vtkSmartPointer<vtkDoubleArray>::New();
+    first_derivatives->SetName("First Derivative");
     first_derivatives->SetNumberOfComponents(3);
     first_derivatives->SetNumberOfTuples(dim);
 
@@ -51,6 +52,7 @@ curvature_and_torsion_t curvature_and_torsion(const grid& vector_field, const gr
     index = 0;
 
     auto second_derivatives = vtkSmartPointer<vtkDoubleArray>::New();
+    second_derivatives->SetName("Second Derivative");
     second_derivatives->SetNumberOfComponents(3);
     second_derivatives->SetNumberOfTuples(dim);
 
@@ -134,6 +136,7 @@ curvature_and_torsion_t curvature_and_torsion(const grid& vector_field, const gr
     curvature_gradient->SetName("Curvature Gradient");
     torsion_gradient->SetName("Torsion Gradient");
 
-    return curvature_and_torsion_t{ curvature, curvature_vector, curvature_gradient,
+    return curvature_and_torsion_t{ first_derivatives, second_derivatives,
+        curvature, curvature_vector, curvature_gradient,
         torsion, torsion_vector, torsion_gradient };
 }

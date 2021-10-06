@@ -11,6 +11,8 @@
 
 struct curvature_and_torsion_t
 {
+    vtkSmartPointer<vtkDoubleArray> first_derivative;
+    vtkSmartPointer<vtkDoubleArray> second_derivative;
     vtkSmartPointer<vtkDoubleArray> curvature;
     vtkSmartPointer<vtkDoubleArray> curvature_vector;
     vtkSmartPointer<vtkDoubleArray> curvature_gradient;

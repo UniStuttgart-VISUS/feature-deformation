@@ -67,6 +67,8 @@ int curvature::RequestData(vtkInformation* vtkNotUsed(request), vtkInformationVe
     // Set output
     auto output_grid = vtkStructuredGrid::SafeDownCast(output_vector->GetInformationObject(0)->Get(vtkDataObject::DATA_OBJECT()));
     output_grid->ShallowCopy(vtk_grid);
+    output_grid->GetPointData()->AddArray(curvature.first_derivative);
+    output_grid->GetPointData()->AddArray(curvature.second_derivative);
     output_grid->GetPointData()->AddArray(curvature.curvature);
     output_grid->GetPointData()->AddArray(curvature.curvature_vector);
     output_grid->GetPointData()->AddArray(curvature.curvature_gradient);
