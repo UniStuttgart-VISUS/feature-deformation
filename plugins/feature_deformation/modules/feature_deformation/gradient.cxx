@@ -135,50 +135,16 @@ Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> gradient_least_squares(con
         gradient.resize(data.components(), 3);
     }
 
-    const auto h_fwd = data.h_plus(coords);
-    const auto h_bck = data.h_minus(coords);
-
-    const auto twoD = h_fwd[2] == 0.0 && h_bck[2] == 0.0;
-
-    const auto get_num_neighbors = [&data, &coords, &kernel_size](const int dimension) -> int
-    {
-        auto num_neighbors = 0;
-
-        for (int zz = -kernel_size; zz <= kernel_size; ++zz)
-        {
-            for (int yy = -kernel_size; yy <= kernel_size; ++yy)
-            {
-                for (int xx = -kernel_size; xx <= kernel_size; ++xx)
-                {
-                    const std::array<int, 3> kernel_coords{ coords[0] + xx, coords[1] + yy, coords[2] + zz };
-
-                    if ((xx == 0 && yy == 0 && zz == 0) || kernel_coords[0] < 0 || kernel_coords[1] < 0 || kernel_coords[2] < 0 ||
-                        kernel_coords[0] >= data.dimensions()[0] || kernel_coords[1] >= data.dimensions()[1] || kernel_coords[2] >= data.dimensions()[2]) continue;
-
-                    ++num_neighbors;
-                }
-            }
-        }
-
-        return num_neighbors;
-    };
-
-    const auto num_neighbors = get_num_neighbors(data.dimensions()[2] == 1 ? 2 : 3);
+    const auto twoD = data.h_plus(coords)[2] == 0.0 && data.h_minus(coords)[2] == 0.0;
 
     // Create matrix A, weight matrix W and right-hand side b
-    Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> A;
-    A.resize(num_neighbors, 3);
-
-    Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> W;
-    W.resize(num_neighbors, num_neighbors);
-    W.setZero();
-
-    Eigen::Matrix<double, Eigen::Dynamic, 1> b;
-    b.resize(num_neighbors, Eigen::NoChange);
-
     for (int c = 0; c < data.components(); ++c)
     {
-        Eigen::Index j = 0;
+        Eigen::Matrix3d A;
+        Eigen::Vector3d b;
+
+        A.setZero();
+        b.setZero();
 
         for (int zz = -kernel_size; zz <= kernel_size; ++zz)
         {
@@ -186,39 +152,65 @@ Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> gradient_least_squares(con
             {
                 for (int xx = -kernel_size; xx <= kernel_size; ++xx)
                 {
-                    const std::array<int, 3> kernel_coords{ coords[0] + xx, coords[1] + yy, coords[2] + zz };
+                    const std::array<int, 3> kernel_coords{ coords[0] + xx, coords[1] + yy, coords[2] + (twoD ? 0 : zz) };
 
                     if ((xx == 0 && yy == 0 && zz == 0) || kernel_coords[0] < 0 || kernel_coords[1] < 0 || kernel_coords[2] < 0 ||
                         kernel_coords[0] >= data.dimensions()[0] || kernel_coords[1] >= data.dimensions()[1] || kernel_coords[2] >= data.dimensions()[2]) continue;
 
-                    const auto neighbor_offset = data.offset(coords, kernel_coords);
+                    const auto neighbor_offset = data.offset(coords, kernel_coords) + Eigen::Vector3d(0, 0, (twoD ? zz : 0));
 
-                    A.row(j) = neighbor_offset;
-                    W(j, j) = neighbor_offset.squaredNorm();
-                    b(j) = (data.value(kernel_coords) - data.value(coords))[c];
+                    A(0, 0) += neighbor_offset[0] * neighbor_offset[0];
+                    A(0, 1) += neighbor_offset[0] * neighbor_offset[1];
+                    A(0, 2) += neighbor_offset[0] * neighbor_offset[2];
 
-                    ++j;
+                    A(1, 0) += neighbor_offset[1] * neighbor_offset[0];
+                    A(1, 1) += neighbor_offset[1] * neighbor_offset[1];
+                    A(1, 2) += neighbor_offset[1] * neighbor_offset[2];
+
+                    A(2, 0) += neighbor_offset[2] * neighbor_offset[0];
+                    A(2, 1) += neighbor_offset[2] * neighbor_offset[1];
+                    A(2, 2) += neighbor_offset[2] * neighbor_offset[2];
+
+                    const auto f = (data.value(kernel_coords) - data.value(coords))[c];
+
+                    b[0] += f * neighbor_offset[0];
+                    b[1] += f * neighbor_offset[1];
+                    b[2] += f * neighbor_offset[2];
                 }
             }
         }
 
-        // Calculate weighted matrix and vectors
-        Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> X;
-        X.resize(num_neighbors, 3);
+        auto det = A.determinant();
+        det = det == 0.0 ? 1.0 : det;
 
-        X = W * A;
-        b = W * b;
+        Eigen::Matrix3d gradient_1;
+        gradient_1.col(0) = b;
+        gradient_1.col(1) = A.row(1);
+        gradient_1.col(2) = A.row(2);
 
-        // Solve least squares for Ax = b
-        Eigen::JacobiSVD<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic>> svd(X, Eigen::ComputeFullU | Eigen::ComputeFullV);
+        Eigen::Matrix3d gradient_2;
+        gradient_2.col(0) = A.row(0);
+        gradient_2.col(1) = b;
+        gradient_2.col(2) = A.row(2);
+
+        Eigen::Matrix3d gradient_3;
+        gradient_3.col(0) = A.row(0);
+        gradient_3.col(1) = A.row(1);
+        gradient_3.col(2) = b;
+
+        Eigen::Vector3d c_gradient(
+            gradient_1.determinant() / det,
+            gradient_2.determinant() / det,
+            gradient_3.determinant() / det
+        );
 
         if (data.components() == 1)
         {
-            gradient = svd.solve(b);
+            gradient = c_gradient;
         }
         else
         {
-            gradient.row(c) = svd.solve(b);
+            gradient.row(c) = c_gradient;
         }
     }
 
