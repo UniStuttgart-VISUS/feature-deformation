@@ -41,20 +41,14 @@ public:
     vtkGetMacro(Error, double);
     vtkSetMacro(Error, double);
 
-    vtkGetMacro(Adjustment, double);
-    vtkSetMacro(Adjustment, double);
+    vtkGetMacro(StepSizeMin, double);
+    vtkSetMacro(StepSizeMin, double);
 
-    vtkGetMacro(MaxAdjustments, int);
-    vtkSetMacro(MaxAdjustments, int);
+    vtkGetMacro(StepSizeMax, double);
+    vtkSetMacro(StepSizeMax, double);
 
-    vtkGetMacro(Threshold, double);
-    vtkSetMacro(Threshold, double);
-
-    vtkGetMacro(Increase, int);
-    vtkSetMacro(Increase, int);
-
-    vtkGetMacro(Stop, int);
-    vtkSetMacro(Stop, int);
+    vtkGetMacro(LineSearchSteps, double);
+    vtkSetMacro(LineSearchSteps, double);
 
     vtkGetMacro(GradientMethod, int);
     vtkSetMacro(GradientMethod, int);
@@ -88,6 +82,13 @@ private:
     enum class step_size_control_t
     {
         dynamic, fixed
+    };
+
+    struct step_size_t
+    {
+        double step_size, error_avg, error_max;
+
+        bool operator==(const step_size_t& rhs) const { return this->step_size == rhs.step_size; }
     };
 
     void compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* deformed_grid,
@@ -134,11 +135,9 @@ private:
     int StepSizeControl;
     double Error;
 
-    double Adjustment;
-    int MaxAdjustments;
-    double Threshold;
-    int Increase;
-    int Stop;
+    double StepSizeMin;
+    double StepSizeMax;
+    int LineSearchSteps;
 
     int GradientMethod;
     int GradientKernel;

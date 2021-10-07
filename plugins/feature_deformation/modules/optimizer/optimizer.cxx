@@ -90,8 +90,8 @@ int optimizer::RequestData(vtkInformation*, vtkInformationVector** input_vector,
         return 0;
     }
 
-    const auto hash = joaat_hash(this->NumSteps, this->StepSize, this-StepSizeMethod, this->StepSizeControl,
-        this->Error, this->Adjustment, this->MaxAdjustments, this->Threshold, this->Increase, this->Stop,
+    const auto hash = joaat_hash(this->ErrorDefinition, this->NumSteps, this->StepSize, this-StepSizeMethod, this->StepSizeControl,
+        this->Error, this->StepSizeMin, this->StepSizeMax, this->LineSearchSteps,
         this->GradientMethod, this->GradientKernel,
         vector_field_original->GetMTime(), deformed_grid->GetMTime());
 
@@ -214,11 +214,21 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
     bool converged = false;
     bool stopped = false;
 
-    const auto original_step_size = this->StepSize;
-    auto step_size = this->StepSize;
-    int step;
+    const auto step_size_control = static_cast<step_size_control_t>(this->StepSizeControl);
 
-    for (step = 0; step < this->NumSteps && !converged && !stopped; ++step)
+    double step_size = this->StepSize;
+
+    if (step_size_control == step_size_control_t::dynamic)
+    {
+        step_size = this->StepSizeMin;
+    }
+
+    int step, line_search_step;
+    bool tendency_left = true;
+
+    std::array<step_size_t, 4> step_size_errors{};
+
+    for (step = 0, line_search_step = 0; step < this->NumSteps && !converged && !stopped; ++step)
     {
         std::cout << "Optimization step: " << (step + 1) << "/" << this->NumSteps << std::endl;
 
@@ -262,6 +272,139 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
             = calculate_error_field(original_curvature, deformed_curvature, jacobian_field,
                 static_cast<error_definition_t>(this->ErrorDefinition));
 
+        // Adjust step size if necessary
+        if (step_size_control == step_size_control_t::dynamic && error_max > this->Error)
+        {
+            auto remove_largest_boundary = [](std::array<step_size_t, 4>& step_size_errors) {
+                const auto min = std::min_element(step_size_errors.begin(), step_size_errors.end(),
+                    [](const step_size_t& lhs, step_size_t& rhs) { return lhs.error_avg < rhs.error_avg; });
+
+                if (*min == step_size_errors[2] || *min == step_size_errors[3])
+                {
+                    step_size_errors[0] = step_size_errors[1];
+                    step_size_errors[1] = step_size_errors[2];
+                    step_size_errors[2] = step_size_errors[3];
+                }
+            };
+
+            const auto old_step_size = step_size;
+
+            if (line_search_step < this->LineSearchSteps + 4)
+            {
+                std::cout << "    Line search step " << (line_search_step + 1) << "/" << (this->LineSearchSteps + 4) << std::endl;
+
+                switch (line_search_step)
+                {
+                case 0: // results for minimum step size have been computed, do largest step size next
+                    step_size_errors[0].step_size = step_size;
+                    step_size_errors[0].error_avg = new_error_avg;
+                    step_size_errors[0].error_max = new_error_max;
+
+                    step_size = this->StepSizeMax;
+
+                    break;
+                case 1: // results for maximum step size have been computed, do first intermediate step size next
+                    step_size_errors[3].step_size = step_size;
+                    step_size_errors[3].error_avg = new_error_avg;
+                    step_size_errors[3].error_max = new_error_max;
+
+                    step_size = std::pow(10.0, std::log10(this->StepSizeMin) + (1.0 / 3.0) * std::log10(this->StepSizeMax / this->StepSizeMin));
+
+                    break;
+                case 2: // results for first intermediate step size have been computed, do second intermediate step size next
+                    step_size_errors[1].step_size = step_size;
+                    step_size_errors[1].error_avg = new_error_avg;
+                    step_size_errors[1].error_max = new_error_max;
+
+                    step_size = std::pow(10.0, std::log10(this->StepSizeMin) + (2.0 / 3.0) * std::log10(this->StepSizeMax / this->StepSizeMin));
+
+                    break;
+                case 3: // results for first four step sizes have been computed, remove outer step size
+                    step_size_errors[2].step_size = step_size;
+                    step_size_errors[2].error_avg = new_error_avg;
+                    step_size_errors[2].error_max = new_error_max;
+
+                    remove_largest_boundary(step_size_errors);
+
+                    step_size = std::pow(10.0, std::log10(step_size_errors[0].step_size)
+                        + (1.0 / 2.0) * std::log10(step_size_errors[1].step_size / step_size_errors[0].step_size));
+
+                    tendency_left = true;
+
+                    break;
+                default:
+                {
+                    const bool left = step_size >= step_size_errors[0].step_size && step_size < step_size_errors[1].step_size;
+
+                    if (left)
+                    {
+                        if (new_error_avg > step_size_errors[0].error_avg || new_error_avg > step_size_errors[1].error_avg)
+                        {
+                            tendency_left = false;
+                        }
+
+                        step_size_errors[3] = step_size_errors[2];
+                        step_size_errors[2] = step_size_errors[1];
+
+                        step_size_errors[1].step_size = step_size;
+                        step_size_errors[1].error_avg = new_error_avg;
+                        step_size_errors[1].error_max = new_error_max;
+
+                        remove_largest_boundary(step_size_errors);
+                    }
+                    else
+                    {
+                        if (new_error_avg > step_size_errors[1].error_avg || new_error_avg > step_size_errors[2].error_avg)
+                        {
+                            tendency_left = true;
+                        }
+
+                        step_size_errors[3] = step_size_errors[2];
+
+                        step_size_errors[2].step_size = step_size;
+                        step_size_errors[2].error_avg = new_error_avg;
+                        step_size_errors[2].error_max = new_error_max;
+
+                        remove_largest_boundary(step_size_errors);
+                    }
+
+                    if (tendency_left)
+                    {
+                        step_size = std::pow(10.0, std::log10(step_size_errors[0].step_size)
+                            + (1.0 / 2.0) * std::log10(step_size_errors[1].step_size / step_size_errors[0].step_size));
+                    }
+                    else
+                    {
+                        step_size = std::pow(10.0, std::log10(step_size_errors[1].step_size)
+                            + (1.0 / 2.0) * std::log10(step_size_errors[2].step_size / step_size_errors[1].step_size));
+                    }
+                }
+
+                    if (line_search_step == this->LineSearchSteps + 3)
+                    {
+                        // Set to element with minimum error
+                        const auto min = std::min_element(step_size_errors.begin(), step_size_errors.end(),
+                            [](const step_size_t& lhs, step_size_t& rhs) { return lhs.error_avg < rhs.error_avg; });
+
+                        step_size = min->step_size;
+
+                        if (step_size == this->StepSizeMin || step_size == this->StepSizeMax)
+                        {
+                            std::cout << "    Step size is equal to lower or upper bound. Stopping." << std::endl;
+
+                            stopped = true;
+                        }
+                    }
+                }
+
+                --step;
+                ++line_search_step;
+                continue;
+            }
+
+            std::cout << "    Using step size: " << step_size << std::endl;
+        }
+
         if (new_error_max > error_max)
         {
             std::cout << "    New maximum error increased from " << error_max << " to " << new_error_max << "." << std::endl;
@@ -271,40 +414,10 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
             std::cout << "    New average error increased from " << error_avg << " to " << new_error_avg << "." << std::endl;
         }
 
-        const auto step_size_control = static_cast<step_size_control_t>(this->StepSizeControl);
-
-        if (step_size_control == step_size_control_t::dynamic)
-        {
-            bool rewind = false;
-
-            if (new_error_max > this->Threshold * error_max || new_error_avg > this->Threshold * error_avg)
-            {
-                if (step_size > std::pow(2.0, -this->MaxAdjustments) * original_step_size)
-                {
-                    step_size *= this->Adjustment;
-                    rewind = true;
-                }
-                else if (this->Stop)
-                {
-                    stopped = true;
-                }
-            }
-
-            if (rewind)
-            {
-                --step;
-                continue;
-            }
-            else if (stopped)
-            {
-                continue;
-            }
-        }
-
         error_max = new_error_max;
         error_avg = new_error_avg;
 
-        if (error_max < this->Error)
+        if (error_max <= this->Error)
         {
             converged = true;
         }
@@ -335,10 +448,12 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
         positions = deformed_positions;
         errors = new_errors;
 
-        if (step_size_control == step_size_control_t::dynamic && this->Increase)
+        if (step_size_control == step_size_control_t::dynamic)
         {
-            step_size /= this->Adjustment;
+            step_size = this->StepSizeMin;
         }
+
+        line_search_step = 0;
     }
 
     // If converged, later results stay the same
@@ -712,7 +827,7 @@ std::tuple<vtkSmartPointer<vtkDoubleArray>, double, double> optimizer::calculate
     errors->SetNumberOfTuples(original_curvature.curvature_gradient->GetNumberOfTuples());
 
     double error_max = std::numeric_limits<double>::min();
-    double error_avg = 0.0;
+    std::vector<double> error_avgs(original_curvature.curvature_gradient->GetNumberOfTuples());
 
     #pragma omp parallel for
     for (vtkIdType i = 0; i < original_curvature.curvature_gradient->GetNumberOfTuples(); ++i)
@@ -722,12 +837,24 @@ std::tuple<vtkSmartPointer<vtkDoubleArray>, double, double> optimizer::calculate
         errors->SetValue(i, error);
 
         error_max = std::max(error_max, error);
-        error_avg += error;
+        error_avgs[i] = error;
     }
 
-    error_avg /= original_curvature.curvature_gradient->GetNumberOfTuples();
+    // Pyramid sum for more accuracy
+    for (vtkIdType offset = 1; offset < original_curvature.curvature_gradient->GetNumberOfTuples(); offset *= 2)
+    {
+        for (vtkIdType i = 0; i < original_curvature.curvature_gradient->GetNumberOfTuples(); i += 2LL * offset)
+        {
+            if (i + offset < original_curvature.curvature_gradient->GetNumberOfTuples())
+            {
+                error_avgs[i] += error_avgs[i + offset];
+            }
+        }
+    }
 
-    return std::make_tuple(errors, error_avg, error_max);
+    error_avgs[0] /= original_curvature.curvature_gradient->GetNumberOfTuples();
+
+    return std::make_tuple(errors, error_avgs[0], error_max);
 }
 
 vtkSmartPointer<vtkStructuredGrid> optimizer::create_output(const std::array<int, 3>& dimension, const vtkDoubleArray* positions) const

@@ -605,11 +605,14 @@
                 </Documentation>
             </IntVectorProperty>
             <DoubleVectorProperty name="StepSize" label="Step size" command="SetStepSize" number_of_elements="1" default_values="0.1">
+                <Hints>
+                    <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="StepSizeControl" value="1" />
+                </Hints>
                 <Documentation>
                     Step size for each iteration.
                 </Documentation>
             </DoubleVectorProperty>
-            <IntVectorProperty name="StepSizeMethod" label="Step size method" command="SetStepSizeMethod" number_of_elements="1" default_values="2">
+            <IntVectorProperty name="StepSizeMethod" label="Step size method" command="SetStepSizeMethod" number_of_elements="1" default_values="1">
                 <EnumerationDomain name="enum">
                     <Entry value="0" text="Normalized"/>
                     <Entry value="1" text="Gradient norm"/>
@@ -634,46 +637,28 @@
                 </Documentation>
             </DoubleVectorProperty>
 
-            <DoubleVectorProperty name="Adjustment" label="Adjustment scalar" command="SetAdjustment" number_of_elements="1" default_values="0.5">
+            <DoubleVectorProperty name="StepSizeMin" label="Minimum step size" command="SetStepSizeMin" number_of_elements="1" default_values="1e-10">
                 <Hints>
                     <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="StepSizeControl" value="0" />
                 </Hints>
                 <Documentation>
-                    If step size has to be adjusted, it is multiplied with this adjustment value.
+                    Minimum step size for dynamic step size control using line search.
                 </Documentation>
             </DoubleVectorProperty>
-            <IntVectorProperty name="MaxAdjustments" label="Maximum number of adjustments" command="SetMaxAdjustments" number_of_elements="1" default_values="5">
+            <DoubleVectorProperty name="StepSizeMax" label="Maximum step size" command="SetStepSizeMax" number_of_elements="1" default_values="1e2">
                 <Hints>
                     <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="StepSizeControl" value="0" />
                 </Hints>
                 <Documentation>
-                    Maximum number of adjustments.
-                </Documentation>
-            </IntVectorProperty>
-            <DoubleVectorProperty name="Threshold" label="Adjustment threshold" command="SetThreshold" number_of_elements="1" default_values="1.0">
-                <Hints>
-                    <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="StepSizeControl" value="0" />
-                </Hints>
-                <Documentation>
-                    Adjust if new error is larger than the old error time this value.
+                    Maximum step size for dynamic step size control using line search.
                 </Documentation>
             </DoubleVectorProperty>
-            <IntVectorProperty name="Increase" label="Try to increase step size" command="SetIncrease" number_of_elements="1" default_values="1">
-                <BooleanDomain name="bool"/>
+            <IntVectorProperty name="LineSearchSteps" label="Number of line search steps" command="SetLineSearchSteps" number_of_elements="1" default_values="6">
                 <Hints>
                     <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="StepSizeControl" value="0" />
                 </Hints>
                 <Documentation>
-                    Try to increase step size after each iteration.
-                </Documentation>
-            </IntVectorProperty>
-            <IntVectorProperty name="Stop" label="Stop if still exceeding error" command="SetStop" number_of_elements="1" default_values="1">
-                <BooleanDomain name="bool"/>
-                <Hints>
-                    <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="StepSizeControl" value="0" />
-                </Hints>
-                <Documentation>
-                    Stop algorithm if even after adjusting the step size, the error increases.
+                    Number of line search steps used for determining the dynamic step size.
                 </Documentation>
             </IntVectorProperty>
 
@@ -709,11 +694,9 @@
             </PropertyGroup>
 
             <PropertyGroup label="Dynamic step size control">
-                <Property name="Adjustment" />
-                <Property name="MaxAdjustments" />
-                <Property name="Threshold" />
-                <Property name="Increase" />
-                <Property name="Stop" />
+                <Property name="StepSizeMin" />
+                <Property name="StepSizeMax" />
+                <Property name="LineSearchSteps" />
             </PropertyGroup>
 
             <PropertyGroup label="Advanced options">
