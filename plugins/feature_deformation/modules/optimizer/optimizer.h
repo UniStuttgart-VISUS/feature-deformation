@@ -98,7 +98,7 @@ private:
         const vtkDataArray* errors, const curvature_and_torsion_t& original_curvature) const;
 
     std::pair<vtkSmartPointer<vtkDoubleArray>, vtkSmartPointer<vtkDoubleArray>> apply_gradient_descent(
-        const std::array<int, 3>& dimension, vtkDataArray* step_sizes, const vtkDataArray* positions,
+        const std::array<int, 3>& dimension, double step_size, const vtkDataArray* positions,
         const vtkDataArray* errors, const vtkDataArray* gradient_descent) const;
 
     double calculate_error(int index, int index_block, const curvature_and_torsion_t& original_curvature,

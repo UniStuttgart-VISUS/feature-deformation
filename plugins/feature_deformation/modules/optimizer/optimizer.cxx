@@ -199,19 +199,12 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
         original_curvature_gradients->SetTuple(i, original_gradient.data());
     }
 
-    // Set initial step sizes
-    auto step_sizes = vtkSmartPointer<vtkDoubleArray>::New();
-    step_sizes->SetName("Step Sizes");
-    step_sizes->SetNumberOfComponents(1);
-    step_sizes->SetNumberOfTuples(num_nodes);
-    step_sizes->Fill(this->StepSize);
-
     // Set initial output
     std::cout << "Setting initial output..." << std::endl;
 
     this->results[0] = create_output(dimension, positions);
 
-    output_copy(this->results[0], vector_field_deformed, jacobian_field, positions, step_sizes,
+    output_copy(this->results[0], vector_field_deformed, jacobian_field, positions,
         errors, deformed_curvature.curvature, deformed_curvature.curvature_vector,
         deformed_curvature.curvature_gradient, deformed_curvature.torsion,
         deformed_curvature.torsion_vector, deformed_curvature.torsion_gradient,
@@ -222,6 +215,7 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
     bool stopped = false;
 
     const auto original_step_size = this->StepSize;
+    auto step_size = this->StepSize;
     int step;
 
     for (step = 0; step < this->NumSteps && !converged && !stopped; ++step)
@@ -234,7 +228,7 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
             vector_field_original, positions, errors, original_curvature);
 
         std::tie(deformed_positions, gradient_descent) = apply_gradient_descent(dimension,
-            step_sizes, positions, errors, gradient_descent);
+            step_size, positions, errors, gradient_descent);
 
         // Update jacobians and vector field
         const grid new_deformation(original_grid, deformed_positions);
@@ -283,38 +277,16 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
         {
             bool rewind = false;
 
-            //if (new_error_max > this->Threshold * error_max || new_error_avg > this->Threshold * error_avg)
-            //{
-            //    if (step_sizes->GetComponent(0, 0) > std::pow(2.0, -this->MaxAdjustments) * original_step_size)
-            //    {
-            //        step_sizes->Fill(step_sizes->GetComponent(i, 0) * this->Adjustment);
-            //        rewind = true;
-            //    }
-            //    else if (this->Stop)
-            //    {
-            //        stopped = true;
-            //    }
-            //}
-
             if (new_error_max > this->Threshold * error_max || new_error_avg > this->Threshold * error_avg)
             {
-                for (vtkIdType i = 0; i < num_nodes; ++i)
+                if (step_size > std::pow(2.0, -this->MaxAdjustments) * original_step_size)
                 {
-                    const auto new_error = new_errors->GetComponent(i, 0);
-                    const auto old_error = errors->GetComponent(i, 0);
-
-                    if (new_error > this->Threshold * old_error)
-                    {
-                        if (step_sizes->GetComponent(i, 0) > std::pow(2.0, -this->MaxAdjustments) * original_step_size)
-                        {
-                            step_sizes->SetComponent(i, 0, step_sizes->GetComponent(i, 0) * this->Adjustment);
-                            rewind = true;
-                        }
-                        else if (this->Stop)
-                        {
-                            stopped = true;
-                        }
-                    }
+                    step_size *= this->Adjustment;
+                    rewind = true;
+                }
+                else if (this->Stop)
+                {
+                    stopped = true;
                 }
             }
 
@@ -351,7 +323,7 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
         // Set output for this step
         this->results[step + 1uLL] = create_output(dimension, deformed_positions);
 
-        output_copy(this->results[step + 1uLL], vector_field_deformed, jacobian_field, deformed_positions, step_sizes,
+        output_copy(this->results[step + 1uLL], vector_field_deformed, jacobian_field, deformed_positions,
             new_errors, deformed_curvature.curvature, deformed_curvature.curvature_vector,
             deformed_curvature.curvature_gradient, deformed_curvature.torsion,
             deformed_curvature.torsion_vector, deformed_curvature.torsion_gradient, gradient_descent,
@@ -365,10 +337,7 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
 
         if (step_size_control == step_size_control_t::dynamic && this->Increase)
         {
-            for (vtkIdType i = 0; i < num_nodes; ++i)
-            {
-                step_sizes->SetComponent(i, 0, step_sizes->GetComponent(i, 0) / this->Adjustment);
-            }
+            step_size /= this->Adjustment;
         }
     }
 
@@ -610,7 +579,7 @@ vtkSmartPointer<vtkDoubleArray> optimizer::compute_gradient_descent(const std::a
 }
 
 std::pair<vtkSmartPointer<vtkDoubleArray>, vtkSmartPointer<vtkDoubleArray>> optimizer::apply_gradient_descent(
-    const std::array<int, 3>& dimension, vtkDataArray* step_sizes, const vtkDataArray* positions,
+    const std::array<int, 3>& dimension, const double step_size, const vtkDataArray* positions,
     const vtkDataArray* errors, const vtkDataArray* gradient_descent) const
 {
     auto deformed_positions = vtkSmartPointer<vtkDoubleArray>::New();
@@ -683,7 +652,7 @@ std::pair<vtkSmartPointer<vtkDoubleArray>, vtkSmartPointer<vtkDoubleArray>> opti
                     descent /= descent.norm();
                 }
 
-                descent *= step_sizes->GetComponent(index, 0);
+                descent *= step_size;
                 position += descent;
 
                 adjusted_gradient_descent->SetTuple(index, descent.data());
