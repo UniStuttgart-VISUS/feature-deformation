@@ -214,195 +214,171 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
     bool converged = false;
     bool stopped = false;
 
-    const auto step_size_control = static_cast<step_size_control_t>(this->StepSizeControl);
-
     double step_size = this->StepSize;
+    int step;
 
-    if (step_size_control == step_size_control_t::dynamic)
-    {
-        step_size = this->StepSizeMin;
-    }
-
-    int step, line_search_step;
-    bool tendency_left = true;
-
-    std::array<step_size_t, 4> step_size_errors{};
-
-    for (step = 0, line_search_step = 0; step < this->NumSteps && !converged && !stopped; ++step)
+    for (step = 0; step < this->NumSteps && !converged && !stopped; ++step)
     {
         std::cout << "Optimization step: " << (step + 1) << "/" << this->NumSteps << std::endl;
 
         vtkSmartPointer<vtkDoubleArray> gradient_descent, deformed_positions;
 
-        gradient_descent = compute_gradient_descent(dimension, original_grid,
-            vector_field_original, positions, errors, original_curvature);
-
-        std::tie(deformed_positions, gradient_descent) = apply_gradient_descent(dimension,
-            step_size, positions, errors, gradient_descent);
-
-        // Update jacobians and vector field
-        const grid new_deformation(original_grid, deformed_positions);
-
-        jacobian_field = gradient_field(new_deformation, static_cast<gradient_method_t>(this->GradientMethod), this->GradientKernel);
-        jacobian_field->SetName("Jacobian");
-
-        Eigen::Matrix3d jacobian;
-        Eigen::Vector3d vector;
-
-        for (vtkIdType i = 0; i < num_nodes; ++i)
-        {
-             jacobian_field->GetTuple(i, jacobian.data());
-             vector_field_original->GetTuple(i, vector.data());
-
-             vector = jacobian * vector;
-
-             vector_field_deformed->SetTuple(i, vector.data());
-        }
-
-        // Calculate new gradient difference
-        const grid new_deformed_vector_field(dimension, deformed_positions, vector_field_deformed, jacobian_field);
-
-        const auto deformed_curvature = curvature_and_torsion(new_deformed_vector_field,
-            static_cast<gradient_method_t>(this->GradientMethod), this->GradientKernel);
-
         vtkSmartPointer<vtkDoubleArray> new_errors;
-        double new_error_avg, new_error_max;
+        double new_error_avg{}, new_error_max{};
 
-        std::tie(new_errors, new_error_avg, new_error_max)
-            = calculate_error_field(original_curvature, deformed_curvature, jacobian_field,
-                static_cast<error_definition_t>(this->ErrorDefinition));
+        // Setup dynamic step size control
+        const auto step_size_control = static_cast<step_size_control_t>(this->StepSizeControl);
+        const auto max_line_search_steps = (step_size_control == step_size_control_t::dynamic ? this->LineSearchSteps + 4 : 0);
+        bool tendency_left = true;
+        std::size_t step_size_index;
+        std::array<step_size_t, 4> step_size_errors{};
 
-        // Adjust step size if necessary
-        if (step_size_control == step_size_control_t::dynamic && error_max > this->Error)
-        {
-            auto remove_largest_boundary = [](std::array<step_size_t, 4>& step_size_errors) {
-                const auto min = std::min_element(step_size_errors.begin(), step_size_errors.end(),
-                    [](const step_size_t& lhs, step_size_t& rhs) { return lhs.error_avg < rhs.error_avg; });
+        auto remove_largest_boundary = [](std::array<step_size_t, 4>& step_size_errors) {
+            std::sort(step_size_errors.begin(), step_size_errors.end(),
+                [](const step_size_t& lhs, step_size_t& rhs) { return lhs.step_size < rhs.step_size; });
 
-                if (*min == step_size_errors[2] || *min == step_size_errors[3])
-                {
-                    step_size_errors[0] = step_size_errors[1];
-                    step_size_errors[1] = step_size_errors[2];
-                    step_size_errors[2] = step_size_errors[3];
-                }
-            };
+            const auto min = std::min_element(step_size_errors.begin(), step_size_errors.end(),
+                [](const step_size_t& lhs, step_size_t& rhs) { return lhs.error_avg < rhs.error_avg; });
 
-            const auto old_step_size = step_size;
-
-            if (line_search_step < this->LineSearchSteps + 4)
+            if (*min == step_size_errors[2] || *min == step_size_errors[3])
             {
-                std::cout << "    Line search step " << (line_search_step + 1) << "/" << (this->LineSearchSteps + 4) << std::endl;
+                step_size_errors[0] = step_size_errors[1];
+                step_size_errors[1] = step_size_errors[2];
+                step_size_errors[2] = step_size_errors[3];
+            }
+        };
 
-                switch (line_search_step)
+        // Perform line search (last iteration is the one producing results)
+        for (int line_search_step = 0; line_search_step <= max_line_search_steps; ++line_search_step)
+        {
+            if (step_size_control == step_size_control_t::dynamic)
+            {
+                if (line_search_step < max_line_search_steps)
                 {
-                case 0: // results for minimum step size have been computed, do largest step size next
-                    step_size_errors[0].step_size = step_size;
-                    step_size_errors[0].error_avg = new_error_avg;
-                    step_size_errors[0].error_max = new_error_max;
+                    std::cout << "    Line search step " << (line_search_step + 1) << "/" << max_line_search_steps << std::endl;
 
-                    step_size = this->StepSizeMax;
+                    step_size_index = std::min(line_search_step, 3);
 
-                    break;
-                case 1: // results for maximum step size have been computed, do first intermediate step size next
-                    step_size_errors[3].step_size = step_size;
-                    step_size_errors[3].error_avg = new_error_avg;
-                    step_size_errors[3].error_max = new_error_max;
-
-                    step_size = std::pow(10.0, std::log10(this->StepSizeMin) + (1.0 / 3.0) * std::log10(this->StepSizeMax / this->StepSizeMin));
-
-                    break;
-                case 2: // results for first intermediate step size have been computed, do second intermediate step size next
-                    step_size_errors[1].step_size = step_size;
-                    step_size_errors[1].error_avg = new_error_avg;
-                    step_size_errors[1].error_max = new_error_max;
-
-                    step_size = std::pow(10.0, std::log10(this->StepSizeMin) + (2.0 / 3.0) * std::log10(this->StepSizeMax / this->StepSizeMin));
-
-                    break;
-                case 3: // results for first four step sizes have been computed, remove outer step size
-                    step_size_errors[2].step_size = step_size;
-                    step_size_errors[2].error_avg = new_error_avg;
-                    step_size_errors[2].error_max = new_error_max;
-
-                    remove_largest_boundary(step_size_errors);
-
-                    step_size = std::pow(10.0, std::log10(step_size_errors[0].step_size)
-                        + (1.0 / 2.0) * std::log10(step_size_errors[1].step_size / step_size_errors[0].step_size));
-
-                    tendency_left = true;
-
-                    break;
-                default:
-                {
-                    const bool left = step_size >= step_size_errors[0].step_size && step_size < step_size_errors[1].step_size;
-
-                    if (left)
+                    switch (line_search_step)
                     {
-                        if (new_error_avg > step_size_errors[0].error_avg || new_error_avg > step_size_errors[1].error_avg)
+                    case 0:
+                        step_size = this->StepSizeMin;
+
+                    case 1:
+                        step_size = this->StepSizeMax;
+
+                        break;
+                    case 2:
+                        step_size = std::pow(10.0, std::log10(this->StepSizeMin) + (1.0 / 3.0) * std::log10(this->StepSizeMax / this->StepSizeMin));
+
+                        break;
+                    case 3:
+                        step_size = std::pow(10.0, std::log10(this->StepSizeMin) + (2.0 / 3.0) * std::log10(this->StepSizeMax / this->StepSizeMin));
+
+                        break;
+                    case 4:
+                        remove_largest_boundary(step_size_errors);
+
+                        step_size = std::pow(10.0, std::log10(step_size_errors[0].step_size)
+                            + (1.0 / 2.0) * std::log10(step_size_errors[1].step_size / step_size_errors[0].step_size));
+
+                        tendency_left = true;
+
+                        break;
+                    default:
+                    {
+                        remove_largest_boundary(step_size_errors);
+
+                        const bool left = step_size >= step_size_errors[0].step_size && step_size < step_size_errors[1].step_size;
+
+                        if (left && (new_error_avg > step_size_errors[0].error_avg || new_error_avg > step_size_errors[1].error_avg))
                         {
                             tendency_left = false;
                         }
-
-                        step_size_errors[3] = step_size_errors[2];
-                        step_size_errors[2] = step_size_errors[1];
-
-                        step_size_errors[1].step_size = step_size;
-                        step_size_errors[1].error_avg = new_error_avg;
-                        step_size_errors[1].error_max = new_error_max;
-
-                        remove_largest_boundary(step_size_errors);
-                    }
-                    else
-                    {
-                        if (new_error_avg > step_size_errors[1].error_avg || new_error_avg > step_size_errors[2].error_avg)
+                        else if (!left && (new_error_avg > step_size_errors[1].error_avg || new_error_avg > step_size_errors[2].error_avg))
                         {
                             tendency_left = true;
                         }
 
-                        step_size_errors[3] = step_size_errors[2];
-
-                        step_size_errors[2].step_size = step_size;
-                        step_size_errors[2].error_avg = new_error_avg;
-                        step_size_errors[2].error_max = new_error_max;
-
-                        remove_largest_boundary(step_size_errors);
-                    }
-
-                    if (tendency_left)
-                    {
-                        step_size = std::pow(10.0, std::log10(step_size_errors[0].step_size)
-                            + (1.0 / 2.0) * std::log10(step_size_errors[1].step_size / step_size_errors[0].step_size));
-                    }
-                    else
-                    {
-                        step_size = std::pow(10.0, std::log10(step_size_errors[1].step_size)
-                            + (1.0 / 2.0) * std::log10(step_size_errors[2].step_size / step_size_errors[1].step_size));
-                    }
-                }
-
-                    if (line_search_step == this->LineSearchSteps + 3)
-                    {
-                        // Set to element with minimum error
-                        const auto min = std::min_element(step_size_errors.begin(), step_size_errors.end(),
-                            [](const step_size_t& lhs, step_size_t& rhs) { return lhs.error_avg < rhs.error_avg; });
-
-                        step_size = min->step_size;
-
-                        if (step_size == this->StepSizeMin || step_size == this->StepSizeMax)
+                        if (tendency_left)
                         {
-                            std::cout << "    Step size is equal to lower or upper bound. Stopping." << std::endl;
-
-                            stopped = true;
+                            step_size = std::pow(10.0, std::log10(step_size_errors[0].step_size)
+                                + (1.0 / 2.0) * std::log10(step_size_errors[1].step_size / step_size_errors[0].step_size));
+                        }
+                        else
+                        {
+                            step_size = std::pow(10.0, std::log10(step_size_errors[1].step_size)
+                                + (1.0 / 2.0) * std::log10(step_size_errors[2].step_size / step_size_errors[1].step_size));
                         }
                     }
-                }
+                    }
 
-                --step;
-                ++line_search_step;
-                continue;
+                    step_size_errors[step_size_index].step_size = step_size;
+                }
+                else
+                {
+                    // Set to element with minimum error
+                    const auto min = std::min_element(step_size_errors.begin(), step_size_errors.end(),
+                        [](const step_size_t& lhs, step_size_t& rhs) { return lhs.error_avg < rhs.error_avg; });
+
+                    step_size = min->step_size;
+
+                    if (step_size == this->StepSizeMin || step_size == this->StepSizeMax)
+                    {
+                        std::cout << "    Step size is equal to lower or upper bound. Stopping." << std::endl;
+
+                        stopped = true;
+                    }
+                }
             }
 
-            std::cout << "    Using step size: " << step_size << std::endl;
+            // Perform gradient descent
+            if (line_search_step == max_line_search_steps)
+            {
+                std::cout << "    Using step size: " << step_size << std::endl;
+            }
+
+            gradient_descent = compute_gradient_descent(dimension, original_grid,
+                vector_field_original, positions, errors, original_curvature);
+
+            std::tie(deformed_positions, gradient_descent) = apply_gradient_descent(dimension,
+                step_size, positions, errors, gradient_descent);
+
+            // Update jacobians and vector field
+            const grid new_deformation(original_grid, deformed_positions);
+
+            jacobian_field = gradient_field(new_deformation, static_cast<gradient_method_t>(this->GradientMethod), this->GradientKernel);
+            jacobian_field->SetName("Jacobian");
+
+            Eigen::Matrix3d jacobian;
+            Eigen::Vector3d vector;
+
+            for (vtkIdType i = 0; i < num_nodes; ++i)
+            {
+                jacobian_field->GetTuple(i, jacobian.data());
+                vector_field_original->GetTuple(i, vector.data());
+
+                vector = jacobian * vector;
+
+                vector_field_deformed->SetTuple(i, vector.data());
+            }
+
+            // Calculate new gradient difference
+            const grid new_deformed_vector_field(dimension, deformed_positions, vector_field_deformed, jacobian_field);
+
+            const auto deformed_curvature = curvature_and_torsion(new_deformed_vector_field,
+                static_cast<gradient_method_t>(this->GradientMethod), this->GradientKernel);
+
+            std::tie(new_errors, new_error_avg, new_error_max)
+                = calculate_error_field(original_curvature, deformed_curvature, jacobian_field,
+                    static_cast<error_definition_t>(this->ErrorDefinition));
+
+            // Store errors for dynamic step size control
+            if (step_size_control == step_size_control_t::dynamic && line_search_step < max_line_search_steps)
+            {
+                step_size_errors[step_size_index].error_avg = new_error_avg;
+                step_size_errors[step_size_index].error_max = new_error_max;
+            }
         }
 
         if (new_error_max > error_max)
@@ -447,13 +423,6 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
         // Prepare next iteration
         positions = deformed_positions;
         errors = new_errors;
-
-        if (step_size_control == step_size_control_t::dynamic)
-        {
-            step_size = this->StepSizeMin;
-        }
-
-        line_search_step = 0;
     }
 
     // If converged, later results stay the same
