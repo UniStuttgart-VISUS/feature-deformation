@@ -92,7 +92,7 @@ int optimizer::RequestData(vtkInformation*, vtkInformationVector** input_vector,
 
     const auto hash = joaat_hash(this->ErrorDefinition, this->NumSteps, this->StepSize, this-StepSizeMethod, this->StepSizeControl,
         this->Error, this->StepSizeMin, this->StepSizeMax, this->LineSearchSteps,
-        this->GradientMethod, this->GradientKernel,
+        this->GradientMethod, this->GradientKernel, this->GradientStep,
         vector_field_original->GetMTime(), deformed_grid->GetMTime());
 
     if (hash != this->hash)
