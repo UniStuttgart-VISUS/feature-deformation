@@ -92,7 +92,7 @@ int optimizer::RequestData(vtkInformation*, vtkInformationVector** input_vector,
 
     const auto hash = joaat_hash(this->ErrorDefinition, this->NumSteps, this->StepSize, this-StepSizeMethod, this->StepSizeControl,
         this->Error, this->StepSizeMin, this->StepSizeMax, this->LineSearchSteps,
-        this->GradientMethod, this->GradientKernel, this->GradientStep,
+        this->GradientMethod, this->GradientKernel, this->GradientStep, this->CheckWolfe,
         vector_field_original->GetMTime(), deformed_grid->GetMTime());
 
     if (hash != this->hash)
@@ -255,7 +255,7 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
             {
                 if (line_search_step < max_line_search_steps)
                 {
-                    std::cout << "    Line search step " << (line_search_step + 1) << "/" << max_line_search_steps << std::endl;
+                    std::cout << " Line search step " << (line_search_step + 1) << "/" << max_line_search_steps << std::endl;
 
                     step_size_index = std::min(line_search_step, 3);
 
@@ -264,6 +264,7 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
                     case 0:
                         step_size = this->StepSizeMin;
 
+                        break;
                     case 1:
                         step_size = this->StepSizeMax;
 
@@ -335,11 +336,14 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
             // Perform gradient descent
             if (line_search_step == max_line_search_steps)
             {
-                std::cout << "    Using step size: " << step_size << std::endl;
+                std::cout << " Using step size: " << step_size << std::endl;
             }
 
             gradient_descent = compute_gradient_descent(dimension, original_grid,
                 vector_field_original, positions, errors, original_curvature);
+
+            auto gradient_descent_dir = vtkSmartPointer<vtkDoubleArray>::New();
+            if (this->CheckWolfe) gradient_descent_dir->DeepCopy(gradient_descent);
 
             std::tie(deformed_positions, gradient_descent) = apply_gradient_descent(dimension,
                 step_size, positions, errors, gradient_descent);
@@ -378,6 +382,39 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
             {
                 step_size_errors[step_size_index].error_avg = new_error_avg;
                 step_size_errors[step_size_index].error_max = new_error_max;
+            }
+
+            if (step_size_control == step_size_control_t::dynamic && this->CheckWolfe)
+            {
+                auto new_gradient_descent = compute_gradient_descent(dimension, original_grid,
+                    vector_field_original, deformed_positions, new_errors, original_curvature);
+
+                Eigen::VectorXd full_gradient, new_full_gradient;
+                full_gradient.resize(3 * num_nodes);
+                new_full_gradient.resize(3 * num_nodes);
+
+                for (vtkIdType i = 0; i < num_nodes; ++i)
+                {
+                    full_gradient[i * 3 + 0] = gradient_descent_dir->GetComponent(i, 0);
+                    full_gradient[i * 3 + 1] = gradient_descent_dir->GetComponent(i, 1);
+                    full_gradient[i * 3 + 2] = gradient_descent_dir->GetComponent(i, 2);
+
+                    new_full_gradient[i * 3 + 0] = new_gradient_descent->GetComponent(i, 0);
+                    new_full_gradient[i * 3 + 1] = new_gradient_descent->GetComponent(i, 1);
+                    new_full_gradient[i * 3 + 2] = new_gradient_descent->GetComponent(i, 2);
+                }
+
+                const auto satisfies_wolfe = satisfies_armijo(error_avg, new_error_avg, full_gradient, full_gradient, step_size, 10e-4) &&
+                    satisfies_wolfe_curv(full_gradient, full_gradient, new_full_gradient, 0.1);
+
+                if (satisfies_wolfe)
+                {
+                    std::cout << "  Step size satisfies Wolfe conditions: " << step_size << std::endl;
+                }
+                else
+                {
+                    std::cout << "  Step size does not satisfy Wolfe conditions: " << step_size << std::endl;
+                }
             }
         }
 
@@ -823,6 +860,18 @@ std::tuple<vtkSmartPointer<vtkDoubleArray>, double, double> optimizer::calculate
     error_avgs[0] /= original_curvature.curvature_gradient->GetNumberOfTuples();
 
     return std::make_tuple(errors, error_avgs[0], error_max);
+}
+
+bool optimizer::satisfies_armijo(const double old_value, const double new_value, const Eigen::VectorXd& direction,
+    const Eigen::VectorXd& gradient, const double step_size, const double constant) const
+{
+    return new_value <= (old_value + constant * step_size * direction.dot(gradient));
+}
+
+bool optimizer::satisfies_wolfe_curv(const Eigen::VectorXd& direction, const Eigen::VectorXd& old_gradient,
+    const Eigen::VectorXd& new_gradient, const double constant) const
+{
+    return -direction.dot(new_gradient) <= -constant * direction.dot(old_gradient);
 }
 
 vtkSmartPointer<vtkStructuredGrid> optimizer::create_output(const std::array<int, 3>& dimension, const vtkDoubleArray* positions) const

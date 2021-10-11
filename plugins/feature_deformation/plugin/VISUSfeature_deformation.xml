@@ -684,6 +684,15 @@
                     Step size h for gradient calculation.
                 </Documentation>
             </DoubleVectorProperty>
+            <IntVectorProperty name="CheckWolfe" label="Check Wolfe conditions" command="SetCheckWolfe" number_of_elements="1" default_values="0" panel_visibility="advanced">
+                <BooleanDomain name="bool"/>
+                <Hints>
+                    <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="StepSizeControl" value="0" />
+                </Hints>
+                <Documentation>
+                    Check Wolfe conditions for step sizes (outputs information only, no filtering).
+                </Documentation>
+            </IntVectorProperty>
 
             <PropertyGroup label="Input">
                 <Property name="OriginalVectors" />
@@ -708,6 +717,7 @@
                 <Property name="GradientMethod" />
                 <Property name="GradientKernel" />
                 <Property name="GradientStep" />
+                <Property name="CheckWolfe" />
             </PropertyGroup>
 
             <Hints>

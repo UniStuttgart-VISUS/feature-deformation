@@ -59,6 +59,9 @@ public:
     vtkGetMacro(GradientStep, double);
     vtkSetMacro(GradientStep, double);
 
+    vtkGetMacro(CheckWolfe, int);
+    vtkSetMacro(CheckWolfe, int);
+
 protected:
     optimizer();
     ~optimizer();
@@ -113,6 +116,12 @@ private:
         const curvature_and_torsion_t& original_curvature, const curvature_and_torsion_t& deformed_curvature,
         const vtkDataArray* jacobian_field, error_definition_t error_definition) const;
 
+    bool satisfies_armijo(double old_value, double new_value, const Eigen::VectorXd& direction,
+        const Eigen::VectorXd& gradient, double step_size, double constant) const;
+
+    bool satisfies_wolfe_curv(const Eigen::VectorXd& direction, const Eigen::VectorXd& old_gradient,
+        const Eigen::VectorXd& new_gradient, double constant) const;
+
     vtkSmartPointer<vtkStructuredGrid> create_output(const std::array<int, 3>& dimension, const vtkDoubleArray* positions) const;
 
     inline void output_copy(vtkStructuredGrid* grid, vtkSmartPointer<vtkDoubleArray>& field) const
@@ -145,6 +154,7 @@ private:
     int GradientMethod;
     int GradientKernel;
     double GradientStep;
+    bool CheckWolfe;
 
     std::uint32_t hash;
     std::vector<vtkSmartPointer<vtkStructuredGrid>> results;
