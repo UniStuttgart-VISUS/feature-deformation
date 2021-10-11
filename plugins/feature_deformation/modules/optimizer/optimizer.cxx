@@ -475,8 +475,7 @@ vtkSmartPointer<vtkDoubleArray> optimizer::compute_gradient_descent(const std::a
     const_cast<vtkStructuredGrid*>(original_grid)->GetPoint(twoD ? 0LL : (static_cast<vtkIdType>(dimension[0]) * dimension[1]), front.data());
 
     const Eigen::Vector3d cell_sizes(right[0] - origin[0], top[1] - origin[1], front[2] - origin[2]);
-    const auto infinitesimal_step = 1.0e-3;
-    const Eigen::Vector3d infinitesimal_steps = infinitesimal_step * cell_sizes;
+    const Eigen::Vector3d infinitesimal_steps = this->GradientStep * cell_sizes;
 
     // For each 7x7(x7) block of nodes, calculate partial derivatives of the
     // curvature gradient difference in direction of the degrees of freedom.

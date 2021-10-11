@@ -679,6 +679,11 @@
                     Kernel size for (smooth) gradient computation.
                 </Documentation>
             </IntVectorProperty>
+            <DoubleVectorProperty name="GradientStep" label="Step size for gradient calculation" command="SetGradientStep" number_of_elements="1" default_values="1e-6" panel_visibility="advanced">
+                <Documentation>
+                    Step size h for gradient calculation.
+                </Documentation>
+            </DoubleVectorProperty>
 
             <PropertyGroup label="Input">
                 <Property name="OriginalVectors" />
@@ -702,6 +707,7 @@
             <PropertyGroup label="Advanced options">
                 <Property name="GradientMethod" />
                 <Property name="GradientKernel" />
+                <Property name="GradientStep" />
             </PropertyGroup>
 
             <Hints>

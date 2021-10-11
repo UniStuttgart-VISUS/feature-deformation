@@ -56,6 +56,9 @@ public:
     vtkGetMacro(GradientKernel, int);
     vtkSetMacro(GradientKernel, int);
 
+    vtkGetMacro(GradientStep, double);
+    vtkSetMacro(GradientStep, double);
+
 protected:
     optimizer();
     ~optimizer();
@@ -141,6 +144,7 @@ private:
 
     int GradientMethod;
     int GradientKernel;
+    double GradientStep;
 
     std::uint32_t hash;
     std::vector<vtkSmartPointer<vtkStructuredGrid>> results;
