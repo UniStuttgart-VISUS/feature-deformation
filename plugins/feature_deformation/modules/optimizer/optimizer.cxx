@@ -172,7 +172,7 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
     // Calculate initial gradient difference
     const auto original_curvature = curvature_and_torsion(original_vector_field,
         static_cast<gradient_method_t>(this->GradientMethod), this->GradientKernel);
-    const auto deformed_curvature = curvature_and_torsion(deformed_vector_field,
+    auto deformed_curvature = curvature_and_torsion(deformed_vector_field,
         static_cast<gradient_method_t>(this->GradientMethod), this->GradientKernel);
 
     vtkSmartPointer<vtkDoubleArray> errors;
@@ -366,7 +366,7 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
             // Calculate new gradient difference
             const grid new_deformed_vector_field(dimension, deformed_positions, vector_field_deformed, jacobian_field);
 
-            const auto deformed_curvature = curvature_and_torsion(new_deformed_vector_field,
+            deformed_curvature = curvature_and_torsion(new_deformed_vector_field,
                 static_cast<gradient_method_t>(this->GradientMethod), this->GradientKernel);
 
             std::tie(new_errors, new_error_avg, new_error_max)
