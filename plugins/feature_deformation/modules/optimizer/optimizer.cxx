@@ -217,11 +217,13 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
     double step_size = this->StepSize;
     int step;
 
+    vtkSmartPointer<vtkDoubleArray> previous_gradient_descent = nullptr;
+
     for (step = 0; step < this->NumSteps && !converged && !stopped; ++step)
     {
         std::cout << "Optimization step: " << (step + 1) << "/" << this->NumSteps << std::endl;
 
-        vtkSmartPointer<vtkDoubleArray> gradient_descent, deformed_positions;
+        vtkSmartPointer<vtkDoubleArray> gradient_descent, descent, deformed_positions;
 
         vtkSmartPointer<vtkDoubleArray> new_errors;
         double new_error_avg{}, new_error_max{};
@@ -339,14 +341,14 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
                 std::cout << " Using step size: " << step_size << std::endl;
             }
 
-            gradient_descent = compute_gradient_descent(dimension, original_grid,
-                vector_field_original, positions, errors, original_curvature);
+            std::tie(gradient_descent, descent) = compute_descent(dimension, original_grid,
+                vector_field_original, positions, errors, original_curvature, previous_gradient_descent);
 
-            auto gradient_descent_dir = vtkSmartPointer<vtkDoubleArray>::New();
-            if (this->CheckWolfe) gradient_descent_dir->DeepCopy(gradient_descent);
+            auto descent_dir = vtkSmartPointer<vtkDoubleArray>::New();
+            if (this->CheckWolfe) descent_dir->DeepCopy(descent);
 
-            std::tie(deformed_positions, gradient_descent) = apply_gradient_descent(dimension,
-                step_size, positions, errors, gradient_descent);
+            std::tie(deformed_positions, descent) = apply_descent(dimension,
+                step_size, positions, errors, descent);
 
             // Update jacobians and vector field
             const grid new_deformation(original_grid, deformed_positions);
@@ -386,26 +388,30 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
 
             if (step_size_control == step_size_control_t::dynamic && this->CheckWolfe)
             {
-                auto new_gradient_descent = compute_gradient_descent(dimension, original_grid,
-                    vector_field_original, deformed_positions, new_errors, original_curvature);
+                auto new_gradient_descent = compute_descent(dimension, original_grid,
+                    vector_field_original, deformed_positions, new_errors, original_curvature, nullptr).first;
 
-                Eigen::VectorXd full_gradient, new_full_gradient;
+                Eigen::VectorXd full_direction, full_gradient, new_full_gradient;
                 full_gradient.resize(3 * num_nodes);
                 new_full_gradient.resize(3 * num_nodes);
 
                 for (vtkIdType i = 0; i < num_nodes; ++i)
                 {
-                    full_gradient[i * 3 + 0] = gradient_descent_dir->GetComponent(i, 0);
-                    full_gradient[i * 3 + 1] = gradient_descent_dir->GetComponent(i, 1);
-                    full_gradient[i * 3 + 2] = gradient_descent_dir->GetComponent(i, 2);
+                    full_direction[i * 3 + 0] = descent_dir->GetComponent(i, 0);
+                    full_direction[i * 3 + 1] = descent_dir->GetComponent(i, 1);
+                    full_direction[i * 3 + 2] = descent_dir->GetComponent(i, 2);
 
-                    new_full_gradient[i * 3 + 0] = new_gradient_descent->GetComponent(i, 0);
-                    new_full_gradient[i * 3 + 1] = new_gradient_descent->GetComponent(i, 1);
-                    new_full_gradient[i * 3 + 2] = new_gradient_descent->GetComponent(i, 2);
+                    full_gradient[i * 3 + 0] = -gradient_descent->GetComponent(i, 0);
+                    full_gradient[i * 3 + 1] = -gradient_descent->GetComponent(i, 1);
+                    full_gradient[i * 3 + 2] = -gradient_descent->GetComponent(i, 2);
+
+                    new_full_gradient[i * 3 + 0] = -new_gradient_descent->GetComponent(i, 0);
+                    new_full_gradient[i * 3 + 1] = -new_gradient_descent->GetComponent(i, 1);
+                    new_full_gradient[i * 3 + 2] = -new_gradient_descent->GetComponent(i, 2);
                 }
 
-                const auto satisfies_wolfe = satisfies_armijo(error_avg, new_error_avg, full_gradient, full_gradient, step_size, 10e-4) &&
-                    satisfies_wolfe_curv(full_gradient, full_gradient, new_full_gradient, 0.1);
+                const auto satisfies_wolfe = satisfies_armijo(error_avg, new_error_avg, full_direction, full_gradient, step_size, 10e-4) &&
+                    satisfies_wolfe_curv(full_direction, full_gradient, new_full_gradient, 0.1); // todo parameter
 
                 if (satisfies_wolfe)
                 {
@@ -452,14 +458,15 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
         output_copy(this->results[step + 1uLL], vector_field_deformed, jacobian_field, deformed_positions,
             new_errors, deformed_curvature.curvature, deformed_curvature.curvature_vector,
             deformed_curvature.curvature_gradient, deformed_curvature.torsion,
-            deformed_curvature.torsion_vector, deformed_curvature.torsion_gradient, gradient_descent,
+            deformed_curvature.torsion_vector, deformed_curvature.torsion_gradient, gradient_descent, descent,
             original_curvature_gradients);
 
-        output_copy(this->results[step], gradient_descent);
+        output_copy(this->results[step], gradient_descent, descent);
 
         // Prepare next iteration
         positions = deformed_positions;
         errors = new_errors;
+        previous_gradient_descent = gradient_descent;
     }
 
     // If converged, later results stay the same
@@ -487,14 +494,22 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
     }
 }
 
-vtkSmartPointer<vtkDoubleArray> optimizer::compute_gradient_descent(const std::array<int, 3>& dimension,
-    const vtkStructuredGrid* original_grid, const vtkDataArray* vector_field_original, const vtkDataArray* positions,
-    const vtkDataArray* errors, const curvature_and_torsion_t& original_curvature) const
+std::pair<vtkSmartPointer<vtkDoubleArray>, vtkSmartPointer<vtkDoubleArray>> optimizer::compute_descent(
+    const std::array<int, 3>& dimension, const vtkStructuredGrid* original_grid,
+    const vtkDataArray* vector_field_original, const vtkDataArray* positions,
+    const vtkDataArray* errors, const curvature_and_torsion_t& original_curvature,
+    const vtkDataArray* previous_gradient_descent) const
 {
     using duration_t = std::chrono::milliseconds;
     const std::string duration_str(" ms");
 
     const auto start = std::chrono::steady_clock::now();
+
+    auto descent = vtkSmartPointer<vtkDoubleArray>::New();
+    descent->SetName("Descent");
+    descent->SetNumberOfComponents(3);
+    descent->SetNumberOfTuples(vector_field_original->GetNumberOfTuples());
+    descent->Fill(0.0);
 
     auto gradient_descent = vtkSmartPointer<vtkDoubleArray>::New();
     gradient_descent->SetName("Gradient Descent");
@@ -692,25 +707,62 @@ vtkSmartPointer<vtkDoubleArray> optimizer::compute_gradient_descent(const std::a
         }
     }
 
+    // Compute descent direction using Polak-Ribière
+    // c.f. https://en.wikipedia.org/wiki/Nonlinear_conjugate_gradient_method
+    if (static_cast<method_t>(this->Method) == method_t::nonlinear_conjugate && previous_gradient_descent != nullptr)
+    {
+        Eigen::VectorXd current_gradient, old_gradient;
+        current_gradient.resize(3uLL * num_blocks);
+        old_gradient.resize(3uLL * num_blocks);
+
+        for (int index = 0; index < num_blocks; ++index)
+        {
+            current_gradient[3uLL * index + 0] = gradient_descent->GetComponent(index, 0);
+            current_gradient[3uLL * index + 1] = gradient_descent->GetComponent(index, 1);
+            current_gradient[3uLL * index + 2] = gradient_descent->GetComponent(index, 2);
+
+            old_gradient[3uLL * index + 0] = const_cast<vtkDataArray*>(previous_gradient_descent)->GetComponent(index, 0);
+            old_gradient[3uLL * index + 1] = const_cast<vtkDataArray*>(previous_gradient_descent)->GetComponent(index, 1);
+            old_gradient[3uLL * index + 2] = const_cast<vtkDataArray*>(previous_gradient_descent)->GetComponent(index, 2);
+        }
+
+        const auto beta = current_gradient.dot(current_gradient - old_gradient) / old_gradient.dot(old_gradient);
+
+        for (int index = 0; index < num_blocks; ++index)
+        {
+            descent->SetComponent(index, 0, gradient_descent->GetComponent(index, 0)
+                + beta * const_cast<vtkDataArray*>(previous_gradient_descent)->GetComponent(index, 0));
+            descent->SetComponent(index, 1, gradient_descent->GetComponent(index, 1)
+                + beta * const_cast<vtkDataArray*>(previous_gradient_descent)->GetComponent(index, 1));
+            descent->SetComponent(index, 2, gradient_descent->GetComponent(index, 2)
+                + beta * const_cast<vtkDataArray*>(previous_gradient_descent)->GetComponent(index, 2));
+        }
+    }
+    else
+    {
+        descent->DeepCopy(gradient_descent);
+        descent->SetName("Descent");
+    }
+
     std::cout << "  Finished computing gradient descent after " <<
         std::chrono::duration_cast<duration_t>(std::chrono::steady_clock::now() - start).count() << duration_str << std::endl;
 
-    return gradient_descent;
+    return std::make_pair(gradient_descent, descent);
 }
 
-std::pair<vtkSmartPointer<vtkDoubleArray>, vtkSmartPointer<vtkDoubleArray>> optimizer::apply_gradient_descent(
+std::pair<vtkSmartPointer<vtkDoubleArray>, vtkSmartPointer<vtkDoubleArray>> optimizer::apply_descent(
     const std::array<int, 3>& dimension, const double step_size, const vtkDataArray* positions,
-    const vtkDataArray* errors, const vtkDataArray* gradient_descent) const
+    const vtkDataArray* errors, const vtkDataArray* descent_direction) const
 {
     auto deformed_positions = vtkSmartPointer<vtkDoubleArray>::New();
     deformed_positions->SetName("Deformed Position");
     deformed_positions->SetNumberOfComponents(3);
-    deformed_positions->SetNumberOfTuples(gradient_descent->GetNumberOfTuples());
+    deformed_positions->SetNumberOfTuples(descent_direction->GetNumberOfTuples());
 
     auto adjusted_gradient_descent = vtkSmartPointer<vtkDoubleArray>::New();
-    adjusted_gradient_descent->SetName("Gradient Descent");
+    adjusted_gradient_descent->SetName("Descent");
     adjusted_gradient_descent->SetNumberOfComponents(3);
-    adjusted_gradient_descent->SetNumberOfTuples(gradient_descent->GetNumberOfTuples());
+    adjusted_gradient_descent->SetNumberOfTuples(descent_direction->GetNumberOfTuples());
 
     const bool twoD = dimension[2] == 1;
 
@@ -728,7 +780,7 @@ std::pair<vtkSmartPointer<vtkDoubleArray>, vtkSmartPointer<vtkDoubleArray>> opti
                 const auto index = x + dimension[0] * (y + dimension[1] * z);
 
                 const_cast<vtkDataArray*>(positions)->GetTuple(index, position.data());
-                const_cast<vtkDataArray*>(gradient_descent)->GetTuple(index, descent.data());
+                const_cast<vtkDataArray*>(descent_direction)->GetTuple(index, descent.data());
 
                 if (step_size_method == step_size_method_t::error && descent.norm() != 0.0)
                 {

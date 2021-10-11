@@ -26,6 +26,9 @@ public:
     vtkGetMacro(ErrorDefinition, int);
     vtkSetMacro(ErrorDefinition, int);
 
+    vtkGetMacro(Method, int);
+    vtkSetMacro(Method, int);
+
     vtkGetMacro(NumSteps, int);
     vtkSetMacro(NumSteps, int);
 
@@ -80,6 +83,11 @@ private:
         vector_difference, angle, length_difference
     };
 
+    enum class method_t
+    {
+        gradient, nonlinear_conjugate
+    };
+
     enum class step_size_method_t
     {
         normalized, norm, error
@@ -100,11 +108,13 @@ private:
     void compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* deformed_grid,
         vtkDataArray* vector_field_original);
 
-    vtkSmartPointer<vtkDoubleArray> compute_gradient_descent(const std::array<int, 3>& dimension,
-        const vtkStructuredGrid* original_grid, const vtkDataArray* vector_field_original, const vtkDataArray* positions,
-        const vtkDataArray* errors, const curvature_and_torsion_t& original_curvature) const;
+    std::pair<vtkSmartPointer<vtkDoubleArray>, vtkSmartPointer<vtkDoubleArray>> compute_descent(
+        const std::array<int, 3>& dimension, const vtkStructuredGrid* original_grid,
+        const vtkDataArray* vector_field_original, const vtkDataArray* positions,
+        const vtkDataArray* errors, const curvature_and_torsion_t& original_curvature,
+        const vtkDataArray* previous_gradient_descent) const;
 
-    std::pair<vtkSmartPointer<vtkDoubleArray>, vtkSmartPointer<vtkDoubleArray>> apply_gradient_descent(
+    std::pair<vtkSmartPointer<vtkDoubleArray>, vtkSmartPointer<vtkDoubleArray>> apply_descent(
         const std::array<int, 3>& dimension, double step_size, const vtkDataArray* positions,
         const vtkDataArray* errors, const vtkDataArray* gradient_descent) const;
 
@@ -140,6 +150,7 @@ private:
     }
 
     int ErrorDefinition;
+    int Method;
 
     int NumSteps;
     double StepSize;
@@ -154,7 +165,7 @@ private:
     int GradientMethod;
     int GradientKernel;
     double GradientStep;
-    bool CheckWolfe;
+    int CheckWolfe;
 
     std::uint32_t hash;
     std::vector<vtkSmartPointer<vtkStructuredGrid>> results;
