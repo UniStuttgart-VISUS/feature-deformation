@@ -861,7 +861,7 @@ double optimizer::calculate_error(const int index, const int index_block, const 
 
         break;
     case error_definition_t::angle:
-        return std::acos(original_gradient.normalized().dot(deformed_gradient.normalized()));
+        return std::acos(std::min(std::max(original_gradient.normalized().dot(deformed_gradient.normalized()), -1.0), 1.0));
 
         break;
     case error_definition_t::length_difference:
