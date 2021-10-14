@@ -176,11 +176,17 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
         static_cast<gradient_method_t>(this->GradientMethod), this->GradientKernel);
 
     vtkSmartPointer<vtkDoubleArray> errors;
-    double error_avg, error_max;
+    double error_avg, error_max, min_error_avg, min_error_max;
+    int min_error_avg_step, min_error_max_step;
 
     std::tie(errors, error_avg, error_max)
         = calculate_error_field(original_curvature, deformed_curvature, jacobian_field,
             static_cast<error_definition_t>(this->ErrorDefinition));
+
+    const auto original_error_avg = min_error_avg = error_avg;
+    const auto original_error_max = min_error_max = error_max;
+
+    min_error_avg_step = min_error_max_step = 0;
 
     auto original_curvature_gradients = vtkSmartPointer<vtkDoubleArray>::New();
     original_curvature_gradients->SetName("Curvature Gradient (Original)");
@@ -436,6 +442,17 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
         error_max = new_error_max;
         error_avg = new_error_avg;
 
+        if (new_error_max < min_error_max && !std::isnan(new_error_max))
+        {
+            min_error_max = new_error_max;
+            min_error_max_step = step + 1;
+        }
+        if (new_error_avg < min_error_avg && !std::isnan(new_error_avg))
+        {
+            min_error_avg = new_error_avg;
+            min_error_avg_step = step + 1;
+        }
+
         if (error_max <= this->Error)
         {
             converged = true;
@@ -469,7 +486,7 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
         previous_gradient_descent = gradient_descent;
     }
 
-    // If converged, later results stay the same
+    // If converged or stopped, later results stay the same
     if (converged)
     {
         std::cout << "Optimization converged." << std::endl;
@@ -492,6 +509,24 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
     {
         std::cout << "Finished computation without convergence." << std::endl;
     }
+
+    std::cout << " Original error (avg): " << original_error_avg << std::endl;
+    std::cout << " Original error (max): " << original_error_max << std::endl;
+
+    if (std::isnan(error_avg) || std::isnan(error_max))
+    {
+        std::cout << " Error increase is NAN." << std::endl;
+    }
+    else
+    {
+        std::cout << " Error (avg): " << error_avg << std::endl;
+        std::cout << " Error (max): " << error_max << std::endl;
+        std::cout << " Error (avg) increase: " << (error_avg - original_error_avg) << std::endl;
+        std::cout << " Error (max) increase: " << (error_max - original_error_max) << std::endl;
+    }
+
+    std::cout << " Minumum error (avg): " << min_error_avg << " in step " << min_error_avg_step << std::endl;
+    std::cout << " Minumum error (max): " << min_error_max << " in step " << min_error_max_step << std::endl;
 }
 
 std::pair<vtkSmartPointer<vtkDoubleArray>, vtkSmartPointer<vtkDoubleArray>> optimizer::compute_descent(
@@ -529,11 +564,11 @@ std::pair<vtkSmartPointer<vtkDoubleArray>, vtkSmartPointer<vtkDoubleArray>> opti
     const Eigen::Vector3d cell_sizes(right[0] - origin[0], top[1] - origin[1], front[2] - origin[2]);
     const Eigen::Vector3d infinitesimal_steps = this->GradientStep * cell_sizes;
 
-    // For each 7x7(x7) block of nodes, calculate partial derivatives of the
+    // For each 11x11(x11) block of nodes, calculate partial derivatives of the
     // curvature gradient difference in direction of the degrees of freedom.
     // Use gradient descent to perform a single step for respective center
     // vertex, minimizing its curvature gradient difference.
-    const auto block_offset = 3;
+    const auto block_offset = 5;
     const auto block_inner_offset = (block_offset + 1) / 2;
     const auto block_size = (2 * block_offset + 1);
 
@@ -886,7 +921,6 @@ std::tuple<vtkSmartPointer<vtkDoubleArray>, double, double> optimizer::calculate
     double error_max = std::numeric_limits<double>::min();
     std::vector<double> error_avgs(original_curvature.curvature_gradient->GetNumberOfTuples());
 
-    #pragma omp parallel for
     for (vtkIdType i = 0; i < original_curvature.curvature_gradient->GetNumberOfTuples(); ++i)
     {
         const auto error = calculate_error(i, i, original_curvature, deformed_curvature, jacobian_field, error_definition);
