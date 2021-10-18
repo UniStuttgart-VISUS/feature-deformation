@@ -569,7 +569,7 @@ std::pair<vtkSmartPointer<vtkDoubleArray>, vtkSmartPointer<vtkDoubleArray>> opti
     // Use gradient descent to perform a single step for respective center
     // vertex, minimizing its curvature gradient difference.
     const auto block_offset = 5;
-    const auto block_inner_offset = (block_offset + 1) / 2;
+    const auto block_inner_offset = 2;
     const auto block_size = (2 * block_offset + 1);
 
     const auto num_blocks = dimension[0] * dimension[1] * dimension[2];
