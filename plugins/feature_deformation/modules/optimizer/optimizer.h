@@ -65,6 +65,9 @@ public:
     vtkGetMacro(CheckWolfe, int);
     vtkSetMacro(CheckWolfe, int);
 
+    vtkGetMacro(CSVOutput, int);
+    vtkSetMacro(CSVOutput, int);
+
 protected:
     optimizer();
     ~optimizer();
@@ -166,6 +169,8 @@ private:
     int GradientKernel;
     double GradientStep;
     int CheckWolfe;
+
+    int CSVOutput;
 
     std::uint32_t hash;
     std::vector<vtkSmartPointer<vtkStructuredGrid>> results;

@@ -21,6 +21,7 @@
 #include <array>
 #include <chrono>
 #include <cmath>
+#include <fstream>
 #include <iostream>
 #include <limits>
 #include <numeric>
@@ -108,7 +109,7 @@ int optimizer::RequestData(vtkInformation*, vtkInformationVector** input_vector,
     auto output_grid = vtkStructuredGrid::GetData(output_vector);
     output_grid->ShallowCopy(this->results[static_cast<std::size_t>(time_step)]);
 
-    std::cout << "Showing step: " << static_cast<std::size_t>(time_step) << std::endl;
+    if (!this->CSVOutput) std::cout << "Showing step: " << static_cast<std::size_t>(time_step) << std::endl;
 
     return 1;
 }
@@ -188,6 +189,10 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
 
     min_error_avg_step = min_error_max_step = 0;
 
+    std::vector<double> errors_avg, errors_max;
+    errors_avg.push_back(original_error_avg);
+    errors_max.push_back(original_error_max);
+
     auto original_curvature_gradients = vtkSmartPointer<vtkDoubleArray>::New();
     original_curvature_gradients->SetName("Curvature Gradient (Original)");
     original_curvature_gradients->SetNumberOfComponents(3);
@@ -206,7 +211,7 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
     }
 
     // Set initial output
-    std::cout << "Setting initial output..." << std::endl;
+    if (!this->CSVOutput) std::cout << "Setting initial output..." << std::endl;
 
     this->results[0] = create_output(dimension, positions);
 
@@ -227,7 +232,7 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
 
     for (step = 0; step < this->NumSteps && !converged && !stopped; ++step)
     {
-        std::cout << "Optimization step: " << (step + 1) << "/" << this->NumSteps << std::endl;
+        if (!this->CSVOutput) std::cout << "Optimization step: " << (step + 1) << "/" << this->NumSteps << std::endl;
 
         vtkSmartPointer<vtkDoubleArray> gradient_descent, descent, deformed_positions;
 
@@ -263,7 +268,7 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
             {
                 if (line_search_step < max_line_search_steps)
                 {
-                    std::cout << " Line search step " << (line_search_step + 1) << "/" << max_line_search_steps << std::endl;
+                    if (!this->CSVOutput) std::cout << " Line search step " << (line_search_step + 1) << "/" << max_line_search_steps << std::endl;
 
                     step_size_index = std::min(line_search_step, 3);
 
@@ -334,7 +339,7 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
 
                     if (step_size == this->StepSizeMin || step_size == this->StepSizeMax)
                     {
-                        std::cout << "    Step size is equal to lower or upper bound. Stopping." << std::endl;
+                        if (!this->CSVOutput) std::cout << "    Step size is equal to lower or upper bound. Stopping." << std::endl;
 
                         stopped = true;
                     }
@@ -344,7 +349,7 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
             // Perform gradient descent
             if (line_search_step == max_line_search_steps)
             {
-                std::cout << " Using step size: " << step_size << std::endl;
+                if (!this->CSVOutput) std::cout << " Using step size: " << step_size << std::endl;
             }
 
             std::tie(gradient_descent, descent) = compute_descent(dimension, original_grid,
@@ -421,23 +426,26 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
 
                 if (satisfies_wolfe)
                 {
-                    std::cout << "  Step size satisfies Wolfe conditions: " << step_size << std::endl;
+                    if (!this->CSVOutput) std::cout << "  Step size satisfies Wolfe conditions: " << step_size << std::endl;
                 }
                 else
                 {
-                    std::cout << "  Step size does not satisfy Wolfe conditions: " << step_size << std::endl;
+                    if (!this->CSVOutput) std::cout << "  Step size does not satisfy Wolfe conditions: " << step_size << std::endl;
                 }
             }
         }
 
         if (new_error_max > error_max)
         {
-            std::cout << "    New maximum error increased from " << error_max << " to " << new_error_max << "." << std::endl;
+            if (!this->CSVOutput) std::cout << "    New maximum error increased from " << error_max << " to " << new_error_max << "." << std::endl;
         }
         if (new_error_avg > error_avg)
         {
-            std::cout << "    New average error increased from " << error_avg << " to " << new_error_avg << "." << std::endl;
+            if (!this->CSVOutput) std::cout << "    New average error increased from " << error_avg << " to " << new_error_avg << "." << std::endl;
         }
+
+        errors_max.push_back(new_error_max);
+        errors_avg.push_back(new_error_avg);
 
         error_max = new_error_max;
         error_avg = new_error_avg;
@@ -489,7 +497,7 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
     // If converged or stopped, later results stay the same
     if (converged)
     {
-        std::cout << "Optimization converged." << std::endl;
+        if (!this->CSVOutput) std::cout << "Optimization converged." << std::endl;
 
         for (std::size_t i = step + 1uLL; i <= this->NumSteps; ++i)
         {
@@ -498,7 +506,7 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
     }
     else if (stopped)
     {
-        std::cout << "Optimization stopped." << std::endl;
+        if (!this->CSVOutput) std::cout << "Optimization stopped." << std::endl;
 
         for (std::size_t i = std::max(1, step); i <= this->NumSteps; ++i)
         {
@@ -507,26 +515,74 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
     }
     else
     {
-        std::cout << "Finished computation without convergence." << std::endl;
+        if (!this->CSVOutput) std::cout << "Finished computation without convergence." << std::endl;
     }
 
-    std::cout << " Original error (avg): " << original_error_avg << std::endl;
-    std::cout << " Original error (max): " << original_error_max << std::endl;
-
-    if (std::isnan(error_avg) || std::isnan(error_max))
+    if (!this->CSVOutput)
     {
-        std::cout << " Error increase is NAN." << std::endl;
+        std::cout << " Original error (avg): " << original_error_avg << std::endl;
+        std::cout << " Original error (max): " << original_error_max << std::endl;
+
+        if (std::isnan(error_avg) || std::isnan(error_max))
+        {
+            std::cout << " Error increase is NAN." << std::endl;
+        }
+        else
+        {
+            std::cout << " Error (avg): " << error_avg << std::endl;
+            std::cout << " Error (max): " << error_max << std::endl;
+            std::cout << " Error (avg) increase: " << (error_avg - original_error_avg) << std::endl;
+            std::cout << " Error (max) increase: " << (error_max - original_error_max) << std::endl;
+        }
+
+        std::cout << " Minimum error (avg): " << min_error_avg << " in step " << min_error_avg_step << std::endl;
+        std::cout << " Minimum error (max): " << min_error_max << " in step " << min_error_max_step << std::endl;
     }
     else
     {
-        std::cout << " Error (avg): " << error_avg << std::endl;
-        std::cout << " Error (max): " << error_max << std::endl;
-        std::cout << " Error (avg) increase: " << (error_avg - original_error_avg) << std::endl;
-        std::cout << " Error (max) increase: " << (error_max - original_error_max) << std::endl;
-    }
+        // Output minimum error information
+        std::cout << original_error_avg << "," << original_error_max << ",";
 
-    std::cout << " Minumum error (avg): " << min_error_avg << " in step " << min_error_avg_step << std::endl;
-    std::cout << " Minumum error (max): " << min_error_max << " in step " << min_error_max_step << std::endl;
+        if (std::isnan(error_avg) || std::isnan(error_max))
+        {
+            std::cout << "NAN,NAN,NAN,NAN,";
+        }
+        else
+        {
+            std::cout << error_avg << "," << error_max << "," << (error_avg - original_error_avg) << "," << (error_max - original_error_max) << ",";
+        }
+
+        std::cout << min_error_avg << "," << min_error_max << "," << min_error_avg_step << "," << min_error_max_step << std::endl;
+
+        // Output errors
+        std::ofstream file("_errors.csv", std::ios_base::app | std::ios_base::binary);
+
+        file << "Step";
+
+        for (int i = 0; i < errors_avg.size(); ++i)
+        {
+            file << "," << i;
+        }
+
+        file << std::endl;
+        file << "Error (avg)";
+
+        for (const auto& err : errors_avg)
+        {
+            file << "," << err;
+        }
+
+        file << std::endl;
+        file << "Error (max)";
+
+        for (const auto& err : errors_max)
+        {
+            file << "," << err;
+        }
+
+        file << std::endl;
+        file.close();
+    }
 }
 
 std::pair<vtkSmartPointer<vtkDoubleArray>, vtkSmartPointer<vtkDoubleArray>> optimizer::compute_descent(
@@ -597,14 +653,6 @@ std::pair<vtkSmartPointer<vtkDoubleArray>, vtkSmartPointer<vtkDoubleArray>> opti
 
                 const auto block_size = block_sizes[0] * block_sizes[1] * block_sizes[2];
 
-                // Temporary variables
-                Eigen::VectorXd original_gradient, deformed_gradient;
-                Eigen::Matrix3d jacobian;
-                original_gradient.resize(original_curvature.curvature_gradient->GetNumberOfComponents(), 1);
-                deformed_gradient.resize(original_curvature.curvature_gradient->GetNumberOfComponents(), 1);
-
-                Eigen::Vector3d temp;
-
                 // Create grid block
                 auto original_position_block = vtkSmartPointer<vtkDoubleArray>::New();
                 original_position_block->SetNumberOfComponents(3);
@@ -626,6 +674,8 @@ std::pair<vtkSmartPointer<vtkDoubleArray>, vtkSmartPointer<vtkDoubleArray>> opti
                 original_vector_block->SetNumberOfTuples(block_size);
                 new_position_block->SetNumberOfTuples(block_size);
                 new_vector_block->SetNumberOfTuples(block_size);
+
+                Eigen::Vector3d temp;
 
                 for (int zz = (twoD ? 0 : -block_offsets[2][0]); zz <= (twoD ? 0 : block_offsets[2][1]); ++zz)
                 {
@@ -779,7 +829,7 @@ std::pair<vtkSmartPointer<vtkDoubleArray>, vtkSmartPointer<vtkDoubleArray>> opti
         descent->SetName("Descent");
     }
 
-    std::cout << "  Finished computing gradient descent after " <<
+    if (!this->CSVOutput) std::cout << "  Finished computing gradient descent after " <<
         std::chrono::duration_cast<duration_t>(std::chrono::steady_clock::now() - start).count() << duration_str << std::endl;
 
     return std::make_pair(gradient_descent, descent);

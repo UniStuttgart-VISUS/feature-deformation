@@ -703,6 +703,13 @@
                 </Documentation>
             </IntVectorProperty>
 
+            <IntVectorProperty name="CSVOutput" label="Output CSV" command="SetCSVOutput" number_of_elements="1" default_values="0" panel_visibility="advanced">
+                <BooleanDomain name="bool"/>
+                <Documentation>
+                    Output error information in CSV format to stdout (general information) and stderr (all errors).
+                </Documentation>
+            </IntVectorProperty>
+
             <PropertyGroup label="Input">
                 <Property name="OriginalVectors" />
                 <Property name="ErrorDefinition" />
@@ -728,6 +735,10 @@
                 <Property name="GradientKernel" />
                 <Property name="GradientStep" />
                 <Property name="CheckWolfe" />
+            </PropertyGroup>
+
+            <PropertyGroup label="Output">
+                <Property name="CSVOutput" />
             </PropertyGroup>
 
             <Hints>
