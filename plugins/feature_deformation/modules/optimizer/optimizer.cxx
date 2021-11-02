@@ -13,6 +13,7 @@
 #include "vtkInformationVector.h"
 #include "vtkObjectFactory.h"
 #include "vtkPointData.h"
+#include "vtkResampleWithDataSet.h"
 #include "vtkSmartPointer.h"
 #include "vtkStreamingDemandDrivenPipeline.h"
 #include "vtkStructuredGrid.h"
@@ -176,7 +177,7 @@ void optimizer::compute_finite_differences(vtkStructuredGrid* original_grid, vtk
     jacobian_field->SetName("Jacobian");
 
     auto vector_field_deformed = vtkSmartPointer<vtkDoubleArray>::New();
-    vector_field_deformed->SetName("Deformed Vectors");
+    vector_field_deformed->SetName("Vector Field");
     vector_field_deformed->SetNumberOfComponents(3);
     vector_field_deformed->SetNumberOfTuples(num_nodes);
 
@@ -193,24 +194,13 @@ void optimizer::compute_finite_differences(vtkStructuredGrid* original_grid, vtk
         vector_field_deformed->SetTuple(i, vector.data());
     }
 
-    deformed_grid->GetPointData()->AddArray(vector_field_deformed);
-
-    // Resample vector field on original regular grid
-    auto vector_field = vtkSmartPointer<vtkDoubleArray>::New();
-    vector_field->SetName("Corrected Vectors");
-    vector_field->SetNumberOfComponents(3);
-    vector_field->SetNumberOfTuples(num_nodes);
-
-    // TODO: resample
-
     // Calculate initial gradient difference
     const auto original_curvature = curvature_and_torsion(original_vector_field, gradient_method_t::differences, 0);
-    auto deformed_curvature = curvature_and_torsion(grid(original_grid, vector_field), gradient_method_t::differences, 0);
 
-    auto original_curvature_gradients = vtkSmartPointer<vtkDoubleArray>::New();
-    original_curvature_gradients->SetName("Curvature Gradient (Original)");
-    original_curvature_gradients->SetNumberOfComponents(3);
-    original_curvature_gradients->SetNumberOfTuples(num_nodes);
+    auto original_curvature_gradients_deformed = vtkSmartPointer<vtkDoubleArray>::New();
+    original_curvature_gradients_deformed->SetName("Curvature Gradient (Original)");
+    original_curvature_gradients_deformed->SetNumberOfComponents(3);
+    original_curvature_gradients_deformed->SetNumberOfTuples(num_nodes);
 
     Eigen::Vector3d original_gradient;
 
@@ -221,8 +211,87 @@ void optimizer::compute_finite_differences(vtkStructuredGrid* original_grid, vtk
 
         original_gradient = jacobian * original_gradient;
 
-        original_curvature_gradients->SetTuple(i, original_gradient.data());
+        original_curvature_gradients_deformed->SetTuple(i, original_gradient.data());
     }
+
+    // Resample vector field on original regular grid
+    deformed_grid->GetPointData()->AddArray(vector_field_deformed);
+    deformed_grid->GetPointData()->AddArray(original_curvature_gradients_deformed);
+
+    auto resampler = vtkSmartPointer<vtkResampleWithDataSet>::New();
+    resampler->SetInputDataObject(original_grid);
+    resampler->SetSourceData(deformed_grid);
+    resampler->Update();
+
+    auto vector_field = vtkSmartPointer<vtkDoubleArray>::New();
+    auto original_curvature_gradients = vtkSmartPointer<vtkDoubleArray>::New();
+
+    vector_field->DeepCopy(static_cast<vtkStructuredGrid*>(resampler->GetOutput())->GetPointData()->GetArray("Vector Field"));
+    original_curvature_gradients->DeepCopy(static_cast<vtkStructuredGrid*>(resampler->GetOutput())->GetPointData()->GetArray("Curvature Gradient (Original)"));
+
+    auto valid_field = static_cast<vtkStructuredGrid*>(resampler->GetOutput())->GetPointData()->GetArray("vtkValidPointMask");
+
+    auto get_index = [&dimension](int i, int j, int k, int d) -> Eigen::Index
+        { return i + dimension[0] * (j + dimension[1] * (k + dimension[2] * static_cast<Eigen::Index>(d))); };
+
+    Eigen::Vector3d vector_temp, curvature_gradient, curvature_gradient_temp;
+
+    for (int k = 0; k < dimension[2]; ++k)
+    {
+        for (int j = 0; j < dimension[1]; ++j)
+        {
+            for (int i = 0; i < dimension[0]; ++i)
+            {
+                const auto index = get_index(i, j, k, 0);
+
+                // Fix vectors and curvature gradients at the boundaries by averaging their valid neighbors
+                if (valid_field->GetComponent(index, 0) == 0.0)
+                {
+                    vector.setZero();
+                    curvature_gradient.setZero();
+
+                    int num = 0;
+
+                    for (int kk = -1; kk <= 1; ++kk)
+                    {
+                        if (k + kk < 0 || k + kk >= dimension[2]) continue;
+
+                        for (int jj = -1; jj <= 1; ++jj)
+                        {
+                            if (j + jj < 0 || j + jj >= dimension[1]) continue;
+
+                            for (int ii = -1; ii <= 1; ++ii)
+                            {
+                                if (i + ii < 0 || i + ii >= dimension[0]) continue;
+
+                                const auto neighbor_index = get_index(i + ii, j + jj, k + kk, 0);
+
+                                if (valid_field->GetComponent(neighbor_index, 0) == 1.0)
+                                {
+                                    vector_field_deformed->GetTuple(neighbor_index, vector_temp.data());
+                                    original_curvature_gradients_deformed->GetTuple(neighbor_index, curvature_gradient_temp.data());
+
+                                    vector += vector_temp;
+                                    curvature_gradient += curvature_gradient_temp;
+
+                                    ++num;
+                                }
+                            }
+                        }
+                    }
+
+                    vector /= num;
+                    curvature_gradient /= num;
+
+                    vector_field->SetTuple(index, vector.data());
+                    original_curvature_gradients->SetTuple(index, curvature_gradient.data());
+                }
+            }
+        }
+    }
+
+    // Calculate initial error
+    auto deformed_curvature = curvature_and_torsion(grid(original_grid, vector_field), gradient_method_t::differences, 0);
 
     vtkSmartPointer<vtkDoubleArray> errors;
     double error_avg{}, error_max{};
@@ -240,7 +309,7 @@ void optimizer::compute_finite_differences(vtkStructuredGrid* original_grid, vtk
         errors, deformed_curvature.curvature, deformed_curvature.curvature_vector,
         deformed_curvature.curvature_gradient, deformed_curvature.torsion,
         deformed_curvature.torsion_vector, deformed_curvature.torsion_gradient,
-        original_curvature_gradients);
+        original_curvature_gradients, valid_field);
 
     // Iteratively solve finite differences Ax = b
     auto vector_field_updated = vtkSmartPointer<vtkDoubleArray>::New();

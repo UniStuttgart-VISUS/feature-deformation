@@ -140,7 +140,7 @@ private:
 
     vtkSmartPointer<vtkStructuredGrid> create_output(const std::array<int, 3>& dimension, const vtkDoubleArray* positions) const;
 
-    inline void output_copy(vtkStructuredGrid* grid, vtkSmartPointer<vtkDoubleArray>& field) const
+    inline void output_copy(vtkStructuredGrid* grid, vtkDataArray* field) const
     {
         auto field_out = vtkSmartPointer<vtkDoubleArray>::New();
         field_out->DeepCopy(field);
@@ -149,7 +149,7 @@ private:
     }
 
     template <typename... T>
-    inline void output_copy(vtkStructuredGrid* grid, vtkSmartPointer<vtkDoubleArray>& field, T... fields) const
+    inline void output_copy(vtkStructuredGrid* grid, vtkDataArray* field, T... fields) const
     {
         output_copy(grid, field);
         output_copy(grid, fields...);
