@@ -17,6 +17,9 @@
 #include "vtkStreamingDemandDrivenPipeline.h"
 #include "vtkStructuredGrid.h"
 
+#include "Eigen/Dense"
+#include "Eigen/Sparse"
+
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -91,14 +94,24 @@ int optimizer::RequestData(vtkInformation*, vtkInformationVector** input_vector,
         return 0;
     }
 
-    const auto hash = joaat_hash(this->ErrorDefinition, this->NumSteps, this->StepSize, this-StepSizeMethod, this->StepSizeControl,
-        this->Error, this->StepSizeMin, this->StepSizeMax, this->LineSearchSteps,
-        this->GradientMethod, this->GradientKernel, this->GradientStep, this->CheckWolfe,
+    const auto hash = joaat_hash(this->ErrorDefinition, this->Method, this->NumSteps, this->StepSize,
+        this-StepSizeMethod, this->StepSizeControl, this->Error, this->StepSizeMin, this->StepSizeMax,
+        this->LineSearchSteps, this->GradientMethod, this->GradientKernel, this->GradientStep, this->CheckWolfe,
         vector_field_original->GetMTime(), deformed_grid->GetMTime());
 
     if (hash != this->hash)
     {
-        compute(original_grid, deformed_grid, vector_field_original);
+        switch (static_cast<method_t>(this->Method))
+        {
+        case method_t::gradient:
+        case method_t::nonlinear_conjugate:
+            compute_gradient_descent(original_grid, deformed_grid, vector_field_original);
+
+            break;
+        case method_t::finite_differences:
+        default:
+            compute_finite_differences(original_grid, deformed_grid, vector_field_original);
+        }
 
         this->hash = hash;
     }
@@ -114,7 +127,443 @@ int optimizer::RequestData(vtkInformation*, vtkInformationVector** input_vector,
     return 1;
 }
 
-void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* deformed_grid,
+void optimizer::compute_finite_differences(vtkStructuredGrid* original_grid, vtkStructuredGrid* deformed_grid,
+    vtkDataArray* vector_field_original)
+{
+    // Get input grid and data
+    const grid original_vector_field(original_grid, vector_field_original);
+
+    const std::array<int, 3> dimension = original_vector_field.dimensions();
+    const bool twoD = dimension[2] == 1;
+    const auto num_nodes = original_grid->GetNumberOfPoints();
+
+    if (num_nodes != deformed_grid->GetNumberOfPoints())
+    {
+        std::cerr << "Number of grid nodes must match." << std::endl;
+        return;
+    }
+
+    std::array<double, 3> pointA{}, pointB{};
+    original_grid->GetPoint(0, pointA.data());
+    original_grid->GetPoint(1, pointB.data());
+
+    const auto h = pointB[0] - pointA[0];
+
+    // Get initial node positions, and compute deformation
+    auto deformed_positions = vtkSmartPointer<vtkDoubleArray>::New();
+    deformed_positions->SetName("Deformed Position");
+    deformed_positions->SetNumberOfComponents(3);
+    deformed_positions->SetNumberOfTuples(num_nodes);
+
+    auto positions = vtkSmartPointer<vtkDoubleArray>::New();
+    positions->SetNumberOfComponents(3);
+    positions->SetNumberOfTuples(num_nodes);
+
+    std::array<double, 3> point{};
+
+    for (vtkIdType i = 0; i < num_nodes; ++i)
+    {
+        original_grid->GetPoint(i, point.data());
+        positions->SetTuple(i, point.data());
+
+        deformed_grid->GetPoint(i, point.data());
+        deformed_positions->SetTuple(i, point.data());
+    }
+
+    const grid deformation_field(original_grid, deformed_positions);
+
+    auto jacobian_field = gradient_field(deformation_field, gradient_method_t::differences, 0);
+    jacobian_field->SetName("Jacobian");
+
+    auto vector_field_deformed = vtkSmartPointer<vtkDoubleArray>::New();
+    vector_field_deformed->SetName("Deformed Vectors");
+    vector_field_deformed->SetNumberOfComponents(3);
+    vector_field_deformed->SetNumberOfTuples(num_nodes);
+
+    Eigen::Matrix3d jacobian;
+    Eigen::Vector3d vector;
+
+    for (vtkIdType i = 0; i < num_nodes; ++i)
+    {
+        jacobian_field->GetTuple(i, jacobian.data());
+        vector_field_original->GetTuple(i, vector.data());
+
+        vector = jacobian * vector;
+
+        vector_field_deformed->SetTuple(i, vector.data());
+    }
+
+    deformed_grid->GetPointData()->AddArray(vector_field_deformed);
+
+    // Resample vector field on original regular grid
+    auto vector_field = vtkSmartPointer<vtkDoubleArray>::New();
+    vector_field->SetName("Corrected Vectors");
+    vector_field->SetNumberOfComponents(3);
+    vector_field->SetNumberOfTuples(num_nodes);
+
+    // TODO: resample
+
+    // Calculate initial gradient difference
+    const auto original_curvature = curvature_and_torsion(original_vector_field, gradient_method_t::differences, 0);
+    auto deformed_curvature = curvature_and_torsion(grid(original_grid, vector_field), gradient_method_t::differences, 0);
+
+    auto original_curvature_gradients = vtkSmartPointer<vtkDoubleArray>::New();
+    original_curvature_gradients->SetName("Curvature Gradient (Original)");
+    original_curvature_gradients->SetNumberOfComponents(3);
+    original_curvature_gradients->SetNumberOfTuples(num_nodes);
+
+    Eigen::Vector3d original_gradient;
+
+    for (vtkIdType i = 0; i < num_nodes; ++i)
+    {
+        original_curvature.curvature_gradient->GetTuple(i, original_gradient.data());
+        jacobian_field->GetTuple(i, jacobian.data());
+
+        original_gradient = jacobian * original_gradient;
+
+        original_curvature_gradients->SetTuple(i, original_gradient.data());
+    }
+
+    vtkSmartPointer<vtkDoubleArray> errors;
+    double error_avg{}, error_max{};
+
+    std::tie(errors, error_avg, error_max)
+        = calculate_error_field(original_curvature, deformed_curvature, nullptr, error_definition_t::vector_difference);
+
+    const auto original_error_avg = error_avg;
+    const auto original_error_max = error_max;
+
+    // Set initial output
+    this->results[0] = create_output(dimension, positions);
+
+    output_copy(this->results[0], vector_field, jacobian_field,
+        errors, deformed_curvature.curvature, deformed_curvature.curvature_vector,
+        deformed_curvature.curvature_gradient, deformed_curvature.torsion,
+        deformed_curvature.torsion_vector, deformed_curvature.torsion_gradient,
+        original_curvature_gradients);
+
+    // Iteratively solve finite differences Ax = b
+    auto vector_field_updated = vtkSmartPointer<vtkDoubleArray>::New();
+    vector_field_updated->DeepCopy(vector_field);
+
+    int step = 0;
+
+    for (; step < this->NumSteps && error_max > this->Error; ++step)
+    {
+        // Create right hand side vector
+        Eigen::VectorXd b;
+        b.resize((twoD ? 2 : 3) * num_nodes);
+
+        for (int d = 0; d < (twoD ? 2 : 3); ++d)
+        {
+            for (int i = 0; i < num_nodes; ++i)
+            {
+                b(i + d * num_nodes) = original_curvature_gradients->GetComponent(i, d) - deformed_curvature.curvature_gradient->GetComponent(i, d);
+            }
+        }
+
+        // Temporary variables
+        Eigen::Vector3d u;
+        Eigen::Matrix3d jacobian;
+        Eigen::Vector3d gradient_ux_uy, gradient_ux_sqr, gradient_uy_sqr, gradient_alpha, gradient_beta;
+
+        // Normalize vector field
+        for (int i = 0; i < num_nodes; ++i)
+        {
+            vector_field->GetTuple(i, u.data());
+            u.normalize();
+            vector_field->SetTuple(i, u.data());
+        }
+
+        // Compute derivatives of different fields
+        auto jacobian_of_vector_field = gradient_field(grid(original_grid, vector_field), gradient_method_t::differences, 0);
+
+        auto ux_uy = vtkSmartPointer<vtkDoubleArray>::New();
+        ux_uy->SetNumberOfComponents(1);
+        ux_uy->SetNumberOfTuples(num_nodes);
+
+        auto ux_sqr = vtkSmartPointer<vtkDoubleArray>::New();
+        ux_sqr->SetNumberOfComponents(1);
+        ux_sqr->SetNumberOfTuples(num_nodes);
+
+        auto uy_sqr = vtkSmartPointer<vtkDoubleArray>::New();
+        uy_sqr->SetNumberOfComponents(1);
+        uy_sqr->SetNumberOfTuples(num_nodes);
+
+        auto alphas = vtkSmartPointer<vtkDoubleArray>::New();
+        alphas->SetNumberOfComponents(1);
+        alphas->SetNumberOfTuples(num_nodes);
+
+        auto betas = vtkSmartPointer<vtkDoubleArray>::New();
+        betas->SetNumberOfComponents(1);
+        betas->SetNumberOfTuples(num_nodes);
+
+        for (int i = 0; i < num_nodes; ++i)
+        {
+            vector_field->GetTuple(i, u.data());
+            jacobian_of_vector_field->GetTuple(i, jacobian.data());
+
+            ux_uy->SetValue(i, u(0) * u(1));
+            ux_sqr->SetValue(i, u(0) * u(0));
+            uy_sqr->SetValue(i, u(1) * u(1));
+
+            alphas->SetValue(i, u(1) * jacobian(1, 1) + 2.0 * u(0) * jacobian(1, 0) - u(1) * jacobian(0, 0));
+            betas->SetValue(i, u(0) * jacobian(1, 1) - 2.0 * u(1) * jacobian(0, 1) - u(0) * jacobian(0, 0));
+        }
+
+        auto gradients_ux_uy = gradient_field(grid(original_grid, ux_uy), gradient_method_t::differences, 0);
+        auto gradients_ux_sqr = gradient_field(grid(original_grid, ux_sqr), gradient_method_t::differences, 0);
+        auto gradients_uy_sqr = gradient_field(grid(original_grid, uy_sqr), gradient_method_t::differences, 0);
+        auto gradients_alpha = gradient_field(grid(original_grid, alphas), gradient_method_t::differences, 0);
+        auto gradients_beta = gradient_field(grid(original_grid, betas), gradient_method_t::differences, 0);
+
+        // Create finite differences matrix
+        Eigen::SparseMatrix<double> A;
+        A.resize((twoD ? 2 : 3) * num_nodes, (twoD ? 2 : 3) * num_nodes);
+
+        if (twoD)
+        {
+            auto get_index = [&dimension](int i, int j, int d) -> Eigen::Index
+                { return i + dimension[0] * (j + dimension[1] * static_cast<Eigen::Index>(d)); };
+
+            for (int j = 0; j < dimension[1]; ++j)
+            {
+                for (int i = 0; i < dimension[0]; ++i)
+                {
+                    // Position information
+                    auto index = get_index(i, j, 0);
+
+                    const auto left = (i == 0);
+                    const auto right = (i == dimension[0] - 1);
+
+                    const auto bottom = (j == 0);
+                    const auto top = (j == dimension[1] - 1);
+
+                    // Get pre-computed field values
+                    vector_field->GetTuple(index, u.data());
+                    jacobian_of_vector_field->GetTuple(index, jacobian.data());
+                    gradients_ux_uy->GetTuple(index, gradient_ux_uy.data());
+                    gradients_ux_sqr->GetTuple(index, gradient_ux_sqr.data());
+                    gradients_uy_sqr->GetTuple(index, gradient_uy_sqr.data());
+                    gradients_alpha->GetTuple(index, gradient_alpha.data());
+                    gradients_beta->GetTuple(index, gradient_beta.data());
+
+                    const auto alpha = alphas->GetValue(index);
+                    const auto beta = betas->GetValue(index);
+
+                    // In x direction
+                    {
+                        const auto row_index = get_index(i, j, 0);
+
+                        // v
+                        {
+                            // .x
+                            A.coeffRef(row_index, get_index(i, j, 0)) += gradient_alpha[0]; // i, j, X
+
+                            // .y
+                            A.coeffRef(row_index, get_index(i, j, 1)) += gradient_beta[0]; // i, j, Y
+                        }
+
+                        // dv/dx
+                        {
+                            const auto offset_left = left ? 0 : 1;
+                            const auto offset_right = right ? 0 : 1;
+                            const auto denom = ((left || right) ? 1.0 : 2.0) * h;
+
+                            // .x
+                            A.coeffRef(row_index, get_index(i - offset_left, j, 0)) -= (alpha - gradient_ux_uy[0]) / denom; // i - 1, j, X
+                            A.coeffRef(row_index, get_index(i + offset_right, j, 0)) += (alpha - gradient_ux_uy[0]) / denom; // i + 1, j, X
+
+                            // .y
+                            A.coeffRef(row_index, get_index(i - offset_left, j, 1)) -= (beta + gradient_ux_sqr[0]) / denom; // i - 1, j, Y
+                            A.coeffRef(row_index, get_index(i + offset_right, j, 1)) += (beta + gradient_ux_sqr[0]) / denom; // i + 1, j, Y
+                        }
+
+                        // dv/dy
+                        {
+                            const auto offset_bottom = bottom ? 0 : 1;
+                            const auto offset_top = top ? 0 : 1;
+                            const auto denom = ((bottom || top) ? 1.0 : 2.0) * h;
+
+                            // .x
+                            A.coeffRef(row_index, get_index(i, j - offset_bottom, 0)) += gradient_uy_sqr[0] / denom; // i, j - 1, X
+                            A.coeffRef(row_index, get_index(i, j + offset_top, 0)) -= gradient_uy_sqr[0] / denom; // i, j + 1, X
+
+                            // .y
+                            A.coeffRef(row_index, get_index(i, j - offset_bottom, 1)) -= gradient_ux_uy[0] / denom; // i, j - 1, Y
+                            A.coeffRef(row_index, get_index(i, j + offset_top, 1)) += gradient_ux_uy[0] / denom; // i, j + 1, Y
+                        }
+
+                        // dv/dx²
+                        {
+                            const auto offset = left ? 1 : (right ? -1 : 0);
+
+                            // .x
+                            A.coeffRef(row_index, get_index(i + offset, j, 0)) += (2.0 * u[0] * u[1]) / (h * h); // i, j, X
+
+                            A.coeffRef(row_index, get_index(i + offset - 1, j, 0)) -= (u[0] * u[1]) / (h * h); // i - 1, j, X
+                            A.coeffRef(row_index, get_index(i + offset + 1, j, 0)) -= (u[0] * u[1]) / (h * h); // i + 1, j, X
+
+                            // .y
+                            A.coeffRef(row_index, get_index(i + offset, j, 1)) -= (2.0 * u[0] * u[0]) / (h * h); // i, j, Y
+
+                            A.coeffRef(row_index, get_index(i + offset - 1, j, 1)) += (u[0] * u[0]) / (h * h); // i - 1, j, Y
+                            A.coeffRef(row_index, get_index(i + offset + 1, j, 1)) += (u[0] * u[0]) / (h * h); // i + 1, j, Y
+                        }
+
+                        // dv/dxy
+                        {
+                            const auto offset_left = left ? 0 : 1;
+                            const auto offset_right = right ? 0 : 1;
+                            const auto offset_bottom = bottom ? 0 : 1;
+                            const auto offset_top = top ? 0 : 1;
+                            const auto denom = ((left || right) ? 1.0 : 2.0) * ((bottom || top) ? 1.0 : 2.0) * h * h;
+
+                            // .x
+                            A.coeffRef(row_index, get_index(i - offset_left, j - offset_bottom, 0)) -= (u[1] * u[1]) / denom; // i - 1, j - 1, X
+                            A.coeffRef(row_index, get_index(i + offset_right, j - offset_bottom, 0)) += (u[1] * u[1]) / denom; // i + 1, j - 1, X
+                            A.coeffRef(row_index, get_index(i - offset_left, j + offset_top, 0)) += (u[1] * u[1]) / denom; // i - 1, j + 1, X
+                            A.coeffRef(row_index, get_index(i + offset_right, j + offset_top, 0)) -= (u[1] * u[1]) / denom; // i + 1, j + 1, X
+
+                            // .y
+                            A.coeffRef(row_index, get_index(i - offset_left, j - offset_bottom, 1)) += (u[0] * u[1]) / denom; // i - 1, j - 1, Y
+                            A.coeffRef(row_index, get_index(i + offset_right, j - offset_bottom, 1)) -= (u[0] * u[1]) / denom; // i + 1, j - 1, Y
+                            A.coeffRef(row_index, get_index(i - offset_left, j + offset_top, 1)) -= (u[0] * u[1]) / denom; // i - 1, j + 1, Y
+                            A.coeffRef(row_index, get_index(i + offset_right, j + offset_top, 1)) += (u[0] * u[1]) / denom; // i + 1, j + 1, Y
+                        }
+                    }
+
+                    // In y direction
+                    {
+                        const auto row_index = get_index(i, j, 1);
+
+                        // v
+                        {
+                            // .x
+                            A.coeffRef(row_index, get_index(i, j, 0)) += gradient_alpha[1]; // i, j, X
+
+                            // .y
+                            A.coeffRef(row_index, get_index(i, j, 1)) += gradient_beta[1]; // i, j, Y
+                        }
+
+                        // dv/dx
+                        {
+                            const auto offset_left = left ? 0 : 1;
+                            const auto offset_right = right ? 0 : 1;
+                            const auto denom = ((left || right) ? 1.0 : 2.0) * h;
+
+                            // .x
+                            A.coeffRef(row_index, get_index(i - offset_left, j, 0)) += gradient_ux_uy[1] / denom; // i - 1, j, X
+                            A.coeffRef(row_index, get_index(i + offset_right, j, 0)) -= gradient_ux_uy[1] / denom; // i + 1, j, X
+
+                            // .y
+                            A.coeffRef(row_index, get_index(i - offset_left, j, 1)) -= gradient_ux_sqr[1] / denom; // i - 1, j, Y
+                            A.coeffRef(row_index, get_index(i + offset_right, j, 1)) += gradient_ux_sqr[1] / denom; // i + 1, j, Y
+                        }
+
+                        // dv/dy
+                        {
+                            const auto offset_bottom = bottom ? 0 : 1;
+                            const auto offset_top = top ? 0 : 1;
+                            const auto denom = ((bottom || top) ? 1.0 : 2.0) * h;
+
+                            // .x
+                            A.coeffRef(row_index, get_index(i, j - offset_bottom, 0)) -= (alpha - gradient_uy_sqr[1]) / denom; // i, j - 1, X
+                            A.coeffRef(row_index, get_index(i, j + offset_top, 0)) += (alpha - gradient_uy_sqr[1]) / denom; // i, j + 1, X
+
+                            // .y
+                            A.coeffRef(row_index, get_index(i, j - offset_bottom, 1)) -= (beta + gradient_ux_uy[1]) / denom; // i, j - 1, Y
+                            A.coeffRef(row_index, get_index(i, j + offset_top, 1)) += (beta + gradient_ux_uy[1]) / denom; // i, j + 1, Y
+                        }
+
+                        // dv/dy²
+                        {
+                            const auto offset = bottom ? 1 : (top ? -1 : 0);
+
+                            // .x
+                            A.coeffRef(row_index, get_index(i, j + offset, 0)) += (2.0 * u[1] * u[1]) / (h * h); // i, j, X
+
+                            A.coeffRef(row_index, get_index(i, j + offset - 1, 0)) -= (u[1] * u[1]) / (h * h); // i, j - 1, X
+                            A.coeffRef(row_index, get_index(i, j + offset + 1, 0)) -= (u[1] * u[1]) / (h * h); // i, j + 1, X
+
+                            // .y
+                            A.coeffRef(row_index, get_index(i, j + offset, 1)) -= (2.0 * u[0] * u[1]) / (h * h); // i, j, Y
+
+                            A.coeffRef(row_index, get_index(i, j + offset - 1, 1)) += (u[0] * u[1]) / (h * h); // i, j - 1, Y
+                            A.coeffRef(row_index, get_index(i, j + offset + 1, 1)) += (u[0] * u[1]) / (h * h); // i, j + 1, Y
+                        }
+
+                        // dv/dxy
+                        {
+                            const auto offset_left = left ? 0 : 1;
+                            const auto offset_right = right ? 0 : 1;
+                            const auto offset_bottom = bottom ? 0 : 1;
+                            const auto offset_top = top ? 0 : 1;
+                            const auto denom = ((left || right) ? 1.0 : 2.0) * ((bottom || top) ? 1.0 : 2.0) * h * h;
+
+                            // .x
+                            A.coeffRef(row_index, get_index(i - offset_left, j - offset_bottom, 0)) -= (u[0] * u[1]) / denom; // i - 1, j - 1, X
+                            A.coeffRef(row_index, get_index(i + offset_right, j - offset_bottom, 0)) += (u[0] * u[1]) / denom; // i + 1, j - 1, X
+                            A.coeffRef(row_index, get_index(i - offset_left, j + offset_top, 0)) += (u[0] * u[1]) / denom; // i - 1, j + 1, X
+                            A.coeffRef(row_index, get_index(i + offset_right, j + offset_top, 0)) -= (u[0] * u[1]) / denom; // i + 1, j + 1, X
+
+                            // .y
+                            A.coeffRef(row_index, get_index(i - offset_left, j - offset_bottom, 1)) += (u[0] * u[0]) / denom; // i - 1, j - 1, Y
+                            A.coeffRef(row_index, get_index(i + offset_right, j - offset_bottom, 1)) -= (u[0] * u[0]) / denom; // i + 1, j - 1, Y
+                            A.coeffRef(row_index, get_index(i - offset_left, j + offset_top, 1)) -= (u[0] * u[0]) / denom; // i - 1, j + 1, Y
+                            A.coeffRef(row_index, get_index(i + offset_right, j + offset_top, 1)) += (u[0] * u[0]) / denom; // i + 1, j + 1, Y
+                        }
+                    }
+                }
+            }
+        }
+        else
+        {
+            // TODO: 3D?
+        }
+
+        // Solve for x
+        const Eigen::SparseLU<Eigen::SparseMatrix<double>> solver(A);
+        const Eigen::VectorXd x = solver.solve(b);
+
+        // Update result
+        for (int d = 0; d < (twoD ? 2 : 3); ++d)
+        {
+            for (int i = 0; i < num_nodes; ++i)
+            {
+                vector_field_updated->SetComponent(i, d,
+                    vector_field->GetComponent(i, d) + this->StepSize * x(i + d * num_nodes));
+            }
+        }
+
+        // Prepare for next time step and output (intermediate) results
+        vector_field->DeepCopy(vector_field_updated);
+
+        deformed_curvature = curvature_and_torsion(grid(original_grid, vector_field), gradient_method_t::differences, 0);
+
+        std::tie(errors, error_avg, error_max)
+            = calculate_error_field(original_curvature, deformed_curvature, nullptr, error_definition_t::vector_difference);
+
+        this->results[step + 1uLL] = create_output(dimension, positions);
+
+        output_copy(this->results[step + 1uLL], vector_field, jacobian_field,
+            errors, deformed_curvature.curvature, deformed_curvature.curvature_vector,
+            deformed_curvature.curvature_gradient, deformed_curvature.torsion,
+            deformed_curvature.torsion_vector, deformed_curvature.torsion_gradient,
+            original_curvature_gradients);
+    }
+
+    // If converged or stopped, later results stay the same
+    if (error_max <= this->Error)
+    {
+        for (std::size_t i = step + 1uLL; i <= this->NumSteps; ++i)
+        {
+            this->results[i] = this->results[step];
+        }
+    }
+}
+
+void optimizer::compute_gradient_descent(vtkStructuredGrid* original_grid, vtkStructuredGrid* deformed_grid,
     vtkDataArray* vector_field_original)
 {
     // Get input grid and data
@@ -177,7 +626,7 @@ void optimizer::compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* def
         static_cast<gradient_method_t>(this->GradientMethod), this->GradientKernel);
 
     vtkSmartPointer<vtkDoubleArray> errors;
-    double error_avg, error_max, min_error_avg, min_error_max;
+    double error_avg{}, error_max{}, min_error_avg, min_error_max;
     int min_error_avg_step, min_error_max_step;
 
     std::tie(errors, error_avg, error_max)
@@ -925,16 +1374,21 @@ double optimizer::calculate_error(const int index, const int index_block, const 
     const curvature_and_torsion_t& deformed_curvature, const vtkDataArray* jacobian_field, const error_definition_t error_definition) const
 {
     Eigen::VectorXd original_gradient, deformed_gradient;
-    Eigen::Matrix3d jacobian;
     original_gradient.resize(original_curvature.curvature_gradient->GetNumberOfComponents(), 1);
     deformed_gradient.resize(original_curvature.curvature_gradient->GetNumberOfComponents(), 1);
+
+    Eigen::Matrix3d jacobian;
+    jacobian.setIdentity();
 
     original_curvature.curvature_gradient->GetTuple(index, original_gradient.data());
     deformed_curvature.curvature_gradient->GetTuple(index_block, deformed_gradient.data());
 
     if (original_curvature.curvature_gradient->GetNumberOfComponents() == 3)
     {
-        const_cast<vtkDataArray*>(jacobian_field)->GetTuple(index_block, jacobian.data());
+        if (jacobian_field != nullptr)
+        {
+            const_cast<vtkDataArray*>(jacobian_field)->GetTuple(index_block, jacobian.data());
+        }
 
         deformed_gradient = jacobian.inverse() * deformed_gradient;
     }

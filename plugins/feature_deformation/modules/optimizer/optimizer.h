@@ -88,7 +88,7 @@ private:
 
     enum class method_t
     {
-        gradient, nonlinear_conjugate
+        gradient, nonlinear_conjugate, finite_differences
     };
 
     enum class step_size_method_t
@@ -108,7 +108,10 @@ private:
         bool operator==(const step_size_t& rhs) const { return this->step_size == rhs.step_size; }
     };
 
-    void compute(vtkStructuredGrid* original_grid, vtkStructuredGrid* deformed_grid,
+    void compute_finite_differences(vtkStructuredGrid* original_grid, vtkStructuredGrid* deformed_grid,
+        vtkDataArray* vector_field_original);
+
+    void compute_gradient_descent(vtkStructuredGrid* original_grid, vtkStructuredGrid* deformed_grid,
         vtkDataArray* vector_field_original);
 
     std::pair<vtkSmartPointer<vtkDoubleArray>, vtkSmartPointer<vtkDoubleArray>> compute_descent(
