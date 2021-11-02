@@ -413,7 +413,6 @@ void optimizer::compute_finite_differences(vtkStructuredGrid* original_grid, vtk
 
                     // Get pre-computed field values
                     vector_field->GetTuple(index, u.data());
-                    jacobian_of_vector_field->GetTuple(index, jacobian.data());
                     gradients_ux_uy->GetTuple(index, gradient_ux_uy.data());
                     gradients_ux_sqr->GetTuple(index, gradient_ux_sqr.data());
                     gradients_uy_sqr->GetTuple(index, gradient_uy_sqr.data());
@@ -469,18 +468,19 @@ void optimizer::compute_finite_differences(vtkStructuredGrid* original_grid, vtk
                         // dv/dx²
                         {
                             const auto offset = left ? 1 : (right ? -1 : 0);
+                            const auto denom = ((left || right) ? 2.0 : 1.0) * h * h;
 
                             // .x
-                            A.coeffRef(row_index, get_index(i + offset, j, 0)) += (2.0 * u[0] * u[1]) / (h * h); // i, j, X
+                            A.coeffRef(row_index, get_index(i + offset, j, 0)) += (2.0 * u[0] * u[1]) / denom; // i, j, X
 
-                            A.coeffRef(row_index, get_index(i + offset - 1, j, 0)) -= (u[0] * u[1]) / (h * h); // i - 1, j, X
-                            A.coeffRef(row_index, get_index(i + offset + 1, j, 0)) -= (u[0] * u[1]) / (h * h); // i + 1, j, X
+                            A.coeffRef(row_index, get_index(i + offset - 1, j, 0)) -= (u[0] * u[1]) / denom; // i - 1, j, X
+                            A.coeffRef(row_index, get_index(i + offset + 1, j, 0)) -= (u[0] * u[1]) / denom; // i + 1, j, X
 
                             // .y
-                            A.coeffRef(row_index, get_index(i + offset, j, 1)) -= (2.0 * u[0] * u[0]) / (h * h); // i, j, Y
+                            A.coeffRef(row_index, get_index(i + offset, j, 1)) -= (2.0 * u[0] * u[0]) / denom; // i, j, Y
 
-                            A.coeffRef(row_index, get_index(i + offset - 1, j, 1)) += (u[0] * u[0]) / (h * h); // i - 1, j, Y
-                            A.coeffRef(row_index, get_index(i + offset + 1, j, 1)) += (u[0] * u[0]) / (h * h); // i + 1, j, Y
+                            A.coeffRef(row_index, get_index(i + offset - 1, j, 1)) += (u[0] * u[0]) / denom; // i - 1, j, Y
+                            A.coeffRef(row_index, get_index(i + offset + 1, j, 1)) += (u[0] * u[0]) / denom; // i + 1, j, Y
                         }
 
                         // dv/dxy
@@ -551,18 +551,19 @@ void optimizer::compute_finite_differences(vtkStructuredGrid* original_grid, vtk
                         // dv/dy²
                         {
                             const auto offset = bottom ? 1 : (top ? -1 : 0);
+                            const auto denom = ((bottom || top) ? 2.0 : 1.0) * h * h;
 
                             // .x
-                            A.coeffRef(row_index, get_index(i, j + offset, 0)) += (2.0 * u[1] * u[1]) / (h * h); // i, j, X
+                            A.coeffRef(row_index, get_index(i, j + offset, 0)) += (2.0 * u[1] * u[1]) / denom; // i, j, X
 
-                            A.coeffRef(row_index, get_index(i, j + offset - 1, 0)) -= (u[1] * u[1]) / (h * h); // i, j - 1, X
-                            A.coeffRef(row_index, get_index(i, j + offset + 1, 0)) -= (u[1] * u[1]) / (h * h); // i, j + 1, X
+                            A.coeffRef(row_index, get_index(i, j + offset - 1, 0)) -= (u[1] * u[1]) / denom; // i, j - 1, X
+                            A.coeffRef(row_index, get_index(i, j + offset + 1, 0)) -= (u[1] * u[1]) / denom; // i, j + 1, X
 
                             // .y
-                            A.coeffRef(row_index, get_index(i, j + offset, 1)) -= (2.0 * u[0] * u[1]) / (h * h); // i, j, Y
+                            A.coeffRef(row_index, get_index(i, j + offset, 1)) -= (2.0 * u[0] * u[1]) / denom; // i, j, Y
 
-                            A.coeffRef(row_index, get_index(i, j + offset - 1, 1)) += (u[0] * u[1]) / (h * h); // i, j - 1, Y
-                            A.coeffRef(row_index, get_index(i, j + offset + 1, 1)) += (u[0] * u[1]) / (h * h); // i, j + 1, Y
+                            A.coeffRef(row_index, get_index(i, j + offset - 1, 1)) += (u[0] * u[1]) / denom; // i, j - 1, Y
+                            A.coeffRef(row_index, get_index(i, j + offset + 1, 1)) += (u[0] * u[1]) / denom; // i, j + 1, Y
                         }
 
                         // dv/dxy
@@ -598,6 +599,21 @@ void optimizer::compute_finite_differences(vtkStructuredGrid* original_grid, vtk
         const Eigen::SparseLU<Eigen::SparseMatrix<double>> solver(A);
         const Eigen::VectorXd x = solver.solve(b);
 
+        const Eigen::VectorXd residual_vector = A * x - b;
+
+        auto residuals = vtkSmartPointer<vtkDoubleArray>::New();
+        residuals->SetName("Residual");
+        residuals->SetNumberOfComponents(twoD ? 2 : 3);
+        residuals->SetNumberOfTuples(num_nodes);
+
+        for (int d = 0; d < (twoD ? 2 : 3); ++d)
+        {
+            for (int i = 0; i < num_nodes; ++i)
+            {
+                residuals->SetComponent(i, d, std::abs(residual_vector(i + d * num_nodes)));
+            }
+        }
+
         // Update result
         for (int d = 0; d < (twoD ? 2 : 3); ++d)
         {
@@ -618,7 +634,7 @@ void optimizer::compute_finite_differences(vtkStructuredGrid* original_grid, vtk
 
         this->results[step + 1uLL] = create_output(dimension, positions);
 
-        output_copy(this->results[step + 1uLL], vector_field, jacobian_field,
+        output_copy(this->results[step + 1uLL], vector_field, jacobian_field, residuals,
             errors, deformed_curvature.curvature, deformed_curvature.curvature_vector,
             deformed_curvature.curvature_gradient, deformed_curvature.torsion,
             deformed_curvature.torsion_vector, deformed_curvature.torsion_gradient,
