@@ -215,12 +215,15 @@ void optimizer::compute_finite_differences(vtkStructuredGrid* original_grid, vtk
     }
 
     // Resample vector field on original regular grid
-    deformed_grid->GetPointData()->AddArray(vector_field_deformed);
-    deformed_grid->GetPointData()->AddArray(original_curvature_gradients_deformed);
+    auto resample_grid = vtkSmartPointer<vtkStructuredGrid>::New();
+    resample_grid->CopyStructure(deformed_grid);
+
+    resample_grid->GetPointData()->AddArray(vector_field_deformed);
+    resample_grid->GetPointData()->AddArray(original_curvature_gradients_deformed);
 
     auto resampler = vtkSmartPointer<vtkResampleWithDataSet>::New();
     resampler->SetInputDataObject(original_grid);
-    resampler->SetSourceData(deformed_grid);
+    resampler->SetSourceData(resample_grid);
     resampler->Update();
 
     auto vector_field = vtkSmartPointer<vtkDoubleArray>::New();
