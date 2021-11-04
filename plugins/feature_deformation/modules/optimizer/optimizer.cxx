@@ -1,5 +1,7 @@
 #include "optimizer.h"
 
+#include "ppm_io.h"
+
 #include "common/hash.h"
 
 #include "../feature_deformation/curvature.h"
@@ -422,7 +424,7 @@ void optimizer::compute_finite_differences(vtkStructuredGrid* original_grid, vtk
                     const auto alpha = alphas->GetValue(index);
                     const auto beta = betas->GetValue(index);
 
-                    // In x direction
+                    // Derivative of the curvature in x direction
                     {
                         const auto row_index = get_index(i, j, 0);
 
@@ -468,7 +470,7 @@ void optimizer::compute_finite_differences(vtkStructuredGrid* original_grid, vtk
                         // dv/dx²
                         {
                             const auto offset = left ? 1 : (right ? -1 : 0);
-                            const auto denom = ((left || right) ? 2.0 : 1.0) * h * h;
+                            const auto denom = h * h;
 
                             // .x
                             A.coeffRef(row_index, get_index(i + offset, j, 0)) += (2.0 * u[0] * u[1]) / denom; // i, j, X
@@ -505,7 +507,7 @@ void optimizer::compute_finite_differences(vtkStructuredGrid* original_grid, vtk
                         }
                     }
 
-                    // In y direction
+                    // Derivative of the curvature in y direction
                     {
                         const auto row_index = get_index(i, j, 1);
 
@@ -551,7 +553,7 @@ void optimizer::compute_finite_differences(vtkStructuredGrid* original_grid, vtk
                         // dv/dy²
                         {
                             const auto offset = bottom ? 1 : (top ? -1 : 0);
-                            const auto denom = ((bottom || top) ? 2.0 : 1.0) * h * h;
+                            const auto denom = h * h;
 
                             // .x
                             A.coeffRef(row_index, get_index(i, j + offset, 0)) += (2.0 * u[1] * u[1]) / denom; // i, j, X
@@ -615,10 +617,17 @@ void optimizer::compute_finite_differences(vtkStructuredGrid* original_grid, vtk
         }
 
         // Update result
+        auto update = vtkSmartPointer<vtkDoubleArray>::New();
+        update->SetName("Update");
+        update->SetNumberOfComponents(twoD ? 2 : 3);
+        update->SetNumberOfTuples(num_nodes);
+
         for (int d = 0; d < (twoD ? 2 : 3); ++d)
         {
             for (int i = 0; i < num_nodes; ++i)
             {
+                update->SetComponent(i, d, x(i + d * num_nodes));
+
                 vector_field_updated->SetComponent(i, d,
                     vector_field->GetComponent(i, d) + this->StepSize * x(i + d * num_nodes));
             }
@@ -638,7 +647,7 @@ void optimizer::compute_finite_differences(vtkStructuredGrid* original_grid, vtk
             errors, deformed_curvature.curvature, deformed_curvature.curvature_vector,
             deformed_curvature.curvature_gradient, deformed_curvature.torsion,
             deformed_curvature.torsion_vector, deformed_curvature.torsion_gradient,
-            original_curvature_gradients);
+            original_curvature_gradients, update);
     }
 
     // If converged or stopped, later results stay the same
