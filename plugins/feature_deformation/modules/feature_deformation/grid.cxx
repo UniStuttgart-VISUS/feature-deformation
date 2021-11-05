@@ -2,6 +2,7 @@
 
 #include "vtkDataArray.h"
 #include "vtkDoubleArray.h"
+#include "vtkImageData.h"
 #include "vtkStructuredGrid.h"
 
 #include "Eigen/Dense"
@@ -23,10 +24,17 @@ grid::grid(std::array<int, 3> dimension, const Eigen::Vector3d& spacing, vtkData
 grid::grid(std::array<int, 3> dimension, vtkDataArray* positions, vtkDataArray* data, vtkDataArray* jacobians)
     : dimension(dimension), data(data), deformed(true), positions(positions), jacobians(jacobians), own_positions(false) { }
 
+grid::grid(vtkImageData* vtk_grid, vtkDataArray* data, vtkDataArray* jacobians)
+    : data(data), deformed(false), jacobians(jacobians), own_positions(false)
+{
+    vtk_grid->GetDimensions(this->dimension.data());
+    vtk_grid->GetSpacing(this->spacing.data());
+}
+
 grid::grid(vtkStructuredGrid* vtk_grid, vtkDataArray* data, vtkDataArray* jacobians)
     : data(data), jacobians(jacobians), own_positions(true)
 {
-    vtk_grid->GetDimensions(dimension.data());
+    vtk_grid->GetDimensions(this->dimension.data());
 
     // Get positions
     auto positions = vtkDoubleArray::New();
@@ -176,6 +184,11 @@ Eigen::Matrix3d grid::jacobian(const std::array<int, 3>& coords) const
 const std::array<int, 3>& grid::dimensions() const
 {
     return this->dimension;
+}
+
+const Eigen::Vector3d& grid::get_spacing() const
+{
+    return this->spacing;
 }
 
 int grid::components() const

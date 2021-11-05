@@ -1,6 +1,7 @@
 #pragma once
 
 #include "vtkDataArray.h"
+#include "vtkImageData.h"
 #include "vtkStructuredGrid.h"
 
 #include "Eigen/Dense"
@@ -14,6 +15,7 @@ class grid
 public:
     grid(std::array<int, 3> dimension, const Eigen::Vector3d& spacing, vtkDataArray* data, vtkDataArray* jacobians = nullptr);
     grid(std::array<int, 3> dimension, vtkDataArray* positions, vtkDataArray* data, vtkDataArray* jacobians = nullptr);
+    grid(vtkImageData* vtk_grid, vtkDataArray* data, vtkDataArray* jacobians = nullptr);
     grid(vtkStructuredGrid* vtk_grid, vtkDataArray* data, vtkDataArray* jacobians = nullptr);
     grid(const grid& grid, vtkDataArray* data);
 
@@ -30,6 +32,7 @@ public:
     Eigen::Matrix3d jacobian(const std::array<int, 3>& coords) const;
 
     const std::array<int, 3>& dimensions() const;
+    const Eigen::Vector3d& get_spacing() const;
     int components() const;
 
     std::array<int, 3> left(const std::array<int, 3>& coords) const;
