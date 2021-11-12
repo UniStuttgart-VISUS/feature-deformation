@@ -24,4 +24,4 @@ Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> gradient_least_squares(con
 Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> gradient(const grid& data,
     const std::array<int, 3>& coords, gradient_method_t method, int kernel_size);
 
-vtkSmartPointer<vtkDoubleArray> gradient_field(const grid& data, gradient_method_t method, int kernel_size);
+vtkSmartPointer<vtkDoubleArray> gradient_field(const grid& data, gradient_method_t method, int kernel_size = 1);

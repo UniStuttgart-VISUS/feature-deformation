@@ -133,10 +133,10 @@ void fix_curvature_gradient::compute_finite_differences(vtkImageData* original_g
     // Calculate initial gradient differences
     const grid original_vector_field(original_grid, vector_field_original_normalized);
 
-    auto original_curvature = curvature_and_torsion(original_vector_field, gradient_method_t::differences, 0);
+    auto original_curvature = curvature_and_torsion(original_vector_field, gradient_method_t::differences);
     original_curvature.curvature_gradient->SetName("Curvature Gradient (Original)");
 
-    auto deformed_curvature = curvature_and_torsion(grid(original_vector_field, vector_field), gradient_method_t::differences, 0);
+    auto deformed_curvature = curvature_and_torsion(grid(original_vector_field, vector_field), gradient_method_t::differences);
 
     // Calculate initial error
     vtkSmartPointer<vtkDoubleArray> errors;
@@ -217,7 +217,7 @@ int fix_curvature_gradient::solve(const grid& original_vector_field, vtkSmartPoi
         }
 
         // Compute derivatives of different fields
-        auto jacobian_of_vector_field = gradient_field(grid(original_vector_field, vector_field), gradient_method_t::differences, 0);
+        auto jacobian_of_vector_field = gradient_field(grid(original_vector_field, vector_field), gradient_method_t::differences);
 
         auto ux_uy = vtkSmartPointer<vtkDoubleArray>::New();
         ux_uy->SetNumberOfComponents(1);
@@ -252,11 +252,11 @@ int fix_curvature_gradient::solve(const grid& original_vector_field, vtkSmartPoi
             betas->SetValue(i, u(0) * jacobian(1, 1) - 2.0 * u(1) * jacobian(0, 1) - u(0) * jacobian(0, 0));
         }
 
-        auto gradients_ux_uy = gradient_field(grid(original_vector_field, ux_uy), gradient_method_t::differences, 0);
-        auto gradients_ux_sqr = gradient_field(grid(original_vector_field, ux_sqr), gradient_method_t::differences, 0);
-        auto gradients_uy_sqr = gradient_field(grid(original_vector_field, uy_sqr), gradient_method_t::differences, 0);
-        auto gradients_alpha = gradient_field(grid(original_vector_field, alphas), gradient_method_t::differences, 0);
-        auto gradients_beta = gradient_field(grid(original_vector_field, betas), gradient_method_t::differences, 0);
+        auto gradients_ux_uy = gradient_field(grid(original_vector_field, ux_uy), gradient_method_t::differences);
+        auto gradients_ux_sqr = gradient_field(grid(original_vector_field, ux_sqr), gradient_method_t::differences);
+        auto gradients_uy_sqr = gradient_field(grid(original_vector_field, uy_sqr), gradient_method_t::differences);
+        auto gradients_alpha = gradient_field(grid(original_vector_field, alphas), gradient_method_t::differences);
+        auto gradients_beta = gradient_field(grid(original_vector_field, betas), gradient_method_t::differences);
 
         // Create finite differences matrix
         Eigen::SparseMatrix<double> A;
@@ -521,7 +521,7 @@ int fix_curvature_gradient::solve(const grid& original_vector_field, vtkSmartPoi
         }
 
         // Prepare for next time step and output (intermediate) results
-        deformed_curvature = curvature_and_torsion(grid(original_vector_field, vector_field), gradient_method_t::differences, 0);
+        deformed_curvature = curvature_and_torsion(grid(original_vector_field, vector_field), gradient_method_t::differences);
 
         std::tie(errors, error_avg, error_max) = calculate_error_field(original_curvature, deformed_curvature);
 
