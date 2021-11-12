@@ -178,6 +178,7 @@ int fix_curvature_gradient::solve(const grid& original_vector_field, vtkSmartPoi
     // Grid information
     const bool twoD = original_vector_field.dimensions()[2] == 1;
     const auto h = original_vector_field.get_spacing()[0];
+    const auto num_dimensions = twoD ? 2 : 3;
     const auto& dimensions = original_vector_field.dimensions();
     const auto num_nodes = static_cast<std::size_t>(dimensions[0]) * dimensions[1] * dimensions[2];
 
@@ -198,9 +199,9 @@ int fix_curvature_gradient::solve(const grid& original_vector_field, vtkSmartPoi
     {
         // Create right hand side vector
         Eigen::VectorXd b;
-        b.resize((twoD ? 2 : 3) * num_nodes);
+        b.resize(num_dimensions * num_nodes);
 
-        for (int d = 0; d < (twoD ? 2 : 3); ++d)
+        for (int d = 0; d < num_dimensions; ++d)
         {
             for (int k = 0; k < dimensions[2]; ++k)
             {
@@ -259,7 +260,7 @@ int fix_curvature_gradient::solve(const grid& original_vector_field, vtkSmartPoi
 
         // Create finite differences matrix
         Eigen::SparseMatrix<double> A;
-        A.resize((twoD ? 2 : 3) * num_nodes, (twoD ? 2 : 3) * num_nodes);
+        A.resize(num_dimensions * num_nodes, num_dimensions * num_nodes);
 
         if (twoD)
         {
@@ -474,7 +475,7 @@ int fix_curvature_gradient::solve(const grid& original_vector_field, vtkSmartPoi
 
         auto residuals = vtkSmartPointer<vtkDoubleArray>::New();
         residuals->SetName("Residual");
-        residuals->SetNumberOfComponents(twoD ? 2 : 3);
+        residuals->SetNumberOfComponents(num_dimensions);
         residuals->SetNumberOfTuples(num_nodes);
 
         auto step_size = this->StepSize;
@@ -483,7 +484,7 @@ int fix_curvature_gradient::solve(const grid& original_vector_field, vtkSmartPoi
         {
             //auto length = 0.0;
 
-            for (int d = 0; d < (twoD ? 2 : 3); ++d)
+            for (int d = 0; d < num_dimensions; ++d)
             {
                 residuals->SetComponent(i, d, std::abs(residual_vector(i + d * num_nodes)));
 
@@ -502,7 +503,7 @@ int fix_curvature_gradient::solve(const grid& original_vector_field, vtkSmartPoi
         update->SetNumberOfTuples(num_nodes);
         update->Fill(0.0);
 
-        for (int d = 0; d < (twoD ? 2 : 3); ++d)
+        for (int d = 0; d < num_dimensions; ++d)
         {
             for (std::size_t i = 0; i < num_nodes; ++i)
             {
