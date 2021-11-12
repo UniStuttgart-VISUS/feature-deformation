@@ -45,6 +45,9 @@ private:
 
     void compute_finite_differences(vtkImageData* original_grid, vtkDataArray* vector_field_original, vtkDataArray* vector_field_deformed);
 
+    int solve(const grid& original_vector_field, vtkSmartPointer<vtkDoubleArray> vector_field,
+        const curvature_and_torsion_t& original_curvature, curvature_and_torsion_t deformed_curvature, double error_max);
+
     double calculate_error(int index, int index_block, const curvature_and_torsion_t& original_curvature,
         const curvature_and_torsion_t& deformed_curvature) const;
 

@@ -110,13 +110,6 @@ int fix_curvature_gradient::RequestData(vtkInformation*, vtkInformationVector** 
 void fix_curvature_gradient::compute_finite_differences(vtkImageData* original_grid,
     vtkDataArray* vector_field_original, vtkDataArray* vector_field_deformed)
 {
-    const auto num_nodes = original_grid->GetNumberOfPoints();
-
-    // Temporary variables
-    Eigen::Vector3d u;
-    Eigen::Matrix3d jacobian;
-    Eigen::Vector3d gradient_ux_uy, gradient_ux_sqr, gradient_uy_sqr, gradient_alpha, gradient_beta;
-
     // Normalize input fields
     auto vector_field_original_normalized = vtkSmartPointer<vtkDoubleArray>::New();
     vector_field_original_normalized->DeepCopy(vector_field_original);
@@ -124,7 +117,9 @@ void fix_curvature_gradient::compute_finite_differences(vtkImageData* original_g
     auto vector_field = vtkSmartPointer<vtkDoubleArray>::New();
     vector_field->DeepCopy(vector_field_deformed);
 
-    for (int i = 0; i < num_nodes; ++i)
+    Eigen::Vector3d u;
+
+    for (int i = 0; i < vector_field_original->GetNumberOfTuples(); ++i)
     {
         vector_field_original_normalized->GetTuple(i, u.data());
         u.normalize();
@@ -135,51 +130,13 @@ void fix_curvature_gradient::compute_finite_differences(vtkImageData* original_g
         vector_field->SetTuple(i, u.data());
     }
 
-    // Get input grid
+    // Calculate initial gradient differences
     const grid original_vector_field(original_grid, vector_field_original_normalized);
 
-    const bool twoD = original_vector_field.dimensions()[2] == 1;
-    const auto h = original_vector_field.get_spacing()[0];
-
-    auto get_index = [&original_vector_field](int i, int j, int k, int d) -> Eigen::Index
-        { return i + original_vector_field.dimensions()[0] * (j + original_vector_field.dimensions()[1]
-            * (k + original_vector_field.dimensions()[2] * static_cast<Eigen::Index>(d))); };
-
-    // Calculate initial gradient differences
     auto original_curvature = curvature_and_torsion(original_vector_field, gradient_method_t::differences, 0);
     original_curvature.curvature_gradient->SetName("Curvature Gradient (Original)");
 
-
-
-
-    //vector_field->DeepCopy(vector_field_original_normalized);
-
-    /*Eigen::Vector3d temp_vec{};
-
-    for (int k = 0; k < original_vector_field.dimensions()[2]; ++k)
-    {
-        for (int j = 0; j < original_vector_field.dimensions()[1]; ++j)
-        {
-            for (int i = 0; i < original_vector_field.dimensions()[0]; ++i)
-            {
-                vector_field->SetComponent(get_index(i, j, k, 0), 0, vector_field->GetComponent(get_index(i, j, k, 0), 0) + 1e-2);
-
-                vector_field->GetTuple(get_index(i, j, k, 0), u.data());
-                u.normalize();
-                vector_field->SetTuple(get_index(i, j, k, 0), u.data());
-            }
-        }
-    }*/
-
-    //vector_field->SetComponent(get_index(7, 5, 0, 0), 0, vector_field->GetComponent(get_index(7, 5, 0, 0), 0) + 0.01);
-    //vector_field->GetTuple(get_index(7, 5, 0, 0), u.data());
-    //u.normalize();
-    //vector_field->SetTuple(get_index(7, 5, 0, 0), u.data());
-
-
-
-
-    auto deformed_curvature = curvature_and_torsion(grid(original_grid, vector_field), gradient_method_t::differences, 0);
+    auto deformed_curvature = curvature_and_torsion(grid(original_vector_field, vector_field), gradient_method_t::differences, 0);
 
     // Calculate initial error
     vtkSmartPointer<vtkDoubleArray> errors;
@@ -200,8 +157,42 @@ void fix_curvature_gradient::compute_finite_differences(vtkImageData* original_g
         deformed_curvature.torsion_vector, deformed_curvature.torsion_gradient,
         original_curvature.curvature_gradient);
 
+    // Iteratively solve
+    const auto step = solve(original_vector_field, vector_field, original_curvature, deformed_curvature, error_max);
+
+    // If converged or stopped, later results stay the same
+    if (error_max <= this->Error)
+    {
+        for (std::size_t i = step + 1uLL; i <= this->NumSteps; ++i)
+        {
+            this->results[i] = this->results[step];
+        }
+
+        std::cout << "Optimization converged." << std::endl;
+    }
+}
+
+int fix_curvature_gradient::solve(const grid& original_vector_field, vtkSmartPointer<vtkDoubleArray> vector_field,
+    const curvature_and_torsion_t& original_curvature, curvature_and_torsion_t deformed_curvature, double error_max)
+{
+    // Grid information
+    const bool twoD = original_vector_field.dimensions()[2] == 1;
+    const auto h = original_vector_field.get_spacing()[0];
+    const auto& dimensions = original_vector_field.dimensions();
+    const auto num_nodes = static_cast<std::size_t>(dimensions[0]) * dimensions[1] * dimensions[2];
+
+    auto get_index = [&dimensions](int i, int j, int k, int d) -> Eigen::Index
+    { return i + dimensions[0] * (j + dimensions[1] * (k + dimensions[2] * static_cast<Eigen::Index>(d))); };
+
     // Iteratively solve finite differences Ax = b
     int step = 0;
+
+    Eigen::Vector3d u;
+    Eigen::Matrix3d jacobian;
+    Eigen::Vector3d gradient_ux_uy, gradient_ux_sqr, gradient_uy_sqr, gradient_alpha, gradient_beta;
+
+    vtkSmartPointer<vtkDoubleArray> errors;
+    double error_avg{};
 
     for (; step < this->NumSteps /* && error_max > this->Error*/; ++step)
     {
@@ -211,11 +202,11 @@ void fix_curvature_gradient::compute_finite_differences(vtkImageData* original_g
 
         for (int d = 0; d < (twoD ? 2 : 3); ++d)
         {
-            for (int k = 0; k < original_vector_field.dimensions()[2]; ++k)
+            for (int k = 0; k < dimensions[2]; ++k)
             {
-                for (int j = 0; j < original_vector_field.dimensions()[1]; ++j)
+                for (int j = 0; j < dimensions[1]; ++j)
                 {
-                    for (int i = 0; i < original_vector_field.dimensions()[0]; ++i)
+                    for (int i = 0; i < dimensions[0]; ++i)
                     {
                         b(get_index(i, j, k, d)) = original_curvature.curvature_gradient->GetComponent(get_index(i, j, k, 0), d)
                             - deformed_curvature.curvature_gradient->GetComponent(get_index(i, j, k, 0), d);
@@ -225,7 +216,7 @@ void fix_curvature_gradient::compute_finite_differences(vtkImageData* original_g
         }
 
         // Compute derivatives of different fields
-        auto jacobian_of_vector_field = gradient_field(grid(original_grid, vector_field), gradient_method_t::differences, 0);
+        auto jacobian_of_vector_field = gradient_field(grid(original_vector_field, vector_field), gradient_method_t::differences, 0);
 
         auto ux_uy = vtkSmartPointer<vtkDoubleArray>::New();
         ux_uy->SetNumberOfComponents(1);
@@ -247,7 +238,7 @@ void fix_curvature_gradient::compute_finite_differences(vtkImageData* original_g
         betas->SetNumberOfComponents(1);
         betas->SetNumberOfTuples(num_nodes);
 
-        for (int i = 0; i < num_nodes; ++i)
+        for (std::size_t i = 0; i < num_nodes; ++i)
         {
             vector_field->GetTuple(i, u.data());
             jacobian_of_vector_field->GetTuple(i, jacobian.data());
@@ -260,11 +251,11 @@ void fix_curvature_gradient::compute_finite_differences(vtkImageData* original_g
             betas->SetValue(i, u(0) * jacobian(1, 1) - 2.0 * u(1) * jacobian(0, 1) - u(0) * jacobian(0, 0));
         }
 
-        auto gradients_ux_uy = gradient_field(grid(original_grid, ux_uy), gradient_method_t::differences, 0);
-        auto gradients_ux_sqr = gradient_field(grid(original_grid, ux_sqr), gradient_method_t::differences, 0);
-        auto gradients_uy_sqr = gradient_field(grid(original_grid, uy_sqr), gradient_method_t::differences, 0);
-        auto gradients_alpha = gradient_field(grid(original_grid, alphas), gradient_method_t::differences, 0);
-        auto gradients_beta = gradient_field(grid(original_grid, betas), gradient_method_t::differences, 0);
+        auto gradients_ux_uy = gradient_field(grid(original_vector_field, ux_uy), gradient_method_t::differences, 0);
+        auto gradients_ux_sqr = gradient_field(grid(original_vector_field, ux_sqr), gradient_method_t::differences, 0);
+        auto gradients_uy_sqr = gradient_field(grid(original_vector_field, uy_sqr), gradient_method_t::differences, 0);
+        auto gradients_alpha = gradient_field(grid(original_vector_field, alphas), gradient_method_t::differences, 0);
+        auto gradients_beta = gradient_field(grid(original_vector_field, betas), gradient_method_t::differences, 0);
 
         // Create finite differences matrix
         Eigen::SparseMatrix<double> A;
@@ -272,18 +263,18 @@ void fix_curvature_gradient::compute_finite_differences(vtkImageData* original_g
 
         if (twoD)
         {
-            for (int j = 0; j < original_vector_field.dimensions()[1]; ++j)
+            for (int j = 0; j < dimensions[1]; ++j)
             {
-                for (int i = 0; i < original_vector_field.dimensions()[0]; ++i)
+                for (int i = 0; i < dimensions[0]; ++i)
                 {
                     // Position information
                     auto index = get_index(i, j, 0, 0);
 
                     const auto left = (i == 0);
-                    const auto right = (i == original_vector_field.dimensions()[0] - 1);
+                    const auto right = (i == dimensions[0] - 1);
 
                     const auto bottom = (j == 0);
-                    const auto top = (j == original_vector_field.dimensions()[1] - 1);
+                    const auto top = (j == dimensions[1] - 1);
 
                     // Get pre-computed field values
                     vector_field->GetTuple(index, u.data());
@@ -488,7 +479,7 @@ void fix_curvature_gradient::compute_finite_differences(vtkImageData* original_g
 
         auto step_size = this->StepSize;
 
-        for (int i = 0; i < num_nodes; ++i)
+        for (std::size_t i = 0; i < num_nodes; ++i)
         {
             //auto length = 0.0;
 
@@ -513,7 +504,7 @@ void fix_curvature_gradient::compute_finite_differences(vtkImageData* original_g
 
         for (int d = 0; d < (twoD ? 2 : 3); ++d)
         {
-            for (int i = 0; i < num_nodes; ++i)
+            for (std::size_t i = 0; i < num_nodes; ++i)
             {
                 update->SetComponent(i, d, x(i + d * num_nodes));
                 vector_field->SetComponent(i, d, vector_field->GetComponent(i, d) + step_size * x(i + d * num_nodes));
@@ -521,7 +512,7 @@ void fix_curvature_gradient::compute_finite_differences(vtkImageData* original_g
         }
 
         // Normalize vector field
-        for (int i = 0; i < num_nodes; ++i)
+        for (std::size_t i = 0; i < num_nodes; ++i)
         {
             vector_field->GetTuple(i, u.data());
             u.normalize();
@@ -529,12 +520,12 @@ void fix_curvature_gradient::compute_finite_differences(vtkImageData* original_g
         }
 
         // Prepare for next time step and output (intermediate) results
-        deformed_curvature = curvature_and_torsion(grid(original_grid, vector_field), gradient_method_t::differences, 0);
+        deformed_curvature = curvature_and_torsion(grid(original_vector_field, vector_field), gradient_method_t::differences, 0);
 
         std::tie(errors, error_avg, error_max) = calculate_error_field(original_curvature, deformed_curvature);
 
         this->results[step + 1uLL] = vtkSmartPointer<vtkImageData>::New();
-        this->results[step + 1uLL]->CopyStructure(original_grid);
+        this->results[step + 1uLL]->CopyStructure(this->results[0]);
 
         output_copy(this->results[step + 1uLL], vector_field, residuals,
             errors, deformed_curvature.curvature, deformed_curvature.curvature_vector,
@@ -543,16 +534,7 @@ void fix_curvature_gradient::compute_finite_differences(vtkImageData* original_g
             original_curvature.curvature_gradient, update);
     }
 
-    // If converged or stopped, later results stay the same
-    if (error_max <= this->Error)
-    {
-        for (std::size_t i = step + 1uLL; i <= this->NumSteps; ++i)
-        {
-            this->results[i] = this->results[step];
-        }
-
-        std::cout << "Optimization converged." << std::endl;
-    }
+    return step;
 }
 
 double fix_curvature_gradient::calculate_error(const int index, const int index_block,
