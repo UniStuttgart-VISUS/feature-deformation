@@ -115,7 +115,7 @@ curvature_and_torsion_t curvature_and_torsion(const grid& vector_field, const gr
                 const double tors = curv.norm() == 0.0 ? 0.0 : (curv.dot(second_derivative) / curv.squaredNorm());
                 const Eigen::Vector3d tors_vec = tors * curv.normalized();
 
-                curvature->SetValue(index, curv.norm() / std::pow(vector.norm(), 3.0));
+                curvature->SetValue(index, (dim_z == 1 ? curv[2] : curv.norm()) / std::pow(vector.norm(), 3.0));
                 curvature_vector->SetTuple(index, curv_vec.data());
 
                 torsion->SetValue(index, tors);
