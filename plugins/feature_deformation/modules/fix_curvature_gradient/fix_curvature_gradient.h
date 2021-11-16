@@ -30,6 +30,9 @@ public:
     vtkGetMacro(Error, double);
     vtkSetMacro(Error, double);
 
+    vtkGetMacro(DynamicStep, int);
+    vtkSetMacro(DynamicStep, int);
+
 protected:
     fix_curvature_gradient();
     ~fix_curvature_gradient();
@@ -72,6 +75,7 @@ private:
     int NumSteps;
     double StepSize;
     double Error;
+    int DynamicStep;
 
     std::uint32_t hash;
     std::vector<vtkSmartPointer<vtkImageData>> results;

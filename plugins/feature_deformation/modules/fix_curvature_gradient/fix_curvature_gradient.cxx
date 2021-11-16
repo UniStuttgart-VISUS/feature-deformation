@@ -86,7 +86,7 @@ int fix_curvature_gradient::RequestData(vtkInformation*, vtkInformationVector** 
         return 0;
     }
 
-    const auto hash = joaat_hash(this->NumSteps, this->StepSize, this->Error,
+    const auto hash = joaat_hash(this->NumSteps, this->StepSize, this->Error, this->DynamicStep,
         vector_field_original->GetMTime(), vector_field_deformed->GetMTime());
 
     if (hash != this->hash)
@@ -197,6 +197,8 @@ int fix_curvature_gradient::solve(const grid& original_vector_field, vtkSmartPoi
 
     for (; step < this->NumSteps /* && error_max > this->Error*/; ++step)
     {
+        std::cout << " Step: " << (step + 1) << "/" << this->NumSteps << std::endl;
+
         // Create right hand side vector
         Eigen::VectorXd b;
         b.resize(num_dimensions * num_nodes);
@@ -482,19 +484,25 @@ int fix_curvature_gradient::solve(const grid& original_vector_field, vtkSmartPoi
 
         for (std::size_t i = 0; i < num_nodes; ++i)
         {
-            //auto length = 0.0;
+            auto length = 0.0;
 
             for (int d = 0; d < num_dimensions; ++d)
             {
                 residuals->SetComponent(i, d, std::abs(residual_vector(i + d * num_nodes)));
 
-                //length += std::abs(vector_field->GetComponent(i, d) * x(i + d * num_nodes));
+                length += std::abs(vector_field->GetComponent(i, d) * x(i + d * num_nodes));
             }
 
-            //step_size = std::min(step_size, this->StepSize / (2.0 * length));
+            if (this->DynamicStep)
+            {
+                step_size = std::min(step_size, this->StepSize / (2.0 * length));
+            }
         }
 
-        std::cout << " Step size: " << step_size << std::endl;
+        if (this->DynamicStep)
+        {
+            std::cout << "  Step size: " << step_size << std::endl;
+        }
 
         // Update result
         auto update = vtkSmartPointer<vtkDoubleArray>::New();
