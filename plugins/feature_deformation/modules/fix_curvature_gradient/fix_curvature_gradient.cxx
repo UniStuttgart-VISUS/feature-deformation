@@ -211,8 +211,8 @@ int fix_curvature_gradient::solve(const grid& original_vector_field, vtkSmartPoi
                 {
                     for (int i = 0; i < dimensions[0]; ++i)
                     {
-                        b(get_index(i, j, k, d)) = original_curvature.curvature_gradient->GetComponent(get_index(i, j, k, 0), d)
-                            - deformed_curvature.curvature_gradient->GetComponent(get_index(i, j, k, 0), d);
+                        b(get_index(i, j, k, d)) = deformed_curvature.curvature_gradient->GetComponent(get_index(i, j, k, 0), d)
+                            - original_curvature.curvature_gradient->GetComponent(get_index(i, j, k, 0), d);
                     }
                 }
             }
@@ -515,8 +515,8 @@ int fix_curvature_gradient::solve(const grid& original_vector_field, vtkSmartPoi
         {
             for (std::size_t i = 0; i < num_nodes; ++i)
             {
-                update->SetComponent(i, d, x(i + d * num_nodes));
-                vector_field->SetComponent(i, d, vector_field->GetComponent(i, d) + step_size * x(i + d * num_nodes));
+                update->SetComponent(i, d, -x(i + d * num_nodes));
+                vector_field->SetComponent(i, d, vector_field->GetComponent(i, d) - step_size * x(i + d * num_nodes));
             }
         }
 
