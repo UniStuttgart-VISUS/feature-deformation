@@ -604,6 +604,12 @@
                     Error threshold to determine convergence.
                 </Documentation>
             </DoubleVectorProperty>
+            <IntVectorProperty name="DynamicStep" label="Dynamic step" command="SetDynamicStep" number_of_elements="1" default_values="0">
+                <BooleanDomain name="bool"/>
+                <Documentation>
+                    Calculate maximum step size to which the user-defined step size is relative to.
+                </Documentation>
+            </IntVectorProperty>
 
             <Hints>
                 <ShowInMenu category="VISUS Feature Deformation"/>
@@ -694,12 +700,7 @@
             </IntVectorProperty>
             <DoubleVectorProperty name="StepSize" label="Step size" command="SetStepSize" number_of_elements="1" default_values="0.1">
                 <Hints>
-                    <PropertyWidgetDecorator type="CompositeDecorator">
-                        <Expression type="or">
-                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="StepSizeControl" value="1" />
-                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Method" value="2" />
-                        </Expression>
-                    </PropertyWidgetDecorator>
+                    <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="StepSizeControl" value="1" />
                 </Hints>
                 <Documentation>
                     Step size for each iteration.
@@ -711,14 +712,6 @@
                     <Entry value="1" text="Gradient norm"/>
                     <Entry value="2" text="Local error"/>
                 </EnumerationDomain>
-                <Hints>
-                    <PropertyWidgetDecorator type="CompositeDecorator">
-                        <Expression type="or">
-                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Method" value="0" />
-                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Method" value="1" />
-                        </Expression>
-                    </PropertyWidgetDecorator>
-                </Hints>
                 <Documentation>
                     Method of calculating the step size.
                 </Documentation>
@@ -728,14 +721,6 @@
                     <Entry value="0" text="Dynamic"/>
                     <Entry value="1" text="Fixed"/>
                 </EnumerationDomain>
-                <Hints>
-                    <PropertyWidgetDecorator type="CompositeDecorator">
-                        <Expression type="or">
-                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Method" value="0" />
-                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Method" value="1" />
-                        </Expression>
-                    </PropertyWidgetDecorator>
-                </Hints>
                 <Documentation>
                     Dynamically adjust step size or keep it static.
                 </Documentation>
@@ -748,17 +733,7 @@
 
             <DoubleVectorProperty name="StepSizeMin" label="Minimum step size" command="SetStepSizeMin" number_of_elements="1" default_values="1e-10">
                 <Hints>
-                    <PropertyWidgetDecorator type="CompositeDecorator">
-                        <Expression type="and">
-                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="StepSizeControl" value="0" />
-                            <PropertyWidgetDecorator type="CompositeDecorator">
-                                <Expression type="or">
-                                    <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Method" value="0" />
-                                    <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Method" value="1" />
-                                </Expression>
-                            </PropertyWidgetDecorator>
-                        </Expression>
-                    </PropertyWidgetDecorator>
+                    <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="StepSizeControl" value="0" />
                 </Hints>
                 <Documentation>
                     Minimum step size for dynamic step size control using line search.
@@ -766,17 +741,7 @@
             </DoubleVectorProperty>
             <DoubleVectorProperty name="StepSizeMax" label="Maximum step size" command="SetStepSizeMax" number_of_elements="1" default_values="1e2">
                 <Hints>
-                    <PropertyWidgetDecorator type="CompositeDecorator">
-                        <Expression type="and">
-                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="StepSizeControl" value="0" />
-                            <PropertyWidgetDecorator type="CompositeDecorator">
-                                <Expression type="or">
-                                    <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Method" value="0" />
-                                    <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Method" value="1" />
-                                </Expression>
-                            </PropertyWidgetDecorator>
-                        </Expression>
-                    </PropertyWidgetDecorator>
+                    <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="StepSizeControl" value="0" />
                 </Hints>
                 <Documentation>
                     Maximum step size for dynamic step size control using line search.
@@ -784,17 +749,7 @@
             </DoubleVectorProperty>
             <IntVectorProperty name="LineSearchSteps" label="Number of line search steps" command="SetLineSearchSteps" number_of_elements="1" default_values="6">
                 <Hints>
-                    <PropertyWidgetDecorator type="CompositeDecorator">
-                        <Expression type="and">
-                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="StepSizeControl" value="0" />
-                            <PropertyWidgetDecorator type="CompositeDecorator">
-                                <Expression type="or">
-                                    <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Method" value="0" />
-                                    <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Method" value="1" />
-                                </Expression>
-                            </PropertyWidgetDecorator>
-                        </Expression>
-                    </PropertyWidgetDecorator>
+                    <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="StepSizeControl" value="0" />
                 </Hints>
                 <Documentation>
                     Number of line search steps used for determining the dynamic step size.
@@ -806,45 +761,19 @@
                     <Entry value="0" text="Differences"/>
                     <Entry value="1" text="Least squares"/>
                 </EnumerationDomain>
-                <Hints>
-                    <PropertyWidgetDecorator type="CompositeDecorator">
-                        <Expression type="or">
-                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Method" value="0" />
-                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Method" value="1" />
-                        </Expression>
-                    </PropertyWidgetDecorator>
-                </Hints>
                 <Documentation>
                     Method for (smooth) gradient computation.
                 </Documentation>
             </IntVectorProperty>
             <IntVectorProperty name="GradientKernel" label="Gradient kernel" command="SetGradientKernel" number_of_elements="1" default_values="1" panel_visibility="advanced">
                 <Hints>
-                    <PropertyWidgetDecorator type="CompositeDecorator">
-                        <Expression type="and">
-                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="GradientMethod" value="1" />
-                            <PropertyWidgetDecorator type="CompositeDecorator">
-                                <Expression type="or">
-                                    <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Method" value="0" />
-                                    <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Method" value="1" />
-                                </Expression>
-                            </PropertyWidgetDecorator>
-                        </Expression>
-                    </PropertyWidgetDecorator>
+                    <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="GradientMethod" value="1" />
                 </Hints>
                 <Documentation>
                     Kernel size for (smooth) gradient computation.
                 </Documentation>
             </IntVectorProperty>
             <DoubleVectorProperty name="GradientStep" label="Step size for gradient calculation" command="SetGradientStep" number_of_elements="1" default_values="1e-6" panel_visibility="advanced">
-                <Hints>
-                    <PropertyWidgetDecorator type="CompositeDecorator">
-                        <Expression type="or">
-                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Method" value="0" />
-                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Method" value="1" />
-                        </Expression>
-                    </PropertyWidgetDecorator>
-                </Hints>
                 <Documentation>
                     Step size h for gradient calculation.
                 </Documentation>
@@ -852,17 +781,7 @@
             <IntVectorProperty name="CheckWolfe" label="Check Wolfe conditions" command="SetCheckWolfe" number_of_elements="1" default_values="0" panel_visibility="advanced">
                 <BooleanDomain name="bool"/>
                 <Hints>
-                    <PropertyWidgetDecorator type="CompositeDecorator">
-                        <Expression type="and">
-                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="StepSizeControl" value="0" />
-                            <PropertyWidgetDecorator type="CompositeDecorator">
-                                <Expression type="or">
-                                    <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Method" value="0" />
-                                    <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Method" value="1" />
-                                </Expression>
-                            </PropertyWidgetDecorator>
-                        </Expression>
-                    </PropertyWidgetDecorator>
+                    <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="StepSizeControl" value="0" />
                 </Hints>
                 <Documentation>
                     Check Wolfe conditions for step sizes (outputs information only, no filtering).
@@ -871,14 +790,6 @@
 
             <IntVectorProperty name="CSVOutput" label="Output CSV" command="SetCSVOutput" number_of_elements="1" default_values="0" panel_visibility="advanced">
                 <BooleanDomain name="bool"/>
-                <Hints>
-                    <PropertyWidgetDecorator type="CompositeDecorator">
-                        <Expression type="or">
-                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Method" value="0" />
-                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Method" value="1" />
-                        </Expression>
-                    </PropertyWidgetDecorator>
-                </Hints>
                 <Documentation>
                     Output error information in CSV format to stdout (general information) and stderr (all errors).
                 </Documentation>
