@@ -109,17 +109,33 @@ curvature_and_torsion_t curvature_and_torsion(const grid& vector_field, const gr
                 first_derivatives->GetTuple(index, first_derivative.data());
                 second_derivatives->GetTuple(index, second_derivative.data());
 
-                const Eigen::Vector3d curv = vector.cross(first_derivative);
-                const Eigen::Vector3d curv_vec = (curv.norm() / std::pow(vector.norm(), 3.0)) * curv.cross(vector).normalized();
+                if (dim_z == 1)
+                {
+                    const double curv = vector.cross(first_derivative)[2] / std::pow(vector.norm(), 3.0);
+                    const Eigen::Vector3d curv_vec = curv * Eigen::Vector3d(-vector[1], vector[0], 0.0).normalized();
 
-                const double tors = curv.norm() == 0.0 ? 0.0 : (curv.dot(second_derivative) / curv.squaredNorm());
-                const Eigen::Vector3d tors_vec = tors * curv.normalized();
+                    curvature->SetValue(index, curv);
+                    curvature_vector->SetTuple(index, curv_vec.data());
 
-                curvature->SetValue(index, (dim_z == 1 ? curv[2] : curv.norm()) / std::pow(vector.norm(), 3.0));
-                curvature_vector->SetTuple(index, curv_vec.data());
+                    torsion->SetValue(index, 0.0);
+                    torsion_vector->SetTuple3(index, 0.0, 0.0, 0.0);
+                }
+                else
+                {
+                    const auto cross = vector.cross(first_derivative);
 
-                torsion->SetValue(index, tors);
-                torsion_vector->SetTuple(index, tors_vec.data());
+                    const double curv = cross.norm() / std::pow(vector.norm(), 3.0);
+                    const Eigen::Vector3d curv_vec = curv * first_derivative.cross(second_derivative.cross(first_derivative)).normalized();
+
+                    curvature->SetValue(index, curv);
+                    curvature_vector->SetTuple(index, curv_vec.data());
+
+                    const double tors = (curv == 0.0) ? 0.0 : (cross.dot(second_derivative) / cross.squaredNorm());
+                    const Eigen::Vector3d tors_vec = tors * cross.normalized();
+
+                    torsion->SetValue(index, tors);
+                    torsion_vector->SetTuple(index, tors_vec.data());
+                }
 
                 ++index;
             }
