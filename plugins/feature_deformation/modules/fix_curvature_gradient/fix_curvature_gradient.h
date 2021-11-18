@@ -51,10 +51,10 @@ private:
     int solve(const grid& original_vector_field, vtkSmartPointer<vtkDoubleArray> vector_field,
         const curvature_and_torsion_t& original_curvature, curvature_and_torsion_t deformed_curvature, double error_max);
 
-    double calculate_error(int index, int index_block, const curvature_and_torsion_t& original_curvature,
+    Eigen::Matrix3d calculate_error(int index, int index_block, const curvature_and_torsion_t& original_curvature,
         const curvature_and_torsion_t& deformed_curvature) const;
 
-    std::tuple<vtkSmartPointer<vtkDoubleArray>, double, double> calculate_error_field(
+    std::tuple<vtkSmartPointer<vtkDoubleArray>, vtkSmartPointer<vtkDoubleArray>, double, double> calculate_error_field(
         const curvature_and_torsion_t& original_curvature, const curvature_and_torsion_t& deformed_curvature) const;
 
     inline void output_copy(vtkImageData* grid, vtkDataArray* field) const
