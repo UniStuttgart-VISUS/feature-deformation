@@ -144,15 +144,31 @@ curvature_and_torsion_t curvature_and_torsion(const grid& vector_field, const gr
 
     // Compute curvature and torsion gradients
     const grid curvature_grid(vector_field, curvature);
+    const grid curvature_vector_grid(vector_field, curvature_vector);
     const grid torsion_grid(vector_field, torsion);
+    const grid torsion_vector_grid(vector_field, torsion_vector);
 
     auto curvature_gradient = gradient_field(curvature_grid, method, kernel_size);
+    auto curvature_vector_gradient = gradient_field(curvature_vector_grid, method, kernel_size);
     auto torsion_gradient = gradient_field(torsion_grid, method, kernel_size);
+    auto torsion_vector_gradient = gradient_field(torsion_vector_grid, method, kernel_size);
 
     curvature_gradient->SetName("Curvature Gradient");
+    curvature_vector_gradient->SetName("Curvature Vector Gradient");
     torsion_gradient->SetName("Torsion Gradient");
+    torsion_vector_gradient->SetName("Torsion Vector Gradient");
 
-    return curvature_and_torsion_t{ first_derivatives, second_derivatives,
-        curvature, curvature_vector, curvature_gradient,
-        torsion, torsion_vector, torsion_gradient };
+    curvature_and_torsion_t ret;
+    ret.first_derivative = first_derivatives;
+    ret.second_derivative = second_derivatives;
+    ret.curvature = curvature;
+    ret.curvature_vector = curvature_vector;
+    ret.curvature_gradient = curvature_gradient;
+    ret.curvature_vector_gradient = curvature_vector_gradient;
+    ret.torsion = torsion;
+    ret.torsion_vector = torsion_vector;
+    ret.torsion_gradient = torsion_gradient;
+    ret.torsion_vector_gradient = torsion_vector_gradient;
+
+    return ret;
 }
