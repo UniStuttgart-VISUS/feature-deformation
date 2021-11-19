@@ -686,7 +686,6 @@
                 <EnumerationDomain name="enum">
                     <Entry value="0" text="Gradient descent"/>
                     <Entry value="1" text="Nonlinear conjugate gradient"/>
-                    <Entry value="2" text="Finite differences"/>
                 </EnumerationDomain>
                 <Documentation>
                     Method for calculating the descent direction.
@@ -778,16 +777,7 @@
                     Step size h for gradient calculation.
                 </Documentation>
             </DoubleVectorProperty>
-            <IntVectorProperty name="CheckWolfe" label="Check Wolfe conditions" command="SetCheckWolfe" number_of_elements="1" default_values="0" panel_visibility="advanced">
-                <BooleanDomain name="bool"/>
-                <Hints>
-                    <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="StepSizeControl" value="0" />
-                </Hints>
-                <Documentation>
-                    Check Wolfe conditions for step sizes (outputs information only, no filtering).
-                </Documentation>
-            </IntVectorProperty>
-
+            
             <IntVectorProperty name="CSVOutput" label="Output CSV" command="SetCSVOutput" number_of_elements="1" default_values="0" panel_visibility="advanced">
                 <BooleanDomain name="bool"/>
                 <Documentation>
@@ -819,7 +809,6 @@
                 <Property name="GradientMethod" />
                 <Property name="GradientKernel" />
                 <Property name="GradientStep" />
-                <Property name="CheckWolfe" />
             </PropertyGroup>
 
             <PropertyGroup label="Output">
