@@ -97,10 +97,12 @@ int optimizer::RequestData(vtkInformation*, vtkInformationVector** input_vector,
         return 0;
     }
 
-    const auto hash = joaat_hash(this->ErrorDefinition, this->Method, this->NumSteps, this->StepSize,
+    const auto hash = joaat_hash(this->Method, this->IgnoreBorder, this->NumSteps, this->StepSize,
         this-StepSizeMethod, this->StepSizeControl, this->Error, this->StepSizeMin, this->StepSizeMax,
         this->LineSearchSteps, this->GradientMethod, this->GradientKernel, this->GradientStep,
         vector_field_original->GetMTime(), deformed_grid->GetMTime());
+
+    this->IgnoreBorder = std::max(this->IgnoreBorder, 0);
 
     if (hash != this->hash)
     {
@@ -187,8 +189,7 @@ void optimizer::compute_gradient_descent(vtkStructuredGrid* original_grid, vtkSt
     int min_error_avg_step, min_error_max_step;
 
     std::tie(errors, error_avg, error_max)
-        = calculate_error_field(original_curvature, deformed_curvature, jacobian_field,
-            static_cast<error_definition_t>(this->ErrorDefinition));
+        = calculate_error_field(original_curvature, deformed_curvature, jacobian_field);
 
     const auto original_error_avg = min_error_avg = error_avg;
     const auto original_error_max = min_error_max = error_max;
@@ -400,9 +401,7 @@ void optimizer::compute_gradient_descent(vtkStructuredGrid* original_grid, vtkSt
             deformed_curvature = curvature_and_torsion(new_deformed_vector_field,
                 static_cast<gradient_method_t>(this->GradientMethod), this->GradientKernel);
 
-            std::tie(new_errors, new_error_avg, new_error_max)
-                = calculate_error_field(original_curvature, deformed_curvature, jacobian_field,
-                    static_cast<error_definition_t>(this->ErrorDefinition));
+            std::tie(new_errors, new_error_avg, new_error_max) = calculate_error_field(original_curvature, deformed_curvature, jacobian_field);
 
             // Store errors for dynamic step size control
             if (step_size_control == step_size_control_t::dynamic && line_search_step < max_line_search_steps)
@@ -735,31 +734,39 @@ std::pair<vtkSmartPointer<vtkDoubleArray>, vtkSmartPointer<vtkDoubleArray>> opti
                         const auto index_zz = zz + (twoD ? 0 : block_offsets[2][0]);
                         const auto index_z = z + zz;
 
-                        for (int yy = -std::min(block_inner_offset, block_offsets[1][0]);
-                            yy <= std::min(block_inner_offset, block_offsets[1][1]); ++yy)
+                        if (twoD || (index_z >= this->IgnoreBorder && index_z < dimension[2] - this->IgnoreBorder))
                         {
-                            const auto index_yy = yy + block_offsets[1][0];
-                            const auto index_y = y + yy;
-
-                            for (int xx = -std::min(block_inner_offset, block_offsets[0][0]);
-                                xx <= std::min(block_inner_offset, block_offsets[0][1]); ++xx)
+                            for (int yy = -std::min(block_inner_offset, block_offsets[1][0]);
+                                yy <= std::min(block_inner_offset, block_offsets[1][1]); ++yy)
                             {
-                                const auto index_xx = xx + block_offsets[0][0];
-                                const auto index_x = x + xx;
+                                const auto index_yy = yy + block_offsets[1][0];
+                                const auto index_y = y + yy;
 
-                                const auto index_block = index_xx + block_sizes[0] * (index_yy + block_sizes[1] * index_zz);
-                                const auto index_orig = index_x + dimension[0] * (index_y + dimension[1] * index_z);
-
-                                if (const_cast<vtkDataArray*>(errors)->GetComponent(index_orig, 0) > this->Error)
+                                if (index_y >= this->IgnoreBorder && index_y < dimension[1] - this->IgnoreBorder)
                                 {
-                                    const auto error = calculate_error(index_orig, index_block, original_curvature, curvature, jacobians,
-                                        static_cast<error_definition_t>(this->ErrorDefinition));
+                                    for (int xx = -std::min(block_inner_offset, block_offsets[0][0]);
+                                        xx <= std::min(block_inner_offset, block_offsets[0][1]); ++xx)
+                                    {
+                                        const auto index_xx = xx + block_offsets[0][0];
+                                        const auto index_x = x + xx;
 
-                                    const auto gradient = (error
-                                        - const_cast<vtkDataArray*>(errors)->GetComponent(index_orig, 0)) / infinitesimal_steps[d];
+                                        if (index_x >= this->IgnoreBorder && index_x < dimension[0] - this->IgnoreBorder)
+                                        {
+                                            const auto index_block = index_xx + block_sizes[0] * (index_yy + block_sizes[1] * index_zz);
+                                            const auto index_orig = index_x + dimension[0] * (index_y + dimension[1] * index_z);
 
-                                    gradient_descent->SetComponent(index_center, d,
-                                        gradient_descent->GetComponent(index_center, d) - gradient / num_block_nodes);
+                                            if (const_cast<vtkDataArray*>(errors)->GetComponent(index_orig, 0) > this->Error)
+                                            {
+                                                const auto error = calculate_error(index_orig, index_block, original_curvature, curvature, jacobians);
+
+                                                const auto gradient = (error
+                                                    - const_cast<vtkDataArray*>(errors)->GetComponent(index_orig, 0)) / infinitesimal_steps[d];
+
+                                                gradient_descent->SetComponent(index_center, d,
+                                                    gradient_descent->GetComponent(index_center, d) - gradient / num_block_nodes);
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -903,7 +910,7 @@ std::pair<vtkSmartPointer<vtkDoubleArray>, vtkSmartPointer<vtkDoubleArray>> opti
 }
 
 double optimizer::calculate_error(const int index, const int index_block, const curvature_and_torsion_t& original_curvature,
-    const curvature_and_torsion_t& deformed_curvature, const vtkDataArray* jacobian_field, const error_definition_t error_definition) const
+    const curvature_and_torsion_t& deformed_curvature, const vtkDataArray* jacobian_field) const
 {
     Eigen::Matrix3d original_gradient, deformed_gradient, jacobian;
     jacobian.setIdentity();
@@ -918,21 +925,12 @@ double optimizer::calculate_error(const int index, const int index_block, const 
 
     deformed_gradient = jacobian.inverse() * deformed_gradient;
 
-    switch (error_definition)
-    {
-    case error_definition_t::vector_difference:
-        return (deformed_gradient - original_gradient).norm();
-
-        break;
-    default:
-        std::cerr << "Unknown error definition." << std::endl;
-        return 0.0;
-    }
+    return (deformed_gradient - original_gradient).norm();
 }
 
 std::tuple<vtkSmartPointer<vtkDoubleArray>, double, double> optimizer::calculate_error_field(
     const curvature_and_torsion_t& original_curvature, const curvature_and_torsion_t& deformed_curvature,
-    const vtkDataArray* jacobian_field, const error_definition_t error_definition) const
+    const vtkDataArray* jacobian_field) const
 {
     auto errors = vtkSmartPointer<vtkDoubleArray>::New();
     errors->SetName("Error");
@@ -944,7 +942,7 @@ std::tuple<vtkSmartPointer<vtkDoubleArray>, double, double> optimizer::calculate
 
     for (vtkIdType i = 0; i < original_curvature.curvature_vector_gradient->GetNumberOfTuples(); ++i)
     {
-        const auto error = calculate_error(i, i, original_curvature, deformed_curvature, jacobian_field, error_definition);
+        const auto error = calculate_error(i, i, original_curvature, deformed_curvature, jacobian_field);
 
         errors->SetValue(i, error);
 

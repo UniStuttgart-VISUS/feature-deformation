@@ -664,24 +664,6 @@
                     Vector field for which curvature and torsion is computed.
                 </Documentation>
             </StringVectorProperty>
-            <IntVectorProperty name="ErrorDefinition" label="Error definition" command="SetErrorDefinition" number_of_elements="1" default_values="0">
-                <EnumerationDomain name="enum">
-                    <Entry value="0" text="Vector difference"/>
-                    <Entry value="1" text="Angle"/>
-                    <Entry value="2" text="Length difference"/>
-                </EnumerationDomain>
-                <Hints>
-                    <PropertyWidgetDecorator type="CompositeDecorator">
-                        <Expression type="or">
-                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Method" value="0" />
-                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Method" value="1" />
-                        </Expression>
-                    </PropertyWidgetDecorator>
-                </Hints>
-                <Documentation>
-                    Definition for calculating the error.
-                </Documentation>
-            </IntVectorProperty>
             <IntVectorProperty name="Method" label="Method" command="SetMethod" number_of_elements="1" default_values="2">
                 <EnumerationDomain name="enum">
                     <Entry value="0" text="Gradient descent"/>
@@ -689,6 +671,11 @@
                 </EnumerationDomain>
                 <Documentation>
                     Method for calculating the descent direction.
+                </Documentation>
+            </IntVectorProperty>
+            <IntVectorProperty name="IgnoreBorder" label="Ignore border" command="SetIgnoreBorder" number_of_elements="1" default_values="0">
+                <Documentation>
+                    Ignore (multiple) border layers when calculating error for gradient descent computation.
                 </Documentation>
             </IntVectorProperty>
             
@@ -787,8 +774,8 @@
 
             <PropertyGroup label="Input">
                 <Property name="OriginalVectors" />
-                <Property name="ErrorDefinition" />
                 <Property name="Method" />
+                <Property name="IgnoreBorder" />
             </PropertyGroup>
 
             <PropertyGroup label="Step size">
@@ -805,7 +792,7 @@
                 <Property name="LineSearchSteps" />
             </PropertyGroup>
 
-            <PropertyGroup label="Advanced options">
+            <PropertyGroup label="Gradients">
                 <Property name="GradientMethod" />
                 <Property name="GradientKernel" />
                 <Property name="GradientStep" />

@@ -23,11 +23,11 @@ public:
     static optimizer* New();
     vtkTypeMacro(optimizer, vtkStructuredGridAlgorithm);
 
-    vtkGetMacro(ErrorDefinition, int);
-    vtkSetMacro(ErrorDefinition, int);
-
     vtkGetMacro(Method, int);
     vtkSetMacro(Method, int);
+
+    vtkGetMacro(IgnoreBorder, int);
+    vtkSetMacro(IgnoreBorder, int);
 
     vtkGetMacro(NumSteps, int);
     vtkSetMacro(NumSteps, int);
@@ -78,11 +78,6 @@ private:
     optimizer(const optimizer&);
     void operator=(const optimizer&);
 
-    enum class error_definition_t
-    {
-        vector_difference, angle, length_difference
-    };
-
     enum class method_t
     {
         gradient, nonlinear_conjugate
@@ -119,12 +114,11 @@ private:
         const vtkDataArray* errors, const vtkDataArray* gradient_descent) const;
 
     double calculate_error(int index, int index_block, const curvature_and_torsion_t& original_curvature,
-        const curvature_and_torsion_t& deformed_curvature, const vtkDataArray* jacobian_field,
-        error_definition_t error_definition) const;
+        const curvature_and_torsion_t& deformed_curvature, const vtkDataArray* jacobian_field) const;
 
     std::tuple<vtkSmartPointer<vtkDoubleArray>, double, double> calculate_error_field(
         const curvature_and_torsion_t& original_curvature, const curvature_and_torsion_t& deformed_curvature,
-        const vtkDataArray* jacobian_field, error_definition_t error_definition) const;
+        const vtkDataArray* jacobian_field) const;
 
     vtkSmartPointer<vtkStructuredGrid> create_output(const std::array<int, 3>& dimension, const vtkDoubleArray* positions) const;
 
@@ -143,8 +137,8 @@ private:
         output_copy(grid, fields...);
     }
 
-    int ErrorDefinition;
     int Method;
+    int IgnoreBorder;
 
     int NumSteps;
     double StepSize;
