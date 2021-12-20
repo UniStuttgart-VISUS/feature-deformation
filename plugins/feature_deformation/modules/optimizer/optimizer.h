@@ -23,9 +23,6 @@ public:
     static optimizer* New();
     vtkTypeMacro(optimizer, vtkStructuredGridAlgorithm);
 
-    vtkGetMacro(Method, int);
-    vtkSetMacro(Method, int);
-
     vtkGetMacro(IgnoreBorder, int);
     vtkSetMacro(IgnoreBorder, int);
 
@@ -38,20 +35,11 @@ public:
     vtkGetMacro(StepSizeMethod, int);
     vtkSetMacro(StepSizeMethod, int);
 
-    vtkGetMacro(StepSizeControl, int);
-    vtkSetMacro(StepSizeControl, int);
-
     vtkGetMacro(Error, double);
     vtkSetMacro(Error, double);
 
-    vtkGetMacro(StepSizeMin, double);
-    vtkSetMacro(StepSizeMin, double);
-
-    vtkGetMacro(StepSizeMax, double);
-    vtkSetMacro(StepSizeMax, double);
-
-    vtkGetMacro(LineSearchSteps, double);
-    vtkSetMacro(LineSearchSteps, double);
+    vtkGetMacro(AbortWhenGrowing, int);
+    vtkSetMacro(AbortWhenGrowing, int);
 
     vtkGetMacro(GradientMethod, int);
     vtkSetMacro(GradientMethod, int);
@@ -78,11 +66,6 @@ private:
     optimizer(const optimizer&);
     void operator=(const optimizer&);
 
-    enum class method_t
-    {
-        gradient, nonlinear_conjugate
-    };
-
     enum class step_size_method_t
     {
         normalized, norm, error
@@ -101,33 +84,55 @@ private:
     };
 
     void compute_gradient_descent(vtkStructuredGrid* original_grid, vtkStructuredGrid* deformed_grid,
-        vtkDataArray* vector_field_original);
+        vtkDataArray* vector_field_original, vtkDataArray* original_feature_mapping, vtkDataArray* feature_mapping);
 
     std::pair<vtkSmartPointer<vtkDoubleArray>, vtkSmartPointer<vtkDoubleArray>> compute_descent(
-        const std::array<int, 3>& dimension, const vtkStructuredGrid* original_grid,
-        const vtkDataArray* vector_field_original, const vtkDataArray* positions,
-        const vtkDataArray* errors, const curvature_and_torsion_t& original_curvature,
-        const vtkDataArray* previous_gradient_descent) const;
+        const std::array<int, 3>& dimension, const vtkStructuredGrid* original_grid,  const vtkDataArray* vector_field_original,
+        const vtkDataArray* positions, const vtkDataArray* errors, const curvature_and_torsion_t& original_curvature,
+        vtkDoubleArray* derivative_direction) const;
 
     std::pair<vtkSmartPointer<vtkDoubleArray>, vtkSmartPointer<vtkDoubleArray>> apply_descent(
         const std::array<int, 3>& dimension, double step_size, const vtkDataArray* positions,
         const vtkDataArray* errors, const vtkDataArray* gradient_descent) const;
 
     double calculate_error(int index, int index_block, const curvature_and_torsion_t& original_curvature,
-        const curvature_and_torsion_t& deformed_curvature, const vtkDataArray* jacobian_field) const;
+        const curvature_and_torsion_t& deformed_curvature, const vtkDataArray* jacobian_field, bool directional) const;
 
     std::tuple<vtkSmartPointer<vtkDoubleArray>, double, double> calculate_error_field(
         const curvature_and_torsion_t& original_curvature, const curvature_and_torsion_t& deformed_curvature,
-        const vtkDataArray* jacobian_field) const;
+        const vtkDataArray* jacobian_field, bool directional) const;
 
     vtkSmartPointer<vtkStructuredGrid> create_output(const std::array<int, 3>& dimension, const vtkDoubleArray* positions) const;
 
+    void output_info(double original_error_avg, double original_error_max, double error_avg, double error_max,
+        double min_error_avg, double min_error_max, int min_error_avg_step, int min_error_max_step,
+        const std::vector<double>& errors_avg, const std::vector<double>& errors_max) const;
+
     inline void output_copy(vtkStructuredGrid* grid, vtkDataArray* field) const
     {
-        auto field_out = vtkSmartPointer<vtkDoubleArray>::New();
-        field_out->DeepCopy(field);
+        if (field != nullptr)
+        {
+            auto field_out = vtkSmartPointer<vtkDoubleArray>::New();
+            field_out->DeepCopy(field);
 
-        grid->GetPointData()->AddArray(field_out);
+            grid->GetPointData()->AddArray(field_out);
+        }
+    }
+
+    inline void output_copy(vtkStructuredGrid* grid, const curvature_and_torsion_t& field) const
+    {
+        output_copy(grid, field.first_derivative);
+        output_copy(grid, field.second_derivative);
+        output_copy(grid, field.curvature);
+        output_copy(grid, field.curvature_vector);
+        output_copy(grid, field.curvature_gradient);
+        output_copy(grid, field.curvature_vector_gradient);
+        output_copy(grid, field.curvature_directional_gradient);
+        output_copy(grid, field.torsion);
+        output_copy(grid, field.torsion_vector);
+        output_copy(grid, field.torsion_gradient);
+        output_copy(grid, field.torsion_vector_gradient);
+        output_copy(grid, field.torsion_directional_gradient);
     }
 
     template <typename... T>
@@ -137,18 +142,20 @@ private:
         output_copy(grid, fields...);
     }
 
-    int Method;
+    template <typename... T>
+    inline void output_copy(vtkStructuredGrid* grid, const curvature_and_torsion_t& field, T... fields) const
+    {
+        output_copy(grid, field);
+        output_copy(grid, fields...);
+    }
+
     int IgnoreBorder;
 
     int NumSteps;
     double StepSize;
     int StepSizeMethod;
-    int StepSizeControl;
     double Error;
-
-    double StepSizeMin;
-    double StepSizeMax;
-    int LineSearchSteps;
+    int AbortWhenGrowing;
 
     int GradientMethod;
     int GradientKernel;

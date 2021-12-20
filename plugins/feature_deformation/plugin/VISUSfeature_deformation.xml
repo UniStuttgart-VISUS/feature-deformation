@@ -637,6 +637,7 @@
                     <DataType value="vtkStructuredGrid"/>
                 </DataTypeDomain>
                 <InputArrayDomain attribute_type="point" name="vector_original_array" number_of_components="3"/>
+                <InputArrayDomain attribute_type="point" name="feature_map_array" number_of_components="3" optional="1"/>
                 <Documentation>
                     Original grid containing gradient information.
                 </Documentation>
@@ -664,15 +665,32 @@
                     Vector field for which curvature and torsion is computed.
                 </Documentation>
             </StringVectorProperty>
-            <IntVectorProperty name="Method" label="Method" command="SetMethod" number_of_elements="1" default_values="2">
-                <EnumerationDomain name="enum">
-                    <Entry value="0" text="Gradient descent"/>
-                    <Entry value="1" text="Nonlinear conjugate gradient"/>
-                </EnumerationDomain>
+            <StringVectorProperty name="FeatureMapping" label="Feature mapping" command="SetInputArrayToProcess" number_of_elements="5" element_types="0 0 0 0 2" animateable="0" default_values="1">
+                <ArrayListDomain name="array_list" attribute_type="Vectors" input_domain_name="feature_map_array" none_string="None">
+                    <RequiredProperties>
+                        <Property name="Deformed" function="Input" />
+                    </RequiredProperties>
+                </ArrayListDomain>
+                <Hints>
+                    <NoDefault />
+                </Hints>
                 <Documentation>
-                    Method for calculating the descent direction.
+                    Mapping to the closest point on the feature line, used for determining the directional derivative. If a field is provided, the directional derivative is used. If not, the curvature gradient is computed in all directions.
                 </Documentation>
-            </IntVectorProperty>
+            </StringVectorProperty>
+            <StringVectorProperty name="FeatureMappingOriginal" label="Feature mapping (original)" command="SetInputArrayToProcess" number_of_elements="5" element_types="0 0 0 0 2" animateable="0" default_values="2">
+                <ArrayListDomain name="array_list" attribute_type="Vectors" input_domain_name="feature_map_array" none_string="None">
+                    <RequiredProperties>
+                        <Property name="Deformed" function="Input" />
+                    </RequiredProperties>
+                </ArrayListDomain>
+                <Hints>
+                    <NoDefault />
+                </Hints>
+                <Documentation>
+                    Mapping to the closest point on the feature line, used for determining the directional derivative. If a field is provided, the directional derivative is used. If not, the curvature gradient is computed in all directions.
+                </Documentation>
+            </StringVectorProperty>
             <IntVectorProperty name="IgnoreBorder" label="Ignore border" command="SetIgnoreBorder" number_of_elements="1" default_values="0">
                 <Documentation>
                     Ignore (multiple) border layers when calculating error for gradient descent computation.
@@ -685,9 +703,6 @@
                 </Documentation>
             </IntVectorProperty>
             <DoubleVectorProperty name="StepSize" label="Step size" command="SetStepSize" number_of_elements="1" default_values="0.1">
-                <Hints>
-                    <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="StepSizeControl" value="1" />
-                </Hints>
                 <Documentation>
                     Step size for each iteration.
                 </Documentation>
@@ -702,43 +717,15 @@
                     Method of calculating the step size.
                 </Documentation>
             </IntVectorProperty>
-            <IntVectorProperty name="StepSizeControl" label="Step size control" command="SetStepSizeControl" number_of_elements="1" default_values="0">
-                <EnumerationDomain name="enum">
-                    <Entry value="0" text="Dynamic"/>
-                    <Entry value="1" text="Fixed"/>
-                </EnumerationDomain>
-                <Documentation>
-                    Dynamically adjust step size or keep it static.
-                </Documentation>
-            </IntVectorProperty>
             <DoubleVectorProperty name="Error" label="Error threshold" command="SetError" number_of_elements="1" default_values="1e-6">
                 <Documentation>
                     Error threshold to determine convergence.
                 </Documentation>
             </DoubleVectorProperty>
-
-            <DoubleVectorProperty name="StepSizeMin" label="Minimum step size" command="SetStepSizeMin" number_of_elements="1" default_values="1e-10">
-                <Hints>
-                    <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="StepSizeControl" value="0" />
-                </Hints>
+            <IntVectorProperty name="AbortWhenGrowing" label="Abort when error grows" command="SetAbortWhenGrowing" number_of_elements="1" default_values="1">
+                <BooleanDomain name="bool"/>
                 <Documentation>
-                    Minimum step size for dynamic step size control using line search.
-                </Documentation>
-            </DoubleVectorProperty>
-            <DoubleVectorProperty name="StepSizeMax" label="Maximum step size" command="SetStepSizeMax" number_of_elements="1" default_values="1e2">
-                <Hints>
-                    <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="StepSizeControl" value="0" />
-                </Hints>
-                <Documentation>
-                    Maximum step size for dynamic step size control using line search.
-                </Documentation>
-            </DoubleVectorProperty>
-            <IntVectorProperty name="LineSearchSteps" label="Number of line search steps" command="SetLineSearchSteps" number_of_elements="1" default_values="6">
-                <Hints>
-                    <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="StepSizeControl" value="0" />
-                </Hints>
-                <Documentation>
-                    Number of line search steps used for determining the dynamic step size.
+                    Abort the computation when error starts growing.
                 </Documentation>
             </IntVectorProperty>
 
@@ -774,7 +761,6 @@
 
             <PropertyGroup label="Input">
                 <Property name="OriginalVectors" />
-                <Property name="Method" />
                 <Property name="IgnoreBorder" />
             </PropertyGroup>
 
@@ -782,14 +768,8 @@
                 <Property name="NumSteps" />
                 <Property name="StepSize" />
                 <Property name="StepSizeMethod" />
-                <Property name="StepSizeControl" />
                 <Property name="Error" />
-            </PropertyGroup>
-
-            <PropertyGroup label="Dynamic step size control">
-                <Property name="StepSizeMin" />
-                <Property name="StepSizeMax" />
-                <Property name="LineSearchSteps" />
+                <Property name="AbortWhenGrowing" />
             </PropertyGroup>
 
             <PropertyGroup label="Gradients">
