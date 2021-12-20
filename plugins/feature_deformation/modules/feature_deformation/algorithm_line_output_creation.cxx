@@ -39,6 +39,18 @@ bool algorithm_line_output_creation::run_computation()
     displacement_id_array->SetName("Displacement Information");
     displacement_id_array->FillValue(0.0f);
 
+    auto mapping_array = vtkSmartPointer<vtkFloatArray>::New();
+    mapping_array->SetNumberOfComponents(3);
+    mapping_array->SetNumberOfTuples(this->results.lines->GetNumberOfPoints());
+    mapping_array->SetName("Mapping to B-Spline");
+    mapping_array->FillValue(0.0f);
+
+    auto mapping_array_original = vtkSmartPointer<vtkFloatArray>::New();
+    mapping_array_original->SetNumberOfComponents(3);
+    mapping_array_original->SetNumberOfTuples(this->results.lines->GetNumberOfPoints());
+    mapping_array_original->SetName("Mapping to B-Spline (Original)");
+    mapping_array_original->FillValue(0.0f);
+
     auto displacement_distance_array = vtkSmartPointer<vtkFloatArray>::New();
     displacement_distance_array->SetNumberOfComponents(1);
     displacement_distance_array->SetNumberOfTuples(this->results.lines->GetNumberOfPoints());
@@ -46,6 +58,8 @@ bool algorithm_line_output_creation::run_computation()
     displacement_distance_array->FillValue(0.0f);
 
     this->results.lines->GetPointData()->AddArray(displacement_id_array);
+    this->results.lines->GetPointData()->AddArray(mapping_array);
+    this->results.lines->GetPointData()->AddArray(mapping_array_original);
     this->results.lines->GetPointData()->AddArray(displacement_distance_array);
 
     return true;

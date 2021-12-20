@@ -61,20 +61,26 @@ bool algorithm_geometry_output_update::run_computation()
     }
 
     // Set displacement ID arrays
-    const auto& displacement_ids = this->displacement->get_results().displacements->get_displacement_info();
+    const auto displacement_ids = this->displacement->get_results().displacements->get_displacement_info();
 
     std::size_t global_data_index = 0;
 
     for (unsigned int block_index = 0; block_index < this->output_geometry->get_results().geometry->GetNumberOfBlocks(); ++block_index)
     {
         auto block = vtkPointSet::SafeDownCast(this->output_geometry->get_results().geometry->GetBlock(block_index));
-        auto data_array = vtkFloatArray::SafeDownCast(block->GetPointData()->GetArray("Displacement Information"));
+        auto displacement_array = vtkFloatArray::SafeDownCast(block->GetPointData()->GetArray("Displacement Information"));
+        auto mapping_array = vtkFloatArray::SafeDownCast(block->GetPointData()->GetArray("Mapping to B-Spline"));
+        auto mapping_original_array = vtkFloatArray::SafeDownCast(block->GetPointData()->GetArray("Mapping to B-Spline (Original)"));
 
-        std::memcpy(data_array->GetPointer(0), &displacement_ids[global_data_index], data_array->GetNumberOfTuples() * sizeof(float4));
+        std::memcpy(displacement_array->GetPointer(0), &std::get<0>(displacement_ids)[global_data_index], displacement_array->GetNumberOfTuples() * sizeof(float4));
+        std::memcpy(mapping_array->GetPointer(0), &std::get<1>(displacement_ids)[global_data_index], mapping_array->GetNumberOfTuples() * sizeof(float3));
+        std::memcpy(mapping_original_array->GetPointer(0), &std::get<2>(displacement_ids)[global_data_index], mapping_original_array->GetNumberOfTuples() * sizeof(float3));
 
-        data_array->Modified();
+        displacement_array->Modified();
+        mapping_array->Modified();
+        mapping_original_array->Modified();
 
-        global_data_index += data_array->GetNumberOfTuples();
+        global_data_index += displacement_array->GetNumberOfTuples();
     }
 
     // In case of the B-Spline, store distance on B-Spline for neighboring points
@@ -98,15 +104,16 @@ bool algorithm_geometry_output_update::run_computation()
                 {
                     const auto num_points = poly_block->GetLines()->GetData()->GetValue(cell_index);
 
-                    displacement_distance_array->SetValue(index, std::abs(displacement_ids[index].w - displacement_ids[index + 1].w));
+                    displacement_distance_array->SetValue(index, std::abs(std::get<0>(displacement_ids)[index].w - std::get<0>(displacement_ids)[index + 1].w));
 
                     for (vtkIdType i = 1; i < num_points - 1; ++i)
                     {
-                        displacement_distance_array->SetValue(index + i, 0.5f * (std::abs(displacement_ids[index + i - 1].w - displacement_ids[index + i].w)
-                            + std::abs(displacement_ids[index + i].w - displacement_ids[index + i + 1].w)));
+                        displacement_distance_array->SetValue(index + i, 0.5f * (std::abs(std::get<0>(displacement_ids)[index + i - 1].w - std::get<0>(displacement_ids)[index + i].w)
+                            + std::abs(std::get<0>(displacement_ids)[index + i].w - std::get<0>(displacement_ids)[index + i + 1].w)));
                     }
 
-                    displacement_distance_array->SetValue(index + num_points - 1, std::abs(displacement_ids[index + num_points - 2].w - displacement_ids[index + num_points - 1].w));
+                    displacement_distance_array->SetValue(index + num_points - 1,
+                        std::abs(std::get<0>(displacement_ids)[index + num_points - 2].w - std::get<0>(displacement_ids)[index + num_points - 1].w));
 
                     index += num_points;
                     cell_index += num_points + 1;

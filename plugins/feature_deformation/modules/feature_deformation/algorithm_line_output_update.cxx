@@ -53,12 +53,20 @@ bool algorithm_line_output_update::run_computation()
     }
 
     // Set displacement ID array
-    const auto& displacement_ids = displacement->get_results().displacements->get_displacement_info();
+    const auto displacement_ids = displacement->get_results().displacements->get_displacement_info();
 
     std::memcpy(vtkFloatArray::SafeDownCast(this->output_lines->get_results().lines->GetPointData()->GetArray("Displacement Information"))->GetPointer(0),
-        displacement_ids.data(), displacement_ids.size() * sizeof(float4));
+        std::get<0>(displacement_ids).data(), std::get<0>(displacement_ids).size() * sizeof(float4));
+
+    std::memcpy(vtkFloatArray::SafeDownCast(this->output_lines->get_results().lines->GetPointData()->GetArray("Mapping to B-Spline"))->GetPointer(0),
+        std::get<1>(displacement_ids).data(), std::get<1>(displacement_ids).size() * sizeof(float3));
+
+    std::memcpy(vtkFloatArray::SafeDownCast(this->output_lines->get_results().lines->GetPointData()->GetArray("Mapping to B-Spline (Original)"))->GetPointer(0),
+        std::get<2>(displacement_ids).data(), std::get<2>(displacement_ids).size() * sizeof(float3));
 
     vtkFloatArray::SafeDownCast(this->output_lines->get_results().lines->GetPointData()->GetArray("Displacement Information"))->Modified();
+    vtkFloatArray::SafeDownCast(this->output_lines->get_results().lines->GetPointData()->GetArray("Mapping to B-Spline"))->Modified();
+    vtkFloatArray::SafeDownCast(this->output_lines->get_results().lines->GetPointData()->GetArray("Mapping to B-Spline (Original)"))->Modified();
 
     // In case of the B-Spline, store distance on B-Spline for neighboring points
     if ((this->displacement_method == cuda::displacement::method_t::b_spline ||
@@ -74,15 +82,16 @@ bool algorithm_line_output_update::run_computation()
         {
             const auto num_points = this->output_lines->get_results().lines->GetLines()->GetData()->GetValue(cell_index);
 
-            displacement_distance_array->SetValue(index, std::abs(displacement_ids[index].w - displacement_ids[index + 1].w));
+            displacement_distance_array->SetValue(index, std::abs(std::get<0>(displacement_ids)[index].w - std::get<0>(displacement_ids)[index + 1].w));
 
             for (vtkIdType i = 1; i < num_points - 1; ++i)
             {
-                displacement_distance_array->SetValue(index + i, 0.5f * (std::abs(displacement_ids[index + i - 1].w - displacement_ids[index + i].w)
-                    + std::abs(displacement_ids[index + i].w - displacement_ids[index + i + 1].w)));
+                displacement_distance_array->SetValue(index + i, 0.5f * (std::abs(std::get<0>(displacement_ids)[index + i - 1].w - std::get<0>(displacement_ids)[index + i].w)
+                    + std::abs(std::get<0>(displacement_ids)[index + i].w - std::get<0>(displacement_ids)[index + i + 1].w)));
             }
 
-            displacement_distance_array->SetValue(index + num_points - 1, std::abs(displacement_ids[index + num_points - 2].w - displacement_ids[index + num_points - 1].w));
+            displacement_distance_array->SetValue(index + num_points - 1,
+                std::abs(std::get<0>(displacement_ids)[index + num_points - 2].w - std::get<0>(displacement_ids)[index + num_points - 1].w));
 
             index += num_points;
             cell_index += num_points + 1;

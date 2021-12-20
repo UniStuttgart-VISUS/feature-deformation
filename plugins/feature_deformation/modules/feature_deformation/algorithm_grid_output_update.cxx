@@ -66,10 +66,16 @@ bool algorithm_grid_output_update::run_computation()
     }
 
     // Create displacement ID array
-    const auto& displacement_ids = this->displacement->get_results().displacements->get_displacement_info();
+    const auto displacement_ids = this->displacement->get_results().displacements->get_displacement_info();
 
     std::memcpy(grid->GetPointData()->GetArray("Displacement Information")->GetVoidPointer(0),
-        displacement_ids.data(), displacement_ids.size() * sizeof(float4));
+        std::get<0>(displacement_ids).data(), std::get<0>(displacement_ids).size() * sizeof(float4));
+
+    std::memcpy(grid->GetPointData()->GetArray("Mapping to B-Spline")->GetVoidPointer(0),
+        std::get<1>(displacement_ids).data(), std::get<1>(displacement_ids).size() * sizeof(float3));
+
+    std::memcpy(grid->GetPointData()->GetArray("Mapping to B-Spline (Original)")->GetVoidPointer(0),
+        std::get<2>(displacement_ids).data(), std::get<2>(displacement_ids).size() * sizeof(float3));
 
     // Create cells and create grid to store "removed" cells
     if (this->remove_cells)

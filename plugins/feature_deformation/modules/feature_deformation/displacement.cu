@@ -11,8 +11,10 @@
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
+#include <tuple>
 #include <vector>
 
+#define __pi 3.1415926535897932384626433833
 
 /// Textures:
 /// 0: positions (de Boor points)
@@ -789,6 +791,8 @@ void displacement_kernel_projection(const float3* in_points, float3* out_points,
 * @param arc_position_mapping   Corresponding arc position on the B-Spline
 * @param out_points             Displaced points
 * @param infos                  Information about the displacement
+* @param mapping_direction      Direction from point to position on deformed B-Spline
+* @param mapping_direction_orig Direction from point to position on original B-Spline
 * @param num_points             Number of points
 * @param num_displacements      Number of displacement vectors and positions
 * @param epsilon                Parameter for the Gauss kernel
@@ -796,7 +800,8 @@ void displacement_kernel_projection(const float3* in_points, float3* out_points,
 */
 __global__
 void displacement_kernel_spline_handles(const float3* in_points, const float3* point_mapping, const float* arc_position_mapping,
-    float3* out_points, float4* infos, const int num_points, const int num_displacements, const float epsilon, const int degree)
+    float3* out_points, float4* infos, float3* mapping_direction, float3* mapping_direction_orig,
+    const int num_points, const int num_displacements, const float epsilon, const int degree)
 {
     __get_kernel__parameters__
 
@@ -812,11 +817,35 @@ void displacement_kernel_spline_handles(const float3* in_points, const float3* p
 
         const float3 displacement = gaussian(distance, epsilon) * compute_point(arc_position_mapping[gid], degree, num_displacements, 3);
 
-        info.w = arc_position_mapping[gid];
+        const auto u = arc_position_mapping[gid];
+
+        info.w = u;
         info.z = distance;
+
+        // Get original mapping, using orthogonal direction for nodes mapped to the end points
+        const auto u_max = fetch1D(textures[4], num_displacements);
+
+        if (u > u_max - 0.001 || u < 0.001)
+        {
+            mapping_direction_orig[gid] = rotate(compute_point(u, degree, num_displacements, 1, 1), float3{ 0.0, 0.0, 1.0 }, __pi / 2.0);
+        }
+        else
+        {
+            mapping_direction_orig[gid] = point_mapping[gid] - point;
+        }
 
         // Apply displacement
         point = point + displacement;
+
+        // Get deformed mapping, using orthogonal direction for nodes mapped to the end points
+        if (u > u_max - 0.001 || u < 0.001)
+        {
+            mapping_direction[gid] = rotate(compute_point(u, degree, num_displacements, 6, 1), float3{ 0.0, 0.0, 1.0 }, __pi / 2.0);
+        }
+        else
+        {
+            mapping_direction[gid] = compute_point(u, degree, num_displacements, 5) - point;
+        }
 
         // Store result
         out_points[gid] = point;
@@ -833,14 +862,17 @@ void displacement_kernel_spline_handles(const float3* in_points, const float3* p
 * @param arc_position_mapping   Corresponding arc position on the B-Spline
 * @param out_points             Displaced points
 * @param infos                  Information about the displacement
+* @param mapping_direction      Direction from point to position on deformed B-Spline
+* @param mapping_direction_orig Direction from point to position on original B-Spline
 * @param num_points             Number of points
 * @param num_displacements      Number of displacement vectors and positions
 * @param epsilon                Parameter for the Gauss kernel
 * @param degree                 B-Spline degree
 */
 __global__
-void displacement_kernel_spline_joints(const float3* in_points, const float3* point_mapping, const float3* tangent_mapping, const float* arc_position_mapping,
-    float3* out_points, float4* infos, const int num_points, const int num_displacements, const float epsilon, const int degree)
+void displacement_kernel_spline_joints(const float3* in_points, const float3* point_mapping, const float3* tangent_mapping,
+    const float* arc_position_mapping, float3* out_points, float4* infos, float3* mapping_direction,
+    float3* mapping_direction_orig, const int num_points, const int num_displacements, const float epsilon, const int degree)
 {
     __get_kernel__parameters__
 
@@ -854,11 +886,13 @@ void displacement_kernel_spline_joints(const float3* in_points, const float3* po
         //// and use a Gauss function to lessen the effect for points further away
 
         // Get point and tangent of original and deformed B-spline at the arc position
+        const auto u = arc_position_mapping[gid];
+
         const auto origin = point_mapping[gid];
         const auto tangent = tangent_mapping[gid];
 
-        const auto deformed_origin = compute_point(arc_position_mapping[gid], degree, num_displacements, 5);
-        const auto deformed_tangent = normalize(compute_point(arc_position_mapping[gid], degree, num_displacements, 6, 1));
+        const auto deformed_origin = compute_point(u, degree, num_displacements, 5);
+        const auto deformed_tangent = normalize(compute_point(u, degree, num_displacements, 6, 1));
 
         const auto distance = length(point - origin);
 
@@ -873,11 +907,33 @@ void displacement_kernel_spline_joints(const float3* in_points, const float3* po
         const auto point_rotated = point_relative_to_origin_rotated + origin;
         const auto point_rotated_and_translated = point_rotated - origin + deformed_origin;
 
-        info.w = arc_position_mapping[gid];
+        info.w = u;
         info.z = distance;
+
+        // Get original mapping, using orthogonal direction for nodes mapped to the end points
+        const auto u_max = fetch1D(textures[4], num_displacements);
+
+        if (u > u_max - 0.001 || u < 0.001)
+        {
+            mapping_direction_orig[gid] = rotate(tangent, float3{ 0.0, 0.0, 1.0 }, __pi / 2.0);
+        }
+        else
+        {
+            mapping_direction_orig[gid] = origin - point;
+        }
 
         // Apply displacement
         point = point + gaussian(distance, epsilon) * (point_rotated_and_translated - point);
+
+        // Get deformed mapping, using orthogonal direction for nodes mapped to the end points
+        if (u > u_max - 0.001 || u < 0.001)
+        {
+            mapping_direction[gid] = rotate(deformed_tangent, float3{ 0.0, 0.0, 1.0 }, __pi / 2.0);
+        }
+        else
+        {
+            mapping_direction[gid] = deformed_origin - point;
+        }
 
         // Store result
         out_points[gid] = point;
@@ -970,8 +1026,8 @@ namespace
 
 cuda::displacement::displacement(std::vector<std::array<float, 3>> points) :
     points(std::move(points)), cuda_res_input_points(nullptr), cuda_res_output_points(nullptr), cuda_res_info(nullptr),
-    cuda_res_mapping_point(nullptr), cuda_res_mapping_tangent(nullptr), cuda_res_mapping_arc_position(nullptr),
-    cuda_res_mapping_arc_position_displaced(nullptr)
+    cuda_res_mapping_point(nullptr), cuda_res_mapping_tangent(nullptr), cuda_res_mapping_direction(nullptr),
+    cuda_res_mapping_direction_orig(nullptr), cuda_res_mapping_arc_position(nullptr), cuda_res_mapping_arc_position_displaced(nullptr)
 {
     upload_points();
 }
@@ -984,6 +1040,8 @@ cuda::displacement::~displacement()
     if (this->cuda_res_info != nullptr) cudaFree(this->cuda_res_info);
     if (this->cuda_res_mapping_point != nullptr) cudaFree(this->cuda_res_mapping_point);
     if (this->cuda_res_mapping_tangent != nullptr) cudaFree(this->cuda_res_mapping_tangent);
+    if (this->cuda_res_mapping_direction != nullptr) cudaFree(this->cuda_res_mapping_direction);
+    if (this->cuda_res_mapping_direction_orig != nullptr) cudaFree(this->cuda_res_mapping_direction_orig);
     if (this->cuda_res_mapping_arc_position != nullptr) cudaFree(this->cuda_res_mapping_arc_position);
     if (this->cuda_res_mapping_arc_position_displaced != nullptr) cudaFree(this->cuda_res_mapping_arc_position_displaced);
 }
@@ -1079,6 +1137,26 @@ void cuda::displacement::upload_points()
         {
             std::stringstream ss;
             ss << "Error allocating memory using cudaMalloc for tangents of precomputed mapping" << " (" << cudaGetErrorName(err) << ": " << cudaGetErrorString(err) << ")";
+            throw std::runtime_error(ss.str());
+        }
+    }
+    {
+        const auto err = cudaMalloc((void**)&this->cuda_res_mapping_direction, this->points.size() * sizeof(float3));
+
+        if (err)
+        {
+            std::stringstream ss;
+            ss << "Error allocating memory using cudaMalloc for direction of precomputed mapping" << " (" << cudaGetErrorName(err) << ": " << cudaGetErrorString(err) << ")";
+            throw std::runtime_error(ss.str());
+        }
+    }
+    {
+        const auto err = cudaMalloc((void**)&this->cuda_res_mapping_direction_orig, this->points.size() * sizeof(float3));
+
+        if (err)
+        {
+            std::stringstream ss;
+            ss << "Error allocating memory using cudaMalloc for direction of precomputed original mapping" << " (" << cudaGetErrorName(err) << ": " << cudaGetErrorString(err) << ")";
             throw std::runtime_error(ss.str());
         }
     }
@@ -1293,8 +1371,9 @@ void cuda::displacement::displace(const method_t method, const parameter_t param
 
         // Run computation
         displacement_kernel_spline_handles __kernel__parameters__(this->cuda_res_input_points, this->cuda_res_mapping_point,
-            this->cuda_res_mapping_arc_position, this->cuda_res_output_points, this->cuda_res_info, static_cast<int>(this->points.size()),
-            static_cast<int>(positions.size()), parameters.b_spline.gauss_parameter, parameters.b_spline.degree);
+            this->cuda_res_mapping_arc_position, this->cuda_res_output_points, this->cuda_res_info, this->cuda_res_mapping_direction,
+            this->cuda_res_mapping_direction_orig, static_cast<int>(this->points.size()), static_cast<int>(positions.size()),
+            parameters.b_spline.gauss_parameter, parameters.b_spline.degree);
 
         // Destroy resources
         cudaDestroyTextureObject(cuda_tex_knot_vector);
@@ -1337,8 +1416,9 @@ void cuda::displacement::displace(const method_t method, const parameter_t param
         cudaMemcpyToSymbol(textures, &cuda_tex_displaced_first_derivative, sizeof(cudaTextureObject_t), 6 * sizeof(cudaTextureObject_t));
 
         displacement_kernel_spline_joints __kernel__parameters__(this->cuda_res_input_points, this->cuda_res_mapping_point, this->cuda_res_mapping_tangent,
-            this->cuda_res_mapping_arc_position, this->cuda_res_output_points, this->cuda_res_info, static_cast<int>(this->points.size()),
-            static_cast<int>(positions.size()), parameters.b_spline.gauss_parameter, parameters.b_spline.degree);
+            this->cuda_res_mapping_arc_position, this->cuda_res_output_points, this->cuda_res_info, this->cuda_res_mapping_direction,
+            this->cuda_res_mapping_direction_orig, static_cast<int>(this->points.size()), static_cast<int>(positions.size()),
+            parameters.b_spline.gauss_parameter, parameters.b_spline.degree);
 
         // Destroy resources
         cudaDestroyTextureObject(cuda_tex_first_derivative);
@@ -1413,17 +1493,45 @@ const std::vector<std::array<float, 3>>& cuda::displacement::get_results() const
     return this->points;
 }
 
-const std::vector<float4>& cuda::displacement::get_displacement_info() const
+const std::tuple<std::vector<float4>, std::vector<float3>, std::vector<float3>> cuda::displacement::get_displacement_info() const
 {
-    // Download displacement IDs from the GPU
-    const auto err = cudaMemcpy(this->displacement_info.data(), this->cuda_res_info, this->displacement_info.size() * sizeof(float4), cudaMemcpyDeviceToHost);
-
-    if (err)
+    // Download displacement information, as well as mapping from the GPU
     {
-        std::stringstream ss;
-        ss << "Error copying from GPU memory using cudaMemcpy for displacement information" << " (" << cudaGetErrorName(err) << ": " << cudaGetErrorString(err) << ")";
-        throw std::runtime_error(ss.str());
+        const auto err = cudaMemcpy(this->displacement_info.data(), this->cuda_res_info, this->displacement_info.size() * sizeof(float4), cudaMemcpyDeviceToHost);
+
+        if (err)
+        {
+            std::stringstream ss;
+            ss << "Error copying from GPU memory using cudaMemcpy for displacement information" << " (" << cudaGetErrorName(err) << ": " << cudaGetErrorString(err) << ")";
+            throw std::runtime_error(ss.str());
+        }
     }
 
-    return this->displacement_info;
+    {
+        this->mapping.resize(this->displacement_info.size());
+
+        const auto err = cudaMemcpy(this->mapping.data(), this->cuda_res_mapping_direction, this->mapping.size() * sizeof(float3), cudaMemcpyDeviceToHost);
+
+        if (err)
+        {
+            std::stringstream ss;
+            ss << "Error copying from GPU memory using cudaMemcpy for mapping information" << " (" << cudaGetErrorName(err) << ": " << cudaGetErrorString(err) << ")";
+            throw std::runtime_error(ss.str());
+        }
+    }
+
+    {
+        this->mapping_orig.resize(this->displacement_info.size());
+
+        const auto err = cudaMemcpy(this->mapping_orig.data(), this->cuda_res_mapping_direction_orig, this->mapping_orig.size() * sizeof(float3), cudaMemcpyDeviceToHost);
+
+        if (err)
+        {
+            std::stringstream ss;
+            ss << "Error copying from GPU memory using cudaMemcpy for original mapping information" << " (" << cudaGetErrorName(err) << ": " << cudaGetErrorString(err) << ")";
+            throw std::runtime_error(ss.str());
+        }
+    }
+
+    return std::make_tuple(this->displacement_info, this->mapping, this->mapping_orig);
 }

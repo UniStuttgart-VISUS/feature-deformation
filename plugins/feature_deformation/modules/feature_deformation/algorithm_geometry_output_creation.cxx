@@ -45,6 +45,18 @@ bool algorithm_geometry_output_creation::run_computation()
         displacement_id_array->SetName("Displacement Information");
         displacement_id_array->FillValue(0.0f);
 
+        auto mapping_array = vtkSmartPointer<vtkFloatArray>::New();
+        mapping_array->SetNumberOfComponents(3);
+        mapping_array->SetNumberOfTuples(this->input_geometry->get_results().geometry[block_index]->GetNumberOfPoints());
+        mapping_array->SetName("Mapping to B-Spline");
+        mapping_array->FillValue(0.0f);
+
+        auto mapping_array_original = vtkSmartPointer<vtkFloatArray>::New();
+        mapping_array_original->SetNumberOfComponents(3);
+        mapping_array_original->SetNumberOfTuples(this->input_geometry->get_results().geometry[block_index]->GetNumberOfPoints());
+        mapping_array_original->SetName("Mapping to B-Spline (Original)");
+        mapping_array_original->FillValue(0.0f);
+
         auto displacement_distance_array = vtkSmartPointer<vtkFloatArray>::New();
         displacement_distance_array->SetNumberOfComponents(1);
         displacement_distance_array->SetNumberOfTuples(this->input_geometry->get_results().geometry[block_index]->GetNumberOfPoints());
@@ -58,6 +70,8 @@ bool algorithm_geometry_output_creation::run_computation()
         displacement_map_array->FillValue(0.0);
 
         vtkPointSet::SafeDownCast(this->results.geometry->GetBlock(block_index))->GetPointData()->AddArray(displacement_id_array);
+        vtkPointSet::SafeDownCast(this->results.geometry->GetBlock(block_index))->GetPointData()->AddArray(mapping_array);
+        vtkPointSet::SafeDownCast(this->results.geometry->GetBlock(block_index))->GetPointData()->AddArray(mapping_array_original);
         vtkPointSet::SafeDownCast(this->results.geometry->GetBlock(block_index))->GetPointData()->AddArray(displacement_distance_array);
         vtkPointSet::SafeDownCast(this->results.geometry->GetBlock(block_index))->GetPointData()->AddArray(displacement_map_array);
     }

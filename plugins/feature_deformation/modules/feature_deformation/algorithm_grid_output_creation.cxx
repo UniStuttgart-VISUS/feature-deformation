@@ -97,6 +97,18 @@ bool algorithm_grid_output_creation::run_computation()
     displacement_id_array->SetName("Displacement Information");
     displacement_id_array->FillValue(0.0f);
 
+    auto mapping_array = vtkSmartPointer<vtkFloatArray>::New();
+    mapping_array->SetNumberOfComponents(3);
+    mapping_array->SetNumberOfTuples(num_points);
+    mapping_array->SetName("Mapping to B-Spline");
+    mapping_array->FillValue(0.0f);
+
+    auto mapping_array_original = vtkSmartPointer<vtkFloatArray>::New();
+    mapping_array_original->SetNumberOfComponents(3);
+    mapping_array_original->SetNumberOfTuples(num_points);
+    mapping_array_original->SetName("Mapping to B-Spline (Original)");
+    mapping_array_original->FillValue(0.0f);
+
     auto displacement_map = vtkSmartPointer<vtkDoubleArray>::New();
     displacement_map->SetNumberOfComponents(3);
     displacement_map->SetNumberOfTuples(num_points);
@@ -140,6 +152,8 @@ bool algorithm_grid_output_creation::run_computation()
     def_curl->FillValue(0.0);
 
     output_deformed_grid->GetPointData()->AddArray(displacement_id_array);
+    output_deformed_grid->GetPointData()->AddArray(mapping_array);
+    output_deformed_grid->GetPointData()->AddArray(mapping_array_original);
     output_deformed_grid->GetPointData()->AddArray(displacement_map);
     output_deformed_grid->GetPointData()->AddArray(jacobian);
     output_deformed_grid->GetPointData()->AddArray(velocities);

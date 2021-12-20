@@ -3,6 +3,7 @@
 #include <cuda_runtime_api.h>
 
 #include <array>
+#include <tuple>
 #include <vector>
 
 namespace cuda
@@ -66,7 +67,7 @@ namespace cuda
         const std::vector<std::array<float, 3>>& get_results() const;
 
         /// Return displacement IDs
-        const std::vector<float4>& get_displacement_info() const;
+        const std::tuple<std::vector<float4>, std::vector<float3>, std::vector<float3>> get_displacement_info() const;
 
     private:
         /// Upload points to the GPU
@@ -88,6 +89,7 @@ namespace cuda
 
         /// ID of the nearest displacement position
         mutable std::vector<float4> displacement_info;
+        mutable std::vector<float3> mapping, mapping_orig;
 
         /// CUDA resources
         float3* cuda_res_input_points;
@@ -95,6 +97,8 @@ namespace cuda
         float4* cuda_res_info;
         float3* cuda_res_mapping_point;
         float3* cuda_res_mapping_tangent;
+        float3* cuda_res_mapping_direction;
+        float3* cuda_res_mapping_direction_orig;
         float* cuda_res_mapping_arc_position;
         float* cuda_res_mapping_arc_position_displaced;
     };
