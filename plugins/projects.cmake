@@ -27,7 +27,7 @@ function(pv_project NAME ENABLED)
       file(GLOB_RECURSE module_files modules/*.module)
 
       vtk_module_scan(
-        MODULE_FILES                "${module_files}"
+        MODULE_FILES                ${module_files}
         PROVIDES_MODULES            modules
         WANT_BY_DEFAULT             ON
         HIDE_MODULES_FROM_CACHE     OFF
@@ -77,12 +77,15 @@ function(pv_plugin NAME MODULES)
     target_link_libraries(${NAME} PRIVATE ${module_names})
 
     install(TARGETS ${NAME})
+    install(FILES ${NAME}.xml DESTINATION share/feature-flow/xml)
   else()
     paraview_add_plugin(${NAME}
       VERSION                  1.0
       SERVER_MANAGER_XML      ${NAME}.xml
       MODULES                 ${module_names}
     )
+
+    install(FILES ${NAME}.xml DESTINATION share/feature-flow/xml)
   endif()
 endfunction()
 
@@ -113,6 +116,6 @@ function(pv_module NAME PLUGIN SOURCES RESULT_TARGET)
     set(${RESULT_TARGET} ${_RESULT_TARGET} PARENT_SCOPE)
 
     target_include_directories(${_RESULT_TARGET} PRIVATE ${common_include})
-    set_target_properties(${_RESULT_TARGET} PROPERTIES CXX_STANDARD 14)
+    vtk_module_set_properties(${PLUGIN}::${NAME} CXX_STANDARD 14)
   endif()
 endfunction()
