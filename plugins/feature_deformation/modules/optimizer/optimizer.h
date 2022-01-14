@@ -87,20 +87,24 @@ private:
         vtkDataArray* vector_field_original, vtkDataArray* original_feature_mapping, vtkDataArray* feature_mapping);
 
     std::pair<vtkSmartPointer<vtkDoubleArray>, vtkSmartPointer<vtkDoubleArray>> compute_descent(
-        const std::array<int, 3>& dimension, const vtkStructuredGrid* original_grid,  const vtkDataArray* vector_field_original,
-        const vtkDataArray* positions, const vtkDataArray* errors, const curvature_and_torsion_t& original_curvature,
-        vtkDoubleArray* derivative_direction) const;
+        const std::array<int, 3>& dimension, const vtkDataArray* vector_field,
+        const curvature_and_torsion_t& original_curvature, const vtkDataArray* jacobian_field,
+        const vtkDataArray* positions, const vtkDataArray* errors, vtkDoubleArray* derivative_direction) const;
 
     std::pair<vtkSmartPointer<vtkDoubleArray>, vtkSmartPointer<vtkDoubleArray>> apply_descent(
         const std::array<int, 3>& dimension, double step_size, const vtkDataArray* positions,
         const vtkDataArray* errors, const vtkDataArray* gradient_descent) const;
 
+    curvature_and_torsion_t blockwise_curvature(const std::array<int, 3>& dimension,
+        double rotation, const vtkDataArray* positions, const vtkDataArray* vector_field,
+        const vtkDataArray* jacobian_field, const vtkDataArray* derivative_direction) const;
+
     double calculate_error(int index, int index_block, const curvature_and_torsion_t& original_curvature,
-        const curvature_and_torsion_t& deformed_curvature, const vtkDataArray* jacobian_field, bool directional) const;
+        const curvature_and_torsion_t& deformed_curvature, const vtkDataArray* jacobian_field) const;
 
     std::tuple<vtkSmartPointer<vtkDoubleArray>, double, double> calculate_error_field(
         const curvature_and_torsion_t& original_curvature, const curvature_and_torsion_t& deformed_curvature,
-        const vtkDataArray* jacobian_field, bool directional) const;
+        const vtkDataArray* jacobian_field) const;
 
     vtkSmartPointer<vtkStructuredGrid> create_output(const std::array<int, 3>& dimension, const vtkDoubleArray* positions) const;
 

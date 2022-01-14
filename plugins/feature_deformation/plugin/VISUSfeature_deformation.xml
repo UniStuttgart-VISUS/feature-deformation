@@ -637,7 +637,7 @@
                     <DataType value="vtkStructuredGrid"/>
                 </DataTypeDomain>
                 <InputArrayDomain attribute_type="point" name="vector_original_array" number_of_components="3"/>
-                <InputArrayDomain attribute_type="point" name="feature_map_array" number_of_components="3" optional="1"/>
+                <InputArrayDomain attribute_type="point" name="feature_map_array" number_of_components="3"/>
                 <Documentation>
                     Original grid containing gradient information.
                 </Documentation>
