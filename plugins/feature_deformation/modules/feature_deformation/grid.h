@@ -13,11 +13,11 @@ Eigen::Matrix3d unit();
 class grid
 {
 public:
-    grid(std::array<int, 3> dimension, const Eigen::Vector3d& spacing, vtkDataArray* data, vtkDataArray* jacobians = nullptr);
-    grid(std::array<int, 3> dimension, vtkDataArray* positions, vtkDataArray* data, vtkDataArray* jacobians = nullptr);
-    grid(vtkImageData* vtk_grid, vtkDataArray* data, vtkDataArray* jacobians = nullptr);
-    grid(vtkStructuredGrid* vtk_grid, vtkDataArray* data, vtkDataArray* jacobians = nullptr);
-    grid(const grid& grid, vtkDataArray* data);
+    grid(std::array<int, 3> dimension, const Eigen::Vector3d& spacing, const vtkDataArray* data, const vtkDataArray* jacobians = nullptr);
+    grid(std::array<int, 3> dimension, const vtkDataArray* positions, const vtkDataArray* data, const vtkDataArray* jacobians = nullptr);
+    grid(const vtkImageData* vtk_grid, const vtkDataArray* data, const vtkDataArray* jacobians = nullptr);
+    grid(const vtkStructuredGrid* vtk_grid, const vtkDataArray* data, const vtkDataArray* jacobians = nullptr);
+    grid(const grid& grid, const vtkDataArray* data);
 
     virtual ~grid() noexcept;
 
@@ -44,17 +44,17 @@ public:
 
 private:
     std::array<int, 3> dimension;
-    vtkDataArray* data;
+    const vtkDataArray* data;
 
     bool deformed;
 
     union
     {
         Eigen::Vector3d spacing;
-        vtkDataArray* positions;
+        const vtkDataArray* positions;
     };
 
-    vtkDataArray* jacobians;
+    const vtkDataArray* jacobians;
 
     bool own_positions;
 

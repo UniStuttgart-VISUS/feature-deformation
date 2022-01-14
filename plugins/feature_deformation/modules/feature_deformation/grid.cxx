@@ -18,34 +18,34 @@ Eigen::Matrix3d unit()
     return mat;
 }
 
-grid::grid(std::array<int, 3> dimension, const Eigen::Vector3d& spacing, vtkDataArray* data, vtkDataArray* jacobians)
+grid::grid(std::array<int, 3> dimension, const Eigen::Vector3d& spacing, const vtkDataArray* data, const vtkDataArray* jacobians)
     : dimension(dimension), data(data), deformed(false), spacing(spacing), jacobians(jacobians), own_positions(false){ }
 
-grid::grid(std::array<int, 3> dimension, vtkDataArray* positions, vtkDataArray* data, vtkDataArray* jacobians)
+grid::grid(std::array<int, 3> dimension, const vtkDataArray* positions, const vtkDataArray* data, const vtkDataArray* jacobians)
     : dimension(dimension), data(data), deformed(true), positions(positions), jacobians(jacobians), own_positions(false) { }
 
-grid::grid(vtkImageData* vtk_grid, vtkDataArray* data, vtkDataArray* jacobians)
+grid::grid(const vtkImageData* vtk_grid, const vtkDataArray* data, const vtkDataArray* jacobians)
     : data(data), deformed(false), jacobians(jacobians), own_positions(false)
 {
-    vtk_grid->GetDimensions(this->dimension.data());
-    vtk_grid->GetSpacing(this->spacing.data());
+    const_cast<vtkImageData*>(vtk_grid)->GetDimensions(this->dimension.data());
+    const_cast<vtkImageData*>(vtk_grid)->GetSpacing(this->spacing.data());
 }
 
-grid::grid(vtkStructuredGrid* vtk_grid, vtkDataArray* data, vtkDataArray* jacobians)
+grid::grid(const vtkStructuredGrid* vtk_grid, const vtkDataArray* data, const vtkDataArray* jacobians)
     : data(data), jacobians(jacobians), own_positions(true)
 {
-    vtk_grid->GetDimensions(this->dimension.data());
+    const_cast<vtkStructuredGrid*>(vtk_grid)->GetDimensions(this->dimension.data());
 
     // Get positions
     auto positions = vtkDoubleArray::New();
     positions->SetNumberOfComponents(3);
-    positions->SetNumberOfTuples(vtk_grid->GetNumberOfPoints());
+    positions->SetNumberOfTuples(const_cast<vtkStructuredGrid*>(vtk_grid)->GetNumberOfPoints());
 
     std::array<double, 3> point{};
 
-    for (vtkIdType i = 0; i < vtk_grid->GetNumberOfPoints(); ++i)
+    for (vtkIdType i = 0; i < const_cast<vtkStructuredGrid*>(vtk_grid)->GetNumberOfPoints(); ++i)
     {
-        vtk_grid->GetPoint(i, point.data());
+        const_cast<vtkStructuredGrid*>(vtk_grid)->GetPoint(i, point.data());
         positions->SetTuple(i, point.data());
     }
 
@@ -53,7 +53,7 @@ grid::grid(vtkStructuredGrid* vtk_grid, vtkDataArray* data, vtkDataArray* jacobi
     this->positions = positions;
 }
 
-grid::grid(const grid& grid, vtkDataArray* data)
+grid::grid(const grid& grid, const vtkDataArray* data)
     : dimension(grid.dimension), data(data), deformed(grid.deformed), jacobians(grid.jacobians), own_positions(false)
 {
     if (this->deformed)
@@ -70,7 +70,7 @@ grid::~grid() noexcept
 {
     if (this->own_positions)
     {
-        positions->Delete();
+        const_cast<vtkDataArray*>(this->positions)->Delete();
     }
 }
 
@@ -79,10 +79,10 @@ Eigen::Vector3d grid::h_plus(const std::array<int, 3>& coords) const
     if (this->deformed)
     {
         Eigen::Vector3d pos_current, pos_x, pos_y, pos_z;
-        this->positions->GetTuple(index(coords), pos_current.data());
-        this->positions->GetTuple(index(right(coords)), pos_x.data());
-        this->positions->GetTuple(index(top(coords)), pos_y.data());
-        this->positions->GetTuple(index(front(coords)), pos_z.data());
+        const_cast<vtkDataArray*>(this->positions)->GetTuple(index(coords), pos_current.data());
+        const_cast<vtkDataArray*>(this->positions)->GetTuple(index(right(coords)), pos_x.data());
+        const_cast<vtkDataArray*>(this->positions)->GetTuple(index(top(coords)), pos_y.data());
+        const_cast<vtkDataArray*>(this->positions)->GetTuple(index(front(coords)), pos_z.data());
 
         const auto h_x = (pos_x - pos_current).norm();
         const auto h_y = (pos_y - pos_current).norm();
@@ -105,10 +105,10 @@ Eigen::Vector3d grid::h_minus(const std::array<int, 3>& coords) const
     if (this->deformed)
     {
         Eigen::Vector3d pos_current, pos_x, pos_y, pos_z;
-        this->positions->GetTuple(index(coords), pos_current.data());
-        this->positions->GetTuple(index(left(coords)), pos_x.data());
-        this->positions->GetTuple(index(bottom(coords)), pos_y.data());
-        this->positions->GetTuple(index(back(coords)), pos_z.data());
+        const_cast<vtkDataArray*>(this->positions)->GetTuple(index(coords), pos_current.data());
+        const_cast<vtkDataArray*>(this->positions)->GetTuple(index(left(coords)), pos_x.data());
+        const_cast<vtkDataArray*>(this->positions)->GetTuple(index(bottom(coords)), pos_y.data());
+        const_cast<vtkDataArray*>(this->positions)->GetTuple(index(back(coords)), pos_z.data());
 
         const auto h_x = (pos_current - pos_x).norm();
         const auto h_y = (pos_current - pos_y).norm();
@@ -131,8 +131,8 @@ Eigen::Vector3d grid::offset(const std::array<int, 3>& source, const std::array<
     if (this->deformed)
     {
         Eigen::Vector3d pos_source, pos_target;
-        this->positions->GetTuple(index(source), pos_source.data());
-        this->positions->GetTuple(index(target), pos_target.data());
+        const_cast<vtkDataArray*>(this->positions)->GetTuple(index(source), pos_source.data());
+        const_cast<vtkDataArray*>(this->positions)->GetTuple(index(target), pos_target.data());
 
         return pos_target - pos_source;
     }
@@ -154,7 +154,7 @@ Eigen::Matrix<double, Eigen::Dynamic, 1> grid::value(const std::array<int, 3>& c
 {
     Eigen::VectorXd val(this->data->GetNumberOfComponents());
 
-    this->data->GetTuple(index(coords), val.data());
+    const_cast<vtkDataArray*>(this->data)->GetTuple(index(coords), val.data());
 
     return val;
 }
@@ -164,7 +164,7 @@ Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> grid::matrix(const std::ar
     Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> mat;
     mat.resize(static_cast<int>(std::sqrt(components())), static_cast<int>(std::sqrt(components())));
 
-    this->data->GetTuple(index(coords), mat.data());
+    const_cast<vtkDataArray*>(this->data)->GetTuple(index(coords), mat.data());
 
     return mat;
 }
@@ -175,7 +175,7 @@ Eigen::Matrix3d grid::jacobian(const std::array<int, 3>& coords) const
 
     if (this->jacobians != nullptr)
     {
-        this->jacobians->GetTuple(index(coords), jac.data());
+        const_cast<vtkDataArray*>(this->jacobians)->GetTuple(index(coords), jac.data());
     }
 
     return jac;

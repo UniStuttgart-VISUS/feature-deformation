@@ -23,7 +23,9 @@ struct curvature_and_torsion_t
     vtkSmartPointer<vtkDoubleArray> torsion_gradient;
     vtkSmartPointer<vtkDoubleArray> torsion_vector_gradient;
     vtkSmartPointer<vtkDoubleArray> torsion_directional_gradient;
+
+    static curvature_and_torsion_t create(std::size_t num_elements);
 };
 
 curvature_and_torsion_t curvature_and_torsion(const grid& vector_field, gradient_method_t method,
-    int kernel_size = 1, vtkDataArray* directions = nullptr);
+    int kernel_size = 1, const vtkDataArray* directions = nullptr);
