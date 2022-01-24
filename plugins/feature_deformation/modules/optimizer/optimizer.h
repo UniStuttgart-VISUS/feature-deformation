@@ -86,7 +86,7 @@ private:
     void compute_gradient_descent(vtkStructuredGrid* original_grid, vtkStructuredGrid* deformed_grid,
         vtkDataArray* vector_field_original, vtkDataArray* original_feature_mapping, vtkDataArray* feature_mapping);
 
-    std::pair<vtkSmartPointer<vtkDoubleArray>, vtkSmartPointer<vtkDoubleArray>> compute_descent(
+    std::tuple<vtkSmartPointer<vtkDoubleArray>, vtkSmartPointer<vtkDoubleArray>, bool> compute_descent(
         const std::array<int, 3>& dimension, const vtkDataArray* vector_field,
         const curvature_and_torsion_t& original_curvature, const vtkDataArray* jacobian_field,
         const vtkDataArray* positions, const vtkDataArray* errors, vtkDoubleArray* derivative_direction) const;
@@ -99,7 +99,7 @@ private:
         double rotation, const vtkDataArray* positions, const vtkDataArray* vector_field,
         const vtkDataArray* jacobian_field, const vtkDataArray* derivative_direction) const;
 
-    double calculate_error(int index, int index_block, const curvature_and_torsion_t& original_curvature,
+    double calculate_error(int index, const curvature_and_torsion_t& original_curvature,
         const curvature_and_torsion_t& deformed_curvature, const vtkDataArray* jacobian_field) const;
 
     std::tuple<vtkSmartPointer<vtkDoubleArray>, double, double> calculate_error_field(

@@ -32,6 +32,7 @@
 #include <iostream>
 #include <limits>
 #include <numeric>
+#include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -218,7 +219,6 @@ void optimizer::compute_gradient_descent(vtkStructuredGrid* original_grid, vtkSt
 
     for (vtkIdType i = 0; i < num_nodes; ++i)
     {
-        jacobian_field->GetTuple(i, jacobian.data());
         feature_mapping->GetTuple(i, direction.data());
         original_feature_mapping->GetTuple(i, original_direction.data());
 
@@ -263,23 +263,25 @@ void optimizer::compute_gradient_descent(vtkStructuredGrid* original_grid, vtkSt
     original_curvature_directional_gradients->SetNumberOfComponents(3);
     original_curvature_directional_gradients->SetNumberOfTuples(num_nodes);
 
-    Eigen::Vector3d original_gradient;
-    Eigen::Matrix3d original_vector_gradient;
+    Eigen::Vector3d original_gradient, original_directional_gradient;
+    Eigen::Matrix3d original_vector_gradient, inv_transp_jacobian;
 
     for (vtkIdType i = 0; i < num_nodes; ++i)
     {
         original_curvature.curvature_gradient->GetTuple(i, original_gradient.data());
         original_curvature.curvature_vector_gradient->GetTuple(i, original_vector_gradient.data());
-        jacobian_field->GetTuple(i, jacobian.data());
+        original_curvature.curvature_directional_gradient->GetTuple(i, original_directional_gradient.data());
 
-        original_gradient = jacobian * original_gradient;
-        original_vector_gradient = jacobian * original_vector_gradient;
+        jacobian_field->GetTuple(i, jacobian.data());
+        inv_transp_jacobian = jacobian.inverse().transpose();
+
+        original_gradient = inv_transp_jacobian * original_gradient; // TODO: correct?
+        original_vector_gradient = inv_transp_jacobian * original_vector_gradient; // TODO: correct?
+        original_directional_gradient = inv_transp_jacobian * original_directional_gradient; // TODO: correct?
 
         original_curvature_gradients->SetTuple(i, original_gradient.data());
         original_curvature_vector_gradients->SetTuple(i, original_vector_gradient.data());
-
-        original_curvature.curvature_directional_gradient->GetTuple(i, original_gradient.data());
-        original_curvature_directional_gradients->SetTuple(i, original_gradient.data());
+        original_curvature_directional_gradients->SetTuple(i, original_directional_gradient.data());
     }
 
     // Set initial output
@@ -304,8 +306,9 @@ void optimizer::compute_gradient_descent(vtkStructuredGrid* original_grid, vtkSt
 
         // Perform line search (last iteration is the one producing results)
         vtkSmartPointer<vtkDoubleArray> gradient_descent, descent, valid_gradients;
+        bool all_gradients_valid{};
 
-        std::tie(gradient_descent, valid_gradients) = compute_descent(dimension, vector_field_deformed,
+        std::tie(gradient_descent, valid_gradients, all_gradients_valid) = compute_descent(dimension, vector_field_deformed,
             original_curvature, jacobian_field, deformed_positions, errors, derivative_direction);
 
         std::tie(vector_field_deformed, descent) = apply_descent(dimension, step_size, vector_field_deformed, errors, gradient_descent);
@@ -330,7 +333,7 @@ void optimizer::compute_gradient_descent(vtkStructuredGrid* original_grid, vtkSt
 
             stopped = this->AbortWhenGrowing;
         }
-        if (valid_gradients->GetMaxNorm() > 0.0)
+        if (!all_gradients_valid)
         {
             if (!this->CSVOutput) std::cout << "    Invalid gradients found for current gradient step size " << this->GradientStep << "." << std::endl;
 
@@ -357,20 +360,6 @@ void optimizer::compute_gradient_descent(vtkStructuredGrid* original_grid, vtkSt
         if (error_max <= this->Error)
         {
             converged = true;
-        }
-
-        // Transform original curvature to deformed grid for comparison
-        for (vtkIdType i = 0; i < num_nodes; ++i)
-        {
-            original_curvature.curvature_gradient->GetTuple(i, original_gradient.data());
-            original_curvature.curvature_vector_gradient->GetTuple(i, original_vector_gradient.data());
-            jacobian_field->GetTuple(i, jacobian.data());
-
-            original_gradient = jacobian * original_gradient;
-            original_vector_gradient = jacobian * original_vector_gradient;
-
-            original_curvature_gradients->SetTuple(i, original_gradient.data());
-            original_curvature_vector_gradients->SetTuple(i, original_vector_gradient.data());
         }
 
         // Set output for this step
@@ -416,7 +405,7 @@ void optimizer::compute_gradient_descent(vtkStructuredGrid* original_grid, vtkSt
         min_error_avg_step, min_error_max_step, errors_avg, errors_max);
 }
 
-std::pair<vtkSmartPointer<vtkDoubleArray>, vtkSmartPointer<vtkDoubleArray>> optimizer::compute_descent(
+std::tuple<vtkSmartPointer<vtkDoubleArray>, vtkSmartPointer<vtkDoubleArray>, bool> optimizer::compute_descent(
     const std::array<int, 3>& dimension, const vtkDataArray* vector_field,
     const curvature_and_torsion_t& original_curvature, const vtkDataArray* jacobian_field,
     const vtkDataArray* positions, const vtkDataArray* errors, vtkDoubleArray* derivative_direction) const
@@ -438,12 +427,25 @@ std::pair<vtkSmartPointer<vtkDoubleArray>, vtkSmartPointer<vtkDoubleArray>> opti
     valid_gradients->SetNumberOfTuples(vector_field->GetNumberOfTuples());
     valid_gradients->Fill(0.0);
 
+    auto good_first_direction = vtkSmartPointer<vtkDoubleArray>::New();
+    good_first_direction->SetName("Good First Direction");
+    good_first_direction->SetNumberOfComponents(1);
+    good_first_direction->SetNumberOfTuples(vector_field->GetNumberOfTuples());
+    good_first_direction->Fill(0.0);
+
+    auto good_second_direction = vtkSmartPointer<vtkDoubleArray>::New();
+    good_second_direction->SetName("Good Second Direction");
+    good_second_direction->SetNumberOfComponents(1);
+    good_second_direction->SetNumberOfTuples(vector_field->GetNumberOfTuples());
+    good_second_direction->Fill(0.0);
+
     // Rotate vectors in (counter-)clock-wise direction, and calculate corresponding curvature (gradients)
     const bool twoD = dimension[2] == 1;
 
+    bool all_valid = true;
+
     for (int d = 0; d < 2; ++d)
     {
-        const auto run = d % (twoD ? 2 : 3);
         const auto sign = std::pow(-1.0, d);
 
         const double alpha = sign * this->GradientStep;
@@ -453,7 +455,7 @@ std::pair<vtkSmartPointer<vtkDoubleArray>, vtkSmartPointer<vtkDoubleArray>> opti
         // Calculate gradient
         for (int z = 0; z < dimension[2]; ++z)
         {
-            #pragma omp parallel for
+            #pragma omp parallel for reduction(&&: all_valid)
             for (int y = 0; y < dimension[1]; ++y)
             {
                 for (int x = 0; x < dimension[0]; ++x)
@@ -474,16 +476,13 @@ std::pair<vtkSmartPointer<vtkDoubleArray>, vtkSmartPointer<vtkDoubleArray>> opti
                         block_offsets[1][1] + block_offsets[1][0] + 1,
                         block_offsets[2][1] + block_offsets[2][0] + 1 };
 
-                    const auto block_size = block_sizes[0] * block_sizes[1] * block_sizes[2];
-
                     // Calculate difference between original and deformed curvature gradient for all neighboring nodes
                     double old_error, new_error;
-                    old_error = new_error = 0.0;
+                    old_error = new_error = 0.0; // TODO: Gaussian weight?
 
                     for (int zz = (twoD ? 0 : -std::min(block_inner_offset, block_offsets[2][0]));
                         zz <= (twoD ? 0 : std::min(block_inner_offset, block_offsets[2][1])); ++zz)
                     {
-                        const auto index_zz = zz + (twoD ? 0 : block_offsets[2][0]);
                         const auto index_z = z + zz;
 
                         if (twoD || (index_z >= this->IgnoreBorder && index_z < dimension[2] - this->IgnoreBorder))
@@ -491,7 +490,6 @@ std::pair<vtkSmartPointer<vtkDoubleArray>, vtkSmartPointer<vtkDoubleArray>> opti
                             for (int yy = -std::min(block_inner_offset, block_offsets[1][0]);
                                 yy <= std::min(block_inner_offset, block_offsets[1][1]); ++yy)
                             {
-                                const auto index_yy = yy + block_offsets[1][0];
                                 const auto index_y = y + yy;
 
                                 if (index_y >= this->IgnoreBorder && index_y < dimension[1] - this->IgnoreBorder)
@@ -499,16 +497,14 @@ std::pair<vtkSmartPointer<vtkDoubleArray>, vtkSmartPointer<vtkDoubleArray>> opti
                                     for (int xx = -std::min(block_inner_offset, block_offsets[0][0]);
                                         xx <= std::min(block_inner_offset, block_offsets[0][1]); ++xx)
                                     {
-                                        const auto index_xx = xx + block_offsets[0][0];
                                         const auto index_x = x + xx;
 
                                         if (index_x >= this->IgnoreBorder && index_x < dimension[0] - this->IgnoreBorder)
                                         {
-                                            const auto index_block = index_xx + block_sizes[0] * (index_yy + block_sizes[1] * index_zz);
-                                            const auto index_orig = index_x + dimension[0] * (index_y + dimension[1] * index_z);
+                                            const auto index_neighbor = index_x + dimension[0] * (index_y + dimension[1] * index_z);
 
-                                            old_error += const_cast<vtkDataArray*>(errors)->GetComponent(index_orig, 0);
-                                            new_error += calculate_error(index_orig, index_block, original_curvature,
+                                            old_error += const_cast<vtkDataArray*>(errors)->GetComponent(index_neighbor, 0);
+                                            new_error += calculate_error(index_neighbor, original_curvature,
                                                 curvature_after_rotation, jacobian_field);
                                         }
                                     }
@@ -518,20 +514,34 @@ std::pair<vtkSmartPointer<vtkDoubleArray>, vtkSmartPointer<vtkDoubleArray>> opti
                     }
 
                     // Use old and new error to compute gradient
-                    const auto gradient = (new_error - old_error) / alpha;
+                    const auto gradient = (new_error - old_error) / this->GradientStep;
 
-                    if (run == 0)
+                    // Check that exactly one rotation direction yields an improvement, i.e.,
+                    // the gradient is positive in one, and negative in the other direction.
+                    // If this is not the case, it is not a valid gradient, or we are at a local extremum!
+                    if (d == 0)
                     {
-                        valid_gradients->SetValue(index_center, gradient < 0 ? 1.0 : 0.0);
+                        good_first_direction->SetValue(index_center, (gradient < 0) ? 1.0 : 0.0);
+
+                        if (gradient < 0)
+                        {
+                            gradient_descent->SetComponent(index_center, 0, -gradient);
+                        }
                     }
                     else
                     {
-                        valid_gradients->SetValue(index_center, ((valid_gradients->GetValue(index_center) != 0.0) != (gradient < 0)) ? 1.0 : 0.0);
-                    }
+                        good_second_direction->SetValue(index_center, (gradient < 0) ? 1.0 : 0.0);
 
-                    if (gradient < 0)
-                    {
-                        gradient_descent->SetComponent(index_center, 0, gradient);
+                        if (gradient < 0)
+                        {
+                            gradient_descent->SetComponent(index_center, 0, gradient);
+                        }
+
+                        const bool good_first = good_first_direction->GetValue(index_center) != 0.0;
+                        const bool good_second = good_second_direction->GetValue(index_center) != 0.0;
+
+                        valid_gradients->SetValue(index_center, (good_first != good_second) ? 1.0 : 0.0);
+                        all_valid = all_valid && (good_first != good_second);
                     }
                 }
             }
@@ -541,22 +551,22 @@ std::pair<vtkSmartPointer<vtkDoubleArray>, vtkSmartPointer<vtkDoubleArray>> opti
     if (!this->CSVOutput) std::cout << "  Finished computing gradient descent after " <<
         std::chrono::duration_cast<duration_t>(std::chrono::steady_clock::now() - start).count() << duration_str << std::endl;
 
-    return std::make_pair(gradient_descent, valid_gradients);
+    return std::make_tuple(gradient_descent, valid_gradients, all_valid);
 }
 
 std::pair<vtkSmartPointer<vtkDoubleArray>, vtkSmartPointer<vtkDoubleArray>> optimizer::apply_descent(
     const std::array<int, 3>& dimension, const double step_size, const vtkDataArray* vector_field,
-    const vtkDataArray* errors, const vtkDataArray* descent_direction) const
+    const vtkDataArray* errors, const vtkDataArray* gradient_descent) const
 {
     auto deformed_vector_field = vtkSmartPointer<vtkDoubleArray>::New();
     deformed_vector_field->SetName("Deformed Vectors");
     deformed_vector_field->SetNumberOfComponents(3);
-    deformed_vector_field->SetNumberOfTuples(descent_direction->GetNumberOfTuples());
+    deformed_vector_field->SetNumberOfTuples(gradient_descent->GetNumberOfTuples());
 
     auto adjusted_gradient_descent = vtkSmartPointer<vtkDoubleArray>::New();
     adjusted_gradient_descent->SetName("Descent");
     adjusted_gradient_descent->SetNumberOfComponents(1);
-    adjusted_gradient_descent->SetNumberOfTuples(descent_direction->GetNumberOfTuples());
+    adjusted_gradient_descent->SetNumberOfTuples(gradient_descent->GetNumberOfTuples());
 
     const bool twoD = dimension[2] == 1;
 
@@ -577,7 +587,7 @@ std::pair<vtkSmartPointer<vtkDoubleArray>, vtkSmartPointer<vtkDoubleArray>> opti
                 const auto index = x + dimension[0] * (y + dimension[1] * z);
 
                 const_cast<vtkDataArray*>(vector_field)->GetTuple(index, old_vector.data());
-                auto descent = const_cast<vtkDataArray*>(descent_direction)->GetComponent(index, 0);
+                auto descent = const_cast<vtkDataArray*>(gradient_descent)->GetComponent(index, 0);
 
                 if (step_size_method == step_size_method_t::error)
                 {
@@ -756,9 +766,6 @@ curvature_and_torsion_t optimizer::blockwise_curvature(const std::array<int, 3>&
                 copy_content(curvature.torsion_gradient, block_of_them_all.torsion_gradient);
                 copy_content(curvature.torsion_vector_gradient, block_of_them_all.torsion_vector_gradient);
                 copy_content(curvature.torsion_directional_gradient, block_of_them_all.torsion_directional_gradient);
-
-                // Reset vector
-                new_vector_block->SetTuple(index_block_center, old_vector.data());
             }
         }
     }
@@ -766,13 +773,19 @@ curvature_and_torsion_t optimizer::blockwise_curvature(const std::array<int, 3>&
     return block_of_them_all;
 }
 
-double optimizer::calculate_error(const int index, const int index_block, const curvature_and_torsion_t& original_curvature,
+double optimizer::calculate_error(const int index, const curvature_and_torsion_t& original_curvature,
     const curvature_and_torsion_t& deformed_curvature, const vtkDataArray* jacobian_field) const
 {
     Eigen::Vector3d original_gradient, deformed_gradient;
+    Eigen::Matrix3d jacobian;
 
     original_curvature.curvature_directional_gradient->GetTuple(index, original_gradient.data());
-    deformed_curvature.curvature_directional_gradient->GetTuple(index_block, deformed_gradient.data());
+    deformed_curvature.curvature_directional_gradient->GetTuple(index, deformed_gradient.data());
+
+    const_cast<vtkDataArray*>(jacobian_field)->GetTuple(index, jacobian.data());
+    const auto inv_transp_jacobian = jacobian.inverse().transpose();
+
+    original_gradient = inv_transp_jacobian * original_gradient; // TODO: correct?
 
     return (deformed_gradient - original_gradient).norm();
 }
@@ -791,7 +804,7 @@ std::tuple<vtkSmartPointer<vtkDoubleArray>, double, double> optimizer::calculate
 
     for (vtkIdType i = 0; i < original_curvature.curvature_vector_gradient->GetNumberOfTuples(); ++i)
     {
-        const auto error = calculate_error(i, i, original_curvature, deformed_curvature, jacobian_field);
+        const auto error = calculate_error(i, original_curvature, deformed_curvature, jacobian_field);
 
         errors->SetValue(i, error);
 
