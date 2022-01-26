@@ -284,6 +284,12 @@ void optimizer::compute_gradient_descent(vtkStructuredGrid* original_grid, vtkSt
         original_curvature_directional_gradients->SetTuple(i, original_directional_gradient.data());
     }
 
+    auto change = vtkSmartPointer<vtkDoubleArray>::New();
+    change->SetName("Change");
+    change->SetNumberOfComponents(1);
+    change->SetNumberOfTuples(errors->GetNumberOfTuples());
+    change->Fill(0.0);
+
     // Set initial output
     if (!this->CSVOutput) std::cout << "Setting initial output..." << std::endl;
 
@@ -291,7 +297,7 @@ void optimizer::compute_gradient_descent(vtkStructuredGrid* original_grid, vtkSt
 
     output_copy(this->results[0], vector_field_deformed, jacobian_field, errors, deformed_curvature,
         original_curvature_gradients, original_curvature_vector_gradients,
-        original_curvature_directional_gradients, derivative_direction, original_derivative_direction);
+        original_curvature_directional_gradients, derivative_direction, original_derivative_direction, change);
 
     // Apply optimization
     bool converged = false;
@@ -362,13 +368,19 @@ void optimizer::compute_gradient_descent(vtkStructuredGrid* original_grid, vtkSt
             converged = true;
         }
 
+        // Calculate change
+        for (vtkIdType i = 0; i < change->GetNumberOfTuples(); ++i)
+        {
+            change->SetValue(i, new_errors->GetValue(i) - errors->GetValue(i));
+        }
+
         // Set output for this step
         this->results[step + 1uLL] = create_output(dimension, deformed_positions);
 
         output_copy(this->results[step + 1uLL], vector_field_deformed, jacobian_field,
             new_errors, deformed_curvature, gradient_descent, descent, original_curvature_gradients,
             original_curvature_vector_gradients, original_curvature_directional_gradients, derivative_direction,
-            original_derivative_direction, valid_gradients);
+            original_derivative_direction, valid_gradients, change);
 
         output_copy(this->results[step], gradient_descent, descent, valid_gradients);
 
