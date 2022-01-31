@@ -41,6 +41,9 @@ const auto block_offset = 5;
 const auto block_inner_offset = 2;
 const auto block_size = (2 * block_offset + 1);
 
+#define __output_input
+#define __output_curvatures
+
 vtkStandardNewMacro(optimizer);
 
 optimizer::optimizer() : hash(-1)
@@ -95,6 +98,12 @@ int optimizer::RequestData(vtkInformation*, vtkInformationVector** input_vector,
         return 0;
     }
 
+    if (original_grid->GetNumberOfPoints() != deformed_grid->GetNumberOfPoints())
+    {
+        std::cerr << std::endl << "Number of grid nodes must match." << std::endl;
+        return 0;
+    }
+
     auto vector_field_original = GetInputArrayToProcess(0, original_grid);
 
     if (vector_field_original == nullptr)
@@ -145,25 +154,16 @@ int optimizer::RequestData(vtkInformation*, vtkInformationVector** input_vector,
 void optimizer::compute_gradient_descent(vtkStructuredGrid* original_grid, vtkStructuredGrid* deformed_grid,
     vtkDataArray* vector_field_original, vtkDataArray* original_feature_mapping, vtkDataArray* feature_mapping)
 {
-    // Get input grid and data
-    const grid original_vector_field(original_grid, vector_field_original);
-
     const auto num_nodes = original_grid->GetNumberOfPoints();
-
-    if (num_nodes != deformed_grid->GetNumberOfPoints())
-    {
-        std::cerr << "Number of grid nodes must match." << std::endl;
-        return;
-    }
 
     // Get initial node positions, and compute deformation
     auto original_positions = vtkSmartPointer<vtkDoubleArray>::New();
-    original_positions->SetName("Original Position");
+    original_positions->SetName("Positions (Original)");
     original_positions->SetNumberOfComponents(3);
     original_positions->SetNumberOfTuples(num_nodes);
 
     auto deformed_positions = vtkSmartPointer<vtkDoubleArray>::New();
-    deformed_positions->SetName("Deformed Position");
+    deformed_positions->SetName("Positions");
     deformed_positions->SetNumberOfComponents(3);
     deformed_positions->SetNumberOfTuples(num_nodes);
 
@@ -181,12 +181,51 @@ void optimizer::compute_gradient_descent(vtkStructuredGrid* original_grid, vtkSt
     auto jacobian_field = gradient_field(grid(original_grid, deformed_positions), static_cast<gradient_method_t>(this->GradientMethod), this->GradientKernel);
     jacobian_field->SetName("Jacobian");
 
-    auto vector_field_deformed = vtkSmartPointer<vtkDoubleArray>::New();
-    vector_field_deformed->SetName("Deformed Vectors");
-    vector_field_deformed->SetNumberOfComponents(3);
-    vector_field_deformed->SetNumberOfTuples(num_nodes);
+    // Calculate direction from node position to B-spline for directional derivative
+    auto original_derivative_direction = vtkSmartPointer<vtkDoubleArray>::New();
+    original_derivative_direction->SetName("Derivative Direction (Original)");
+    original_derivative_direction->SetNumberOfComponents(3);
+    original_derivative_direction->SetNumberOfTuples(num_nodes);
+
+    auto transformed_derivative_direction = vtkSmartPointer<vtkDoubleArray>::New();
+    transformed_derivative_direction->SetName("Derivative Direction (Transformed)");
+    transformed_derivative_direction->SetNumberOfComponents(3);
+    transformed_derivative_direction->SetNumberOfTuples(num_nodes);
+
+    auto deformed_derivative_direction = vtkSmartPointer<vtkDoubleArray>::New();
+    deformed_derivative_direction->SetName("Derivative Direction");
+    deformed_derivative_direction->SetNumberOfComponents(3);
+    deformed_derivative_direction->SetNumberOfTuples(num_nodes);
 
     Eigen::Matrix3d jacobian;
+    Eigen::Vector3d original_direction, transformed_direction, deformed_direction;
+
+    for (vtkIdType i = 0; i < num_nodes; ++i)
+    {
+        jacobian_field->GetTuple(i, jacobian.data());
+        original_feature_mapping->GetTuple(i, original_direction.data());
+        feature_mapping->GetTuple(i, deformed_direction.data());
+
+        original_direction.normalize();
+        transformed_direction = (jacobian * original_direction).normalized();
+        deformed_direction.normalize();
+
+        original_derivative_direction->SetTuple(i, original_direction.data());
+        transformed_derivative_direction->SetTuple(i, transformed_direction.data());
+        deformed_derivative_direction->SetTuple(i, deformed_direction.data());
+    }
+
+    // Adjust vector field
+    auto original_vector_field = vtkSmartPointer<vtkDoubleArray>::New();
+    original_vector_field->SetName("Vector Field (Original)");
+    original_vector_field->SetNumberOfComponents(3);
+    original_vector_field->SetNumberOfTuples(num_nodes);
+
+    auto deformed_vector_field = vtkSmartPointer<vtkDoubleArray>::New();
+    deformed_vector_field->SetName("Vector Field");
+    deformed_vector_field->SetNumberOfComponents(3);
+    deformed_vector_field->SetNumberOfTuples(num_nodes);
+
     Eigen::Vector3d vector;
 
     for (vtkIdType i = 0; i < num_nodes; ++i)
@@ -194,44 +233,104 @@ void optimizer::compute_gradient_descent(vtkStructuredGrid* original_grid, vtkSt
         jacobian_field->GetTuple(i, jacobian.data());
         vector_field_original->GetTuple(i, vector.data());
 
+        original_vector_field->SetTuple(i, vector.data());
+
         vector = jacobian * vector;
 
-        vector_field_deformed->SetTuple(i, vector.data());
+        deformed_vector_field->SetTuple(i, vector.data());
     }
 
-    const grid deformed_vector_field(deformed_grid, vector_field_deformed, jacobian_field);
-
-    const std::array<int, 3> dimension = original_vector_field.dimensions();
+    const std::array<int, 3> dimension = grid(original_grid, original_vector_field).dimensions();
     const bool twoD = dimension[2] == 1;
 
-    // Calculate direction from node position to B-spline for directional derivative
-    auto original_derivative_direction = vtkSmartPointer<vtkDoubleArray>::New();
-    original_derivative_direction->SetName("Derivative Direction (Original)");
-    original_derivative_direction->SetNumberOfComponents(3);
-    original_derivative_direction->SetNumberOfTuples(num_nodes);
+    // Calculate initial curvature
+    const auto original_curvature = blockwise_curvature(dimension, 0.0, original_positions, original_vector_field, nullptr, original_derivative_direction);
 
-    auto derivative_direction = vtkSmartPointer<vtkDoubleArray>::New();
-    derivative_direction->SetName("Derivative Direction");
-    derivative_direction->SetNumberOfComponents(3);
-    derivative_direction->SetNumberOfTuples(num_nodes);
+    auto original_curvatures = vtkSmartPointer<vtkDoubleArray>::New();
+    original_curvatures->SetName("Curvature (Original)");
+    original_curvatures->SetNumberOfComponents(1);
+    original_curvatures->SetNumberOfTuples(num_nodes);
 
-    Eigen::Vector3d direction, original_direction;
+    auto original_curvature_vector = vtkSmartPointer<vtkDoubleArray>::New();
+    original_curvature_vector->SetName("Curvature Vector (Original)");
+    original_curvature_vector->SetNumberOfComponents(3);
+    original_curvature_vector->SetNumberOfTuples(num_nodes);
+
+    auto transformed_curvature_vector = vtkSmartPointer<vtkDoubleArray>::New();
+    transformed_curvature_vector->SetName("Curvature Vector (Transformed)");
+    transformed_curvature_vector->SetNumberOfComponents(3);
+    transformed_curvature_vector->SetNumberOfTuples(num_nodes);
+
+    auto original_curvature_gradients = vtkSmartPointer<vtkDoubleArray>::New();
+    original_curvature_gradients->SetName("Curvature Gradient (Original)");
+    original_curvature_gradients->SetNumberOfComponents(3);
+    original_curvature_gradients->SetNumberOfTuples(num_nodes);
+
+    auto transformed_curvature_gradients = vtkSmartPointer<vtkDoubleArray>::New();
+    transformed_curvature_gradients->SetName("Curvature Gradient (Transformed)");
+    transformed_curvature_gradients->SetNumberOfComponents(3);
+    transformed_curvature_gradients->SetNumberOfTuples(num_nodes);
+
+    auto original_curvature_vector_gradients = vtkSmartPointer<vtkDoubleArray>::New();
+    original_curvature_vector_gradients->SetName("Curvature Vector Gradient (Original)");
+    original_curvature_vector_gradients->SetNumberOfComponents(9);
+    original_curvature_vector_gradients->SetNumberOfTuples(num_nodes);
+
+    auto transformed_curvature_vector_gradients = vtkSmartPointer<vtkDoubleArray>::New();
+    transformed_curvature_vector_gradients->SetName("Curvature Vector Gradient (Transformed)");
+    transformed_curvature_vector_gradients->SetNumberOfComponents(9);
+    transformed_curvature_vector_gradients->SetNumberOfTuples(num_nodes);
+
+    auto original_curvature_directional_gradients = vtkSmartPointer<vtkDoubleArray>::New();
+    original_curvature_directional_gradients->SetName("Directional Curvature Vector Gradient (Original)");
+    original_curvature_directional_gradients->SetNumberOfComponents(3);
+    original_curvature_directional_gradients->SetNumberOfTuples(num_nodes);
+
+    auto transformed_curvature_directional_gradients = vtkSmartPointer<vtkDoubleArray>::New();
+    transformed_curvature_directional_gradients->SetName("Directional Curvature Vector Gradient (Transformed)");
+    transformed_curvature_directional_gradients->SetNumberOfComponents(3);
+    transformed_curvature_directional_gradients->SetNumberOfTuples(num_nodes);
+
+    double curvature{};
+    Eigen::Vector3d original_vector, original_gradient, original_directional_gradient;
+    Eigen::Matrix3d original_vector_gradient, inv_transp_jacobian;
 
     for (vtkIdType i = 0; i < num_nodes; ++i)
     {
-        feature_mapping->GetTuple(i, direction.data());
-        original_feature_mapping->GetTuple(i, original_direction.data());
+        original_curvature.curvature->GetTuple(i, &curvature);
+        original_curvature.curvature_vector->GetTuple(i, original_vector.data());
+        original_curvature.curvature_gradient->GetTuple(i, original_gradient.data());
+        original_curvature.curvature_vector_gradient->GetTuple(i, original_vector_gradient.data());
+        original_curvature.curvature_directional_gradient->GetTuple(i, original_directional_gradient.data());
 
-        direction.normalize(); // TODO: what if zero vector?
-        original_direction.normalize(); // TODO: what if zero vector?
+        original_curvatures->SetTuple(i, &curvature);
+        original_curvature_vector->SetTuple(i, original_vector.data());
+        original_curvature_gradients->SetTuple(i, original_gradient.data());
+        original_curvature_vector_gradients->SetTuple(i, original_vector_gradient.data());
+        original_curvature_directional_gradients->SetTuple(i, original_directional_gradient.data());
 
-        derivative_direction->SetTuple(i, direction.data());
-        original_derivative_direction->SetTuple(i, original_direction.data());
+        jacobian_field->GetTuple(i, jacobian.data());
+        inv_transp_jacobian = jacobian.inverse().transpose();
+
+        original_vector = jacobian * original_vector;
+        original_gradient = inv_transp_jacobian * original_gradient;
+        original_vector_gradient = inv_transp_jacobian * original_vector_gradient;
+        original_directional_gradient = inv_transp_jacobian * original_directional_gradient;
+
+        transformed_curvature_vector->SetTuple(i, original_vector.data());
+        transformed_curvature_gradients->SetTuple(i, original_gradient.data());
+        transformed_curvature_vector_gradients->SetTuple(i, original_vector_gradient.data());
+        transformed_curvature_directional_gradients->SetTuple(i, original_directional_gradient.data());
     }
 
-    // Calculate initial gradient difference
-    const auto original_curvature = blockwise_curvature(dimension, 0.0, original_positions, vector_field_original, nullptr, original_derivative_direction);
-    const auto deformed_curvature = blockwise_curvature(dimension, 0.0, deformed_positions, vector_field_deformed, jacobian_field, derivative_direction);
+
+
+    // ----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+
+    // Calculate initial error
+    const auto deformed_curvature = blockwise_curvature(dimension, 0.0, deformed_positions, deformed_vector_field, jacobian_field, deformed_derivative_direction);
 
     vtkSmartPointer<vtkDoubleArray> errors;
     double error_avg{}, error_max{}, min_error_avg, min_error_max;
@@ -248,56 +347,66 @@ void optimizer::compute_gradient_descent(vtkStructuredGrid* original_grid, vtkSt
     errors_avg.push_back(original_error_avg);
     errors_max.push_back(original_error_max);
 
-    auto original_curvature_gradients = vtkSmartPointer<vtkDoubleArray>::New();
-    original_curvature_gradients->SetName("Curvature Gradient (Original)");
-    original_curvature_gradients->SetNumberOfComponents(3);
-    original_curvature_gradients->SetNumberOfTuples(num_nodes);
+    deformed_curvature.curvature->SetName("Curvature");
+    deformed_curvature.curvature_vector->SetName("Curvature Vector");
+    deformed_curvature.curvature_gradient->SetName("Curvature Gradient");
+    deformed_curvature.curvature_vector_gradient->SetName("Curvature Vector Gradient");
+    deformed_curvature.curvature_directional_gradient->SetName("Directional Curvature Vector Gradient");
 
-    auto original_curvature_vector_gradients = vtkSmartPointer<vtkDoubleArray>::New();
-    original_curvature_vector_gradients->SetName("Curvature Vector Gradient (Original)");
-    original_curvature_vector_gradients->SetNumberOfComponents(9);
-    original_curvature_vector_gradients->SetNumberOfTuples(num_nodes);
-
-    auto original_curvature_directional_gradients = vtkSmartPointer<vtkDoubleArray>::New();
-    original_curvature_directional_gradients->SetName("Directional Curvature Gradient (Original)");
-    original_curvature_directional_gradients->SetNumberOfComponents(3);
-    original_curvature_directional_gradients->SetNumberOfTuples(num_nodes);
-
-    Eigen::Vector3d original_gradient, original_directional_gradient;
-    Eigen::Matrix3d original_vector_gradient, inv_transp_jacobian;
-
-    for (vtkIdType i = 0; i < num_nodes; ++i)
-    {
-        original_curvature.curvature_gradient->GetTuple(i, original_gradient.data());
-        original_curvature.curvature_vector_gradient->GetTuple(i, original_vector_gradient.data());
-        original_curvature.curvature_directional_gradient->GetTuple(i, original_directional_gradient.data());
-
-        jacobian_field->GetTuple(i, jacobian.data());
-        inv_transp_jacobian = jacobian.inverse().transpose();
-
-        original_gradient = inv_transp_jacobian * original_gradient; // TODO: correct?
-        original_vector_gradient = inv_transp_jacobian * original_vector_gradient; // TODO: correct?
-        original_directional_gradient = inv_transp_jacobian * original_directional_gradient; // TODO: correct?
-
-        original_curvature_gradients->SetTuple(i, original_gradient.data());
-        original_curvature_vector_gradients->SetTuple(i, original_vector_gradient.data());
-        original_curvature_directional_gradients->SetTuple(i, original_directional_gradient.data());
-    }
-
+    // Initialize arrays that have no meaning in the initial grid
     auto change = vtkSmartPointer<vtkDoubleArray>::New();
     change->SetName("Change");
     change->SetNumberOfComponents(1);
     change->SetNumberOfTuples(errors->GetNumberOfTuples());
     change->Fill(0.0);
 
+    auto gradient_descent = vtkSmartPointer<vtkDoubleArray>::New();
+    gradient_descent->SetName("Gradient Descent");
+    gradient_descent->SetNumberOfComponents(1);
+    gradient_descent->SetNumberOfTuples(errors->GetNumberOfTuples());
+    gradient_descent->Fill(0.0);
+
+    auto adjusted_gradient_descent = vtkSmartPointer<vtkDoubleArray>::New();
+    adjusted_gradient_descent->SetName("Gradient Descent (Adjusted)");
+    adjusted_gradient_descent->SetNumberOfComponents(1);
+    adjusted_gradient_descent->SetNumberOfTuples(errors->GetNumberOfTuples());
+    adjusted_gradient_descent->Fill(0.0);
+
+    auto valid_gradients = vtkSmartPointer<vtkDoubleArray>::New();
+    valid_gradients->SetName("Valid Gradients");
+    valid_gradients->SetNumberOfComponents(1);
+    valid_gradients->SetNumberOfTuples(errors->GetNumberOfTuples());
+    valid_gradients->Fill(1.0);
+
     // Set initial output
     if (!this->CSVOutput) std::cout << "Setting initial output..." << std::endl;
 
     this->results[0] = create_output(dimension, deformed_positions);
 
-    output_copy(this->results[0], vector_field_deformed, jacobian_field, errors, deformed_curvature,
-        original_curvature_gradients, original_curvature_vector_gradients,
-        original_curvature_directional_gradients, derivative_direction, original_derivative_direction, change);
+    output_copy(this->results[0],
+#ifdef __output_input
+        original_positions, deformed_positions, jacobian_field,                                             // grid positions and Jacobian (const.)
+        original_derivative_direction, transformed_derivative_direction, deformed_derivative_direction,     // derivative directions (const.)
+        original_vector_field,                                                                              // original vector field (const.)
+#endif
+#ifdef __output_curvatures
+        original_curvatures, original_curvature_vector, transformed_curvature_vector,                       // \ 
+        original_curvature_gradients, transformed_curvature_gradients,                                      //  | curvature and
+        original_curvature_vector_gradients, transformed_curvature_vector_gradients,                        //  | curvature gradients (const.)
+        original_curvature_directional_gradients, transformed_curvature_directional_gradients,              // / 
+        deformed_curvature.curvature, deformed_curvature.curvature_vector,                                  // \ 
+        deformed_curvature.curvature_gradient, deformed_curvature.curvature_vector_gradient,                //  | curvature and curvature gradients
+        deformed_curvature.curvature_directional_gradient,                                                  // / 
+#endif
+        deformed_vector_field,                                                                              // vector field
+        gradient_descent, adjusted_gradient_descent, valid_gradients,                                       // gradient descent
+        errors, change);                                                                                    // error field and its difference
+
+
+
+    // ----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
 
     // Apply optimization
     bool converged = false;
@@ -311,16 +420,15 @@ void optimizer::compute_gradient_descent(vtkStructuredGrid* original_grid, vtkSt
         if (!this->CSVOutput) std::cout << "Optimization step: " << (step + 1) << "/" << this->NumSteps << std::endl;
 
         // Perform line search (last iteration is the one producing results)
-        vtkSmartPointer<vtkDoubleArray> gradient_descent, descent, valid_gradients;
         bool all_gradients_valid{};
 
-        std::tie(gradient_descent, valid_gradients, all_gradients_valid) = compute_descent(dimension, vector_field_deformed,
-            original_curvature, jacobian_field, deformed_positions, errors, derivative_direction);
+        std::tie(gradient_descent, valid_gradients, all_gradients_valid) = compute_descent(dimension, deformed_vector_field,
+            original_curvature, jacobian_field, deformed_positions, errors, deformed_derivative_direction);
 
-        std::tie(vector_field_deformed, descent) = apply_descent(dimension, step_size, vector_field_deformed, errors, gradient_descent);
+        std::tie(deformed_vector_field, adjusted_gradient_descent) = apply_descent(dimension, step_size, deformed_vector_field, errors, gradient_descent);
 
         // Calculate new gradient difference
-        const auto deformed_curvature = blockwise_curvature(dimension, 0.0, deformed_positions, vector_field_deformed, jacobian_field, derivative_direction);
+        const auto deformed_curvature = blockwise_curvature(dimension, 0.0, deformed_positions, deformed_vector_field, jacobian_field, deformed_derivative_direction);
 
         vtkSmartPointer<vtkDoubleArray> new_errors;
         double new_error_avg{}, new_error_max{};
@@ -368,6 +476,12 @@ void optimizer::compute_gradient_descent(vtkStructuredGrid* original_grid, vtkSt
             converged = true;
         }
 
+        deformed_curvature.curvature->SetName("Curvature");
+        deformed_curvature.curvature_vector->SetName("Curvature Vector");
+        deformed_curvature.curvature_gradient->SetName("Curvature Gradient");
+        deformed_curvature.curvature_vector_gradient->SetName("Curvature Vector Gradient");
+        deformed_curvature.curvature_directional_gradient->SetName("Directional Curvature Vector Gradient");
+
         // Calculate change
         for (vtkIdType i = 0; i < change->GetNumberOfTuples(); ++i)
         {
@@ -377,12 +491,26 @@ void optimizer::compute_gradient_descent(vtkStructuredGrid* original_grid, vtkSt
         // Set output for this step
         this->results[step + 1uLL] = create_output(dimension, deformed_positions);
 
-        output_copy(this->results[step + 1uLL], vector_field_deformed, jacobian_field,
-            new_errors, deformed_curvature, gradient_descent, descent, original_curvature_gradients,
-            original_curvature_vector_gradients, original_curvature_directional_gradients, derivative_direction,
-            original_derivative_direction, valid_gradients, change);
+        output_copy(this->results[step + 1uLL],
+#ifdef __output_input
+            original_positions, deformed_positions, jacobian_field,                                             // grid positions and Jacobian (const.)
+            original_derivative_direction, transformed_derivative_direction, deformed_derivative_direction,     // derivative directions (const.)
+            original_vector_field,                                                                              // original vector field (const.)
+#endif
+#ifdef __output_curvatures
+            original_curvatures, original_curvature_vector, transformed_curvature_vector,                       // \ 
+            original_curvature_gradients, transformed_curvature_gradients,                                      //  | curvature and
+            original_curvature_vector_gradients, transformed_curvature_vector_gradients,                        //  | curvature gradients (const.)
+            original_curvature_directional_gradients, transformed_curvature_directional_gradients,              // / 
+            deformed_curvature.curvature, deformed_curvature.curvature_vector,                                  // \ 
+            deformed_curvature.curvature_gradient, deformed_curvature.curvature_vector_gradient,                //  | curvature and curvature gradients
+            deformed_curvature.curvature_directional_gradient,                                                  // / 
+#endif
+            deformed_vector_field,                                                                              // vector field
+            gradient_descent, adjusted_gradient_descent, valid_gradients,                                       // gradient descent
+            new_errors, change);                                                                                // new error field and its difference
 
-        output_copy(this->results[step], gradient_descent, descent, valid_gradients);
+        output_copy(this->results[step], gradient_descent, adjusted_gradient_descent, valid_gradients);
 
         // Prepare next iteration
         errors = new_errors;
@@ -576,7 +704,7 @@ std::pair<vtkSmartPointer<vtkDoubleArray>, vtkSmartPointer<vtkDoubleArray>> opti
     deformed_vector_field->SetNumberOfTuples(gradient_descent->GetNumberOfTuples());
 
     auto adjusted_gradient_descent = vtkSmartPointer<vtkDoubleArray>::New();
-    adjusted_gradient_descent->SetName("Descent");
+    adjusted_gradient_descent->SetName("Gradient Descent (Adjusted)");
     adjusted_gradient_descent->SetNumberOfComponents(1);
     adjusted_gradient_descent->SetNumberOfTuples(gradient_descent->GetNumberOfTuples());
 
