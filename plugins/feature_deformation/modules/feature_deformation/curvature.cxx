@@ -46,15 +46,21 @@ curvature_and_torsion_t curvature_and_torsion_t::create(const std::size_t num_el
 
     auto curvature_vector_gradient = vtkSmartPointer<vtkDoubleArray>::New();
     curvature_vector_gradient->SetName("Curvature Vector Gradient");
-    curvature_vector_gradient->SetNumberOfComponents(3);
+    curvature_vector_gradient->SetNumberOfComponents(9);
     curvature_vector_gradient->SetNumberOfTuples(num_elements);
     curvature_vector_gradient->Fill(0.0);
 
     auto curvature_directional_gradient = vtkSmartPointer<vtkDoubleArray>::New();
     curvature_directional_gradient->SetName("Directional Curvature Gradient");
-    curvature_directional_gradient->SetNumberOfComponents(3);
+    curvature_directional_gradient->SetNumberOfComponents(1);
     curvature_directional_gradient->SetNumberOfTuples(num_elements);
     curvature_directional_gradient->Fill(0.0);
+
+    auto curvature_vector_directional_gradient = vtkSmartPointer<vtkDoubleArray>::New();
+    curvature_vector_directional_gradient->SetName("Directional Curvature Vector Gradient");
+    curvature_vector_directional_gradient->SetNumberOfComponents(3);
+    curvature_vector_directional_gradient->SetNumberOfTuples(num_elements);
+    curvature_vector_directional_gradient->Fill(0.0);
 
     auto torsion = vtkSmartPointer<vtkDoubleArray>::New();
     torsion->SetName("Torsion");
@@ -76,15 +82,21 @@ curvature_and_torsion_t curvature_and_torsion_t::create(const std::size_t num_el
 
     auto torsion_vector_gradient = vtkSmartPointer<vtkDoubleArray>::New();
     torsion_vector_gradient->SetName("Torsion Vector Gradient");
-    torsion_vector_gradient->SetNumberOfComponents(3);
+    torsion_vector_gradient->SetNumberOfComponents(9);
     torsion_vector_gradient->SetNumberOfTuples(num_elements);
     torsion_vector_gradient->Fill(0.0);
 
     auto torsion_directional_gradient = vtkSmartPointer<vtkDoubleArray>::New();
     torsion_directional_gradient->SetName("Directional Torsion Gradient");
-    torsion_directional_gradient->SetNumberOfComponents(3);
+    torsion_directional_gradient->SetNumberOfComponents(1);
     torsion_directional_gradient->SetNumberOfTuples(num_elements);
     torsion_directional_gradient->Fill(0.0);
+
+    auto torsion_vector_directional_gradient = vtkSmartPointer<vtkDoubleArray>::New();
+    torsion_vector_directional_gradient->SetName("Directional Torsion Vector Gradient");
+    torsion_vector_directional_gradient->SetNumberOfComponents(3);
+    torsion_vector_directional_gradient->SetNumberOfTuples(num_elements);
+    torsion_vector_directional_gradient->Fill(0.0);
 
     // Return initialized fields
     curvature_and_torsion_t ret;
@@ -96,11 +108,13 @@ curvature_and_torsion_t curvature_and_torsion_t::create(const std::size_t num_el
     ret.curvature_gradient = curvature_gradient;
     ret.curvature_vector_gradient = curvature_vector_gradient;
     ret.curvature_directional_gradient = curvature_directional_gradient;
+    ret.curvature_vector_directional_gradient = curvature_vector_directional_gradient;
     ret.torsion = torsion;
     ret.torsion_vector = torsion_vector;
     ret.torsion_gradient = torsion_gradient;
     ret.torsion_vector_gradient = torsion_vector_gradient;
     ret.torsion_directional_gradient = torsion_directional_gradient;
+    ret.torsion_vector_directional_gradient = torsion_vector_directional_gradient;
 
     return ret;
 }
@@ -235,20 +249,27 @@ curvature_and_torsion_t curvature_and_torsion(const grid& vector_field,
             {
                 for (int x = 0; x < dim_x; ++x)
                 {
-                    Eigen::Matrix3d curvature_derivative, torsion_derivative;
+                    Eigen::Vector3d curvature_derivative, torsion_derivative;
+                    Eigen::Matrix3d curvature_vector_derivative, torsion_vector_derivative;
                     Eigen::Vector3d direction;
 
-                    ret.curvature_vector_gradient->GetTuple(index, curvature_derivative.data());
-                    ret.torsion_vector_gradient->GetTuple(index, torsion_derivative.data());
+                    ret.curvature_gradient->GetTuple(index, curvature_derivative.data());
+                    ret.curvature_vector_gradient->GetTuple(index, curvature_vector_derivative.data());
+                    ret.torsion_gradient->GetTuple(index, torsion_derivative.data());
+                    ret.torsion_vector_gradient->GetTuple(index, torsion_vector_derivative.data());
                     const_cast<vtkDataArray*>(directions)->GetTuple(index, direction.data());
 
                     direction.normalize();
 
-                    const Eigen::Vector3d directional_curvature_derivative = curvature_derivative * direction;
-                    const Eigen::Vector3d directional_torsion_derivative = torsion_derivative * direction;
+                    const double directional_curvature_derivative = curvature_derivative.dot(direction);
+                    const Eigen::Vector3d directional_curvature_vector_derivative = curvature_vector_derivative * direction;
+                    const double directional_torsion_derivative = torsion_derivative.dot(direction);
+                    const Eigen::Vector3d directional_torsion_vector_derivative = torsion_vector_derivative * direction;
 
-                    ret.curvature_directional_gradient->SetTuple(index, directional_curvature_derivative.data());
-                    ret.torsion_directional_gradient->SetTuple(index, directional_torsion_derivative.data());
+                    ret.curvature_directional_gradient->SetValue(index, directional_curvature_derivative);
+                    ret.curvature_vector_directional_gradient->SetTuple(index, directional_curvature_vector_derivative.data());
+                    ret.torsion_directional_gradient->SetValue(index, directional_torsion_derivative);
+                    ret.torsion_vector_directional_gradient->SetTuple(index, directional_torsion_vector_derivative.data());
 
                     ++index;
                 }

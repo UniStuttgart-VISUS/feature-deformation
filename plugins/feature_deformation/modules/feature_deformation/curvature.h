@@ -18,11 +18,13 @@ struct curvature_and_torsion_t
     vtkSmartPointer<vtkDoubleArray> curvature_gradient;
     vtkSmartPointer<vtkDoubleArray> curvature_vector_gradient;
     vtkSmartPointer<vtkDoubleArray> curvature_directional_gradient;
+    vtkSmartPointer<vtkDoubleArray> curvature_vector_directional_gradient;
     vtkSmartPointer<vtkDoubleArray> torsion;
     vtkSmartPointer<vtkDoubleArray> torsion_vector;
     vtkSmartPointer<vtkDoubleArray> torsion_gradient;
     vtkSmartPointer<vtkDoubleArray> torsion_vector_gradient;
     vtkSmartPointer<vtkDoubleArray> torsion_directional_gradient;
+    vtkSmartPointer<vtkDoubleArray> torsion_vector_directional_gradient;
 
     static curvature_and_torsion_t create(std::size_t num_elements);
 };

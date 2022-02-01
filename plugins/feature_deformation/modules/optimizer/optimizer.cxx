@@ -221,6 +221,11 @@ void optimizer::compute_gradient_descent(vtkStructuredGrid* original_grid, vtkSt
     original_vector_field->SetNumberOfComponents(3);
     original_vector_field->SetNumberOfTuples(num_nodes);
 
+    auto transformed_vector_field = vtkSmartPointer<vtkDoubleArray>::New();
+    transformed_vector_field->SetName("Vector Field (Transformed)");
+    transformed_vector_field->SetNumberOfComponents(3);
+    transformed_vector_field->SetNumberOfTuples(num_nodes);
+
     auto deformed_vector_field = vtkSmartPointer<vtkDoubleArray>::New();
     deformed_vector_field->SetName("Vector Field");
     deformed_vector_field->SetNumberOfComponents(3);
@@ -237,6 +242,7 @@ void optimizer::compute_gradient_descent(vtkStructuredGrid* original_grid, vtkSt
 
         vector = jacobian * vector;
 
+        transformed_vector_field->SetTuple(i, vector.data());
         deformed_vector_field->SetTuple(i, vector.data());
     }
 
@@ -282,17 +288,22 @@ void optimizer::compute_gradient_descent(vtkStructuredGrid* original_grid, vtkSt
     transformed_curvature_vector_gradients->SetNumberOfTuples(num_nodes);
 
     auto original_curvature_directional_gradients = vtkSmartPointer<vtkDoubleArray>::New();
-    original_curvature_directional_gradients->SetName("Directional Curvature Vector Gradient (Original)");
-    original_curvature_directional_gradients->SetNumberOfComponents(3);
+    original_curvature_directional_gradients->SetName("Directional Curvature Gradient (Original)");
+    original_curvature_directional_gradients->SetNumberOfComponents(1);
     original_curvature_directional_gradients->SetNumberOfTuples(num_nodes);
 
-    auto transformed_curvature_directional_gradients = vtkSmartPointer<vtkDoubleArray>::New();
-    transformed_curvature_directional_gradients->SetName("Directional Curvature Vector Gradient (Transformed)");
-    transformed_curvature_directional_gradients->SetNumberOfComponents(3);
-    transformed_curvature_directional_gradients->SetNumberOfTuples(num_nodes);
+    auto original_curvature_vector_directional_gradients = vtkSmartPointer<vtkDoubleArray>::New();
+    original_curvature_vector_directional_gradients->SetName("Directional Curvature Vector Gradient (Original)");
+    original_curvature_vector_directional_gradients->SetNumberOfComponents(3);
+    original_curvature_vector_directional_gradients->SetNumberOfTuples(num_nodes);
 
-    double curvature{};
-    Eigen::Vector3d original_vector, original_gradient, original_directional_gradient;
+    auto transformed_curvature_vector_directional_gradients = vtkSmartPointer<vtkDoubleArray>::New();
+    transformed_curvature_vector_directional_gradients->SetName("Directional Curvature Vector Gradient (Transformed)");
+    transformed_curvature_vector_directional_gradients->SetNumberOfComponents(3);
+    transformed_curvature_vector_directional_gradients->SetNumberOfTuples(num_nodes);
+
+    double curvature{}, original_directional_gradient;
+    Eigen::Vector3d original_vector, original_gradient, original_directional_vector_gradient;
     Eigen::Matrix3d original_vector_gradient, inv_transp_jacobian;
 
     for (vtkIdType i = 0; i < num_nodes; ++i)
@@ -301,26 +312,28 @@ void optimizer::compute_gradient_descent(vtkStructuredGrid* original_grid, vtkSt
         original_curvature.curvature_vector->GetTuple(i, original_vector.data());
         original_curvature.curvature_gradient->GetTuple(i, original_gradient.data());
         original_curvature.curvature_vector_gradient->GetTuple(i, original_vector_gradient.data());
-        original_curvature.curvature_directional_gradient->GetTuple(i, original_directional_gradient.data());
+        original_curvature.curvature_directional_gradient->GetTuple(i, &original_directional_gradient);
+        original_curvature.curvature_vector_directional_gradient->GetTuple(i, original_directional_vector_gradient.data());
 
         original_curvatures->SetTuple(i, &curvature);
         original_curvature_vector->SetTuple(i, original_vector.data());
         original_curvature_gradients->SetTuple(i, original_gradient.data());
         original_curvature_vector_gradients->SetTuple(i, original_vector_gradient.data());
-        original_curvature_directional_gradients->SetTuple(i, original_directional_gradient.data());
+        original_curvature_directional_gradients->SetTuple(i, &original_directional_gradient);
+        original_curvature_vector_directional_gradients->SetTuple(i, original_directional_vector_gradient.data());
 
         jacobian_field->GetTuple(i, jacobian.data());
         inv_transp_jacobian = jacobian.inverse().transpose();
 
         original_vector = jacobian * original_vector;
         original_gradient = inv_transp_jacobian * original_gradient;
-        original_vector_gradient = inv_transp_jacobian * original_vector_gradient;
-        original_directional_gradient = inv_transp_jacobian * original_directional_gradient;
+        original_vector_gradient = inv_transp_jacobian * original_vector_gradient * jacobian.transpose();
+        original_directional_vector_gradient = inv_transp_jacobian * original_directional_vector_gradient;
 
         transformed_curvature_vector->SetTuple(i, original_vector.data());
         transformed_curvature_gradients->SetTuple(i, original_gradient.data());
         transformed_curvature_vector_gradients->SetTuple(i, original_vector_gradient.data());
-        transformed_curvature_directional_gradients->SetTuple(i, original_directional_gradient.data());
+        transformed_curvature_vector_directional_gradients->SetTuple(i, original_directional_vector_gradient.data());
     }
 
 
@@ -351,7 +364,7 @@ void optimizer::compute_gradient_descent(vtkStructuredGrid* original_grid, vtkSt
     deformed_curvature.curvature_vector->SetName("Curvature Vector");
     deformed_curvature.curvature_gradient->SetName("Curvature Gradient");
     deformed_curvature.curvature_vector_gradient->SetName("Curvature Vector Gradient");
-    deformed_curvature.curvature_directional_gradient->SetName("Directional Curvature Vector Gradient");
+    deformed_curvature.curvature_vector_directional_gradient->SetName("Directional Curvature Vector Gradient");
 
     // Initialize arrays that have no meaning in the initial grid
     auto change = vtkSmartPointer<vtkDoubleArray>::New();
@@ -385,22 +398,23 @@ void optimizer::compute_gradient_descent(vtkStructuredGrid* original_grid, vtkSt
 
     output_copy(this->results[0],
 #ifdef __output_input
-        original_positions, deformed_positions, jacobian_field,                                             // grid positions and Jacobian (const.)
-        original_derivative_direction, transformed_derivative_direction, deformed_derivative_direction,     // derivative directions (const.)
-        original_vector_field,                                                                              // original vector field (const.)
+        original_positions, deformed_positions, jacobian_field,                                                         // grid positions and Jacobian (const.)
+        original_derivative_direction, transformed_derivative_direction, deformed_derivative_direction,                 // derivative directions (const.)
+        original_vector_field, transformed_vector_field,                                                                // original vector field (const.)
 #endif
 #ifdef __output_curvatures
-        original_curvatures, original_curvature_vector, transformed_curvature_vector,                       // \ 
-        original_curvature_gradients, transformed_curvature_gradients,                                      //  | curvature and
-        original_curvature_vector_gradients, transformed_curvature_vector_gradients,                        //  | curvature gradients (const.)
-        original_curvature_directional_gradients, transformed_curvature_directional_gradients,              // / 
-        deformed_curvature.curvature, deformed_curvature.curvature_vector,                                  // \ 
-        deformed_curvature.curvature_gradient, deformed_curvature.curvature_vector_gradient,                //  | curvature and curvature gradients
-        deformed_curvature.curvature_directional_gradient,                                                  // / 
+        original_curvatures, original_curvature_vector, transformed_curvature_vector,                                   // \ 
+        original_curvature_gradients, transformed_curvature_gradients,                                                  //  | curvature
+        original_curvature_vector_gradients, transformed_curvature_vector_gradients,                                    //  | and
+        original_curvature_directional_gradients,                                                                       //  | curvature gradients (const.)
+        original_curvature_vector_directional_gradients, transformed_curvature_vector_directional_gradients,            // / 
+        deformed_curvature.curvature, deformed_curvature.curvature_vector,                                              // \ 
+        deformed_curvature.curvature_gradient, deformed_curvature.curvature_vector_gradient,                            //  | curvature and curvature gradients
+        deformed_curvature.curvature_directional_gradient, deformed_curvature.curvature_vector_directional_gradient,    // / 
 #endif
-        deformed_vector_field,                                                                              // vector field
-        gradient_descent, adjusted_gradient_descent, valid_gradients,                                       // gradient descent
-        errors, change);                                                                                    // error field and its difference
+        deformed_vector_field,                                                                                          // vector field
+        gradient_descent, adjusted_gradient_descent, valid_gradients,                                                   // gradient descent
+        errors, change);                                                                                                // error field and its difference
 
 
 
@@ -480,7 +494,7 @@ void optimizer::compute_gradient_descent(vtkStructuredGrid* original_grid, vtkSt
         deformed_curvature.curvature_vector->SetName("Curvature Vector");
         deformed_curvature.curvature_gradient->SetName("Curvature Gradient");
         deformed_curvature.curvature_vector_gradient->SetName("Curvature Vector Gradient");
-        deformed_curvature.curvature_directional_gradient->SetName("Directional Curvature Vector Gradient");
+        deformed_curvature.curvature_vector_directional_gradient->SetName("Directional Curvature Vector Gradient");
 
         // Calculate change
         for (vtkIdType i = 0; i < change->GetNumberOfTuples(); ++i)
@@ -493,22 +507,23 @@ void optimizer::compute_gradient_descent(vtkStructuredGrid* original_grid, vtkSt
 
         output_copy(this->results[step + 1uLL],
 #ifdef __output_input
-            original_positions, deformed_positions, jacobian_field,                                             // grid positions and Jacobian (const.)
-            original_derivative_direction, transformed_derivative_direction, deformed_derivative_direction,     // derivative directions (const.)
-            original_vector_field,                                                                              // original vector field (const.)
+            original_positions, deformed_positions, jacobian_field,                                                         // grid positions and Jacobian (const.)
+            original_derivative_direction, transformed_derivative_direction, deformed_derivative_direction,                 // derivative directions (const.)
+            original_vector_field, transformed_vector_field,                                                                // original vector field (const.)
 #endif
 #ifdef __output_curvatures
-            original_curvatures, original_curvature_vector, transformed_curvature_vector,                       // \ 
-            original_curvature_gradients, transformed_curvature_gradients,                                      //  | curvature and
-            original_curvature_vector_gradients, transformed_curvature_vector_gradients,                        //  | curvature gradients (const.)
-            original_curvature_directional_gradients, transformed_curvature_directional_gradients,              // / 
-            deformed_curvature.curvature, deformed_curvature.curvature_vector,                                  // \ 
-            deformed_curvature.curvature_gradient, deformed_curvature.curvature_vector_gradient,                //  | curvature and curvature gradients
-            deformed_curvature.curvature_directional_gradient,                                                  // / 
+            original_curvatures, original_curvature_vector, transformed_curvature_vector,                                   // \ 
+            original_curvature_gradients, transformed_curvature_gradients,                                                  //  | curvature
+            original_curvature_vector_gradients, transformed_curvature_vector_gradients,                                    //  | and
+            original_curvature_directional_gradients,                                                                       //  | curvature gradients (const.)
+            original_curvature_vector_directional_gradients, transformed_curvature_vector_directional_gradients,            // / 
+            deformed_curvature.curvature, deformed_curvature.curvature_vector,                                              // \ 
+            deformed_curvature.curvature_gradient, deformed_curvature.curvature_vector_gradient,                            //  | curvature and curvature gradients
+            deformed_curvature.curvature_directional_gradient, deformed_curvature.curvature_vector_directional_gradient,    // / 
 #endif
-            deformed_vector_field,                                                                              // vector field
-            gradient_descent, adjusted_gradient_descent, valid_gradients,                                       // gradient descent
-            new_errors, change);                                                                                // new error field and its difference
+            deformed_vector_field,                                                                                          // vector field
+            gradient_descent, adjusted_gradient_descent, valid_gradients,                                                   // gradient descent
+            new_errors, change);                                                                                            // new error field and its difference
 
         output_copy(this->results[step], gradient_descent, adjusted_gradient_descent, valid_gradients);
 
@@ -900,12 +915,14 @@ curvature_and_torsion_t optimizer::blockwise_curvature(const std::array<int, 3>&
                 copy_content(curvature.curvature_gradient, block_of_them_all.curvature_gradient);
                 copy_content(curvature.curvature_vector_gradient, block_of_them_all.curvature_vector_gradient);
                 copy_content(curvature.curvature_directional_gradient, block_of_them_all.curvature_directional_gradient);
+                copy_content(curvature.curvature_vector_directional_gradient, block_of_them_all.curvature_vector_directional_gradient);
 
                 copy_content(curvature.torsion, block_of_them_all.torsion);
                 copy_content(curvature.torsion_vector, block_of_them_all.torsion_vector);
                 copy_content(curvature.torsion_gradient, block_of_them_all.torsion_gradient);
                 copy_content(curvature.torsion_vector_gradient, block_of_them_all.torsion_vector_gradient);
                 copy_content(curvature.torsion_directional_gradient, block_of_them_all.torsion_directional_gradient);
+                copy_content(curvature.torsion_vector_directional_gradient, block_of_them_all.torsion_vector_directional_gradient);
             }
         }
     }
@@ -919,8 +936,8 @@ double optimizer::calculate_error(const int index, const curvature_and_torsion_t
     Eigen::Vector3d original_gradient, deformed_gradient;
     Eigen::Matrix3d jacobian;
 
-    original_curvature.curvature_directional_gradient->GetTuple(index, original_gradient.data());
-    deformed_curvature.curvature_directional_gradient->GetTuple(index, deformed_gradient.data());
+    original_curvature.curvature_vector_directional_gradient->GetTuple(index, original_gradient.data());
+    deformed_curvature.curvature_vector_directional_gradient->GetTuple(index, deformed_gradient.data());
 
     const_cast<vtkDataArray*>(jacobian_field)->GetTuple(index, jacobian.data());
     const auto inv_transp_jacobian = jacobian.inverse().transpose();
