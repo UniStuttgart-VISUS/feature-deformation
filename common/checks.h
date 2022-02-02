@@ -10,7 +10,7 @@
 #endif
 
 #include <iostream>
-#define __ensure(check) if (!(check)) { std::cerr << "Ensure failed: " << __FILE__ << ", " << __LINE__ << std::endl; __stop }
+#define __ensure(check) if (!(check)) { std::cerr << "Ensure failed: " << #check << " (" << __FILE__ << ", " << __LINE__ << ")" << std::endl; __stop }
 #else
 #define __ensure(check) assert(check);
 #endif

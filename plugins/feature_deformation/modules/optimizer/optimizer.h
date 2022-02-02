@@ -91,16 +91,18 @@ private:
         const curvature_and_torsion_t& original_curvature, const vtkDataArray* jacobian_field,
         const vtkDataArray* positions, const vtkDataArray* errors, vtkDoubleArray* derivative_direction) const;
 
+    vtkSmartPointer<vtkDoubleArray> filter_descent(const vtkDataArray* gradient_descent, const vtkDataArray* errors) const;
+
     std::pair<vtkSmartPointer<vtkDoubleArray>, vtkSmartPointer<vtkDoubleArray>> apply_descent(
         const std::array<int, 3>& dimension, double step_size, const vtkDataArray* positions,
         const vtkDataArray* errors, const vtkDataArray* gradient_descent) const;
 
-    curvature_and_torsion_t blockwise_curvature(const std::array<int, 3>& dimension,
+    std::pair<curvature_and_torsion_t, std::vector<curvature_and_torsion_t>> blockwise_curvature(const std::array<int, 3>& dimension,
         double rotation, const vtkDataArray* positions, const vtkDataArray* vector_field,
         const vtkDataArray* jacobian_field, const vtkDataArray* derivative_direction) const;
 
     double calculate_error(int index, const curvature_and_torsion_t& original_curvature,
-        const curvature_and_torsion_t& deformed_curvature, const vtkDataArray* jacobian_field) const;
+        const curvature_and_torsion_t& deformed_curvature, const vtkDataArray* jacobian_field, int block_index = -1) const;
 
     std::tuple<vtkSmartPointer<vtkDoubleArray>, double, double> calculate_error_field(
         const curvature_and_torsion_t& original_curvature, const curvature_and_torsion_t& deformed_curvature,
