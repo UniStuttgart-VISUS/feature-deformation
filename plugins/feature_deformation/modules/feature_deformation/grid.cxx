@@ -1,5 +1,7 @@
 #include "grid.h"
 
+#include "common/checks.h"
+
 #include "vtkDataArray.h"
 #include "vtkDoubleArray.h"
 #include "vtkImageData.h"
@@ -19,22 +21,45 @@ Eigen::Matrix3d unit()
 }
 
 grid::grid(std::array<int, 3> dimension, const Eigen::Vector3d& spacing, const vtkDataArray* data, const vtkDataArray* jacobians)
-    : dimension(dimension), data(data), deformed(false), spacing(spacing), jacobians(jacobians), own_positions(false){ }
+    : dimension(dimension), data(data), deformed(false), spacing(spacing), jacobians(jacobians), own_positions(false)
+{
+    const auto num_nodes = static_cast<std::size_t>(dimension[0]) * dimension[1] * dimension[2];
+
+    __ensure(num_nodes == data->GetNumberOfTuples());
+    __ensure(jacobians == nullptr || num_nodes == jacobians->GetNumberOfTuples());
+}
 
 grid::grid(std::array<int, 3> dimension, const vtkDataArray* positions, const vtkDataArray* data, const vtkDataArray* jacobians)
-    : dimension(dimension), data(data), deformed(true), positions(positions), jacobians(jacobians), own_positions(false) { }
+    : dimension(dimension), data(data), deformed(true), positions(positions), jacobians(jacobians), own_positions(false)
+{
+    const auto num_nodes = static_cast<std::size_t>(dimension[0]) * dimension[1] * dimension[2];
+
+    __ensure(positions != nullptr && num_nodes == positions->GetNumberOfTuples());
+    __ensure(data != nullptr && num_nodes == data->GetNumberOfTuples());
+    __ensure(jacobians == nullptr || num_nodes == jacobians->GetNumberOfTuples());
+}
 
 grid::grid(const vtkImageData* vtk_grid, const vtkDataArray* data, const vtkDataArray* jacobians)
     : data(data), deformed(false), jacobians(jacobians), own_positions(false)
 {
     const_cast<vtkImageData*>(vtk_grid)->GetDimensions(this->dimension.data());
     const_cast<vtkImageData*>(vtk_grid)->GetSpacing(this->spacing.data());
+
+    const auto num_nodes = static_cast<std::size_t>(this->dimension[0]) * this->dimension[1] * this->dimension[2];
+
+    __ensure(data != nullptr && num_nodes == data->GetNumberOfTuples());
+    __ensure(jacobians == nullptr || num_nodes == jacobians->GetNumberOfTuples());
 }
 
 grid::grid(const vtkStructuredGrid* vtk_grid, const vtkDataArray* data, const vtkDataArray* jacobians)
     : data(data), jacobians(jacobians), own_positions(true)
 {
     const_cast<vtkStructuredGrid*>(vtk_grid)->GetDimensions(this->dimension.data());
+
+    const auto num_nodes = static_cast<std::size_t>(this->dimension[0]) * this->dimension[1] * this->dimension[2];
+
+    __ensure(data != nullptr && num_nodes == data->GetNumberOfTuples());
+    __ensure(jacobians == nullptr || num_nodes == jacobians->GetNumberOfTuples());
 
     // Get positions
     auto positions = vtkDoubleArray::New();
@@ -56,6 +81,10 @@ grid::grid(const vtkStructuredGrid* vtk_grid, const vtkDataArray* data, const vt
 grid::grid(const grid& grid, const vtkDataArray* data)
     : dimension(grid.dimension), data(data), deformed(grid.deformed), jacobians(grid.jacobians), own_positions(false)
 {
+    const auto num_nodes = static_cast<std::size_t>(grid.dimension[0]) * grid.dimension[1] * grid.dimension[2];
+
+    __ensure(data != nullptr && num_nodes == data->GetNumberOfTuples());
+
     if (this->deformed)
     {
         this->positions = grid.positions;
@@ -258,5 +287,5 @@ std::array<int, 3> grid::front(const std::array<int, 3>& coords) const
 
 std::size_t grid::index(const std::array<int, 3>& coords) const
 {
-    return (coords[2] * this->dimension[1] + coords[1]) * this->dimension[0] + coords[0];
+    return (static_cast<long long>(coords[2]) * this->dimension[1] + coords[1]) * this->dimension[0] + coords[0];
 }

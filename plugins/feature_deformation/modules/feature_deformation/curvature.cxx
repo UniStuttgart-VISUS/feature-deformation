@@ -3,6 +3,8 @@
 #include "gradient.h"
 #include "grid.h"
 
+#include "common/checks.h"
+
 #include "vtkDataArray.h"
 #include "vtkDoubleArray.h"
 #include "vtkSmartPointer.h"
@@ -122,11 +124,15 @@ curvature_and_torsion_t curvature_and_torsion_t::create(const std::size_t num_el
 curvature_and_torsion_t curvature_and_torsion(const grid& vector_field,
     const gradient_method_t method, const int kernel_size, const vtkDataArray* directions)
 {
+    __ensure(kernel_size >= 0);
+
     const auto dim_x = vector_field.dimensions()[0];
     const auto dim_y = vector_field.dimensions()[1];
     const auto dim_z = vector_field.dimensions()[2];
 
     const auto dim = static_cast<vtkIdType>(dim_x) * dim_y * dim_z;
+
+    __ensure(directions == nullptr || dim == directions->GetNumberOfTuples());
 
     auto ret = curvature_and_torsion_t::create(dim);
 
