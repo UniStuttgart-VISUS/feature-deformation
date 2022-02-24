@@ -103,11 +103,6 @@ namespace
         return numerator / denominator;
     }
 
-    inline __host__ __device__ float gaussian(const float distance, const float epsilon)
-    {
-        return expf(-epsilon * epsilon * distance * distance);
-    }
-
     inline __device__ float3 fetch(cudaTextureObject_t texture, int index)
     {
         const auto fetched = tex1Dfetch<float4>(texture, index);
@@ -615,11 +610,10 @@ void displacement_kernel_idw_joints(const float3* in_points, float3* out_points,
 * @param infos                  Information about the displacement
 * @param num_points             Number of points
 * @param num_displacements      Number of displacement vectors and positions
-* @param epsilon                Parameter for the Gauss kernel
 */
 __global__
 void displacement_kernel_projection(const float3* in_points, float3* out_points, float4* infos,
-    const int num_points, const int num_displacements, const float epsilon)
+    const int num_points, const int num_displacements)
 {
     __get_kernel__parameters__
 
@@ -665,18 +659,14 @@ void displacement_kernel_projection(const float3* in_points, float3* out_points,
                 const auto vector = (1.0f - t) * vector_current + t * vector_next;
                 const auto position = position_current + t * (position_next - position_current);
 
-                const auto weight = gaussian(length(point - position), epsilon);
-
-                displacement = weight * vector;
+                displacement = vector;
 
                 info.w = t;
                 info.z += length(vector);
             }
             else
             {
-                const auto weight = gaussian(length(point - position_current), epsilon);
-
-                displacement = weight * vector_current;
+                displacement = vector_current;
 
                 info.w = -0.5;
                 info.z += length(vector_current);
@@ -691,18 +681,14 @@ void displacement_kernel_projection(const float3* in_points, float3* out_points,
                 const auto vector = (1.0f - t) * vector_previous + t * vector_current;
                 const auto position = position_previous + t * (position_current - position_previous);
 
-                const auto weight = gaussian(length(point - position), epsilon);
-
-                displacement = weight * vector;
+                displacement = vector;
 
                 info.w = t;
                 info.z += length(vector);
             }
             else
             {
-                const auto weight = gaussian(length(point - position_current), epsilon);
-
-                displacement = weight * vector_current;
+                displacement = vector_current;
 
                 info.w = 1.5f;
                 info.z += length(vector_current);
@@ -718,9 +704,7 @@ void displacement_kernel_projection(const float3* in_points, float3* out_points,
                 const auto vector = (1.0f - t1) * vector_previous + t1 * vector_current;
                 const auto position = position_previous + t1 * (position_current - position_previous);
 
-                const auto weight = gaussian(length(point - position), epsilon);
-
-                displacement = weight * vector;
+                displacement = vector;
 
                 info.w = t1;
                 info.z += length(vector);
@@ -730,18 +714,14 @@ void displacement_kernel_projection(const float3* in_points, float3* out_points,
                 const auto vector = (1.0f - t2) * vector_current + t2 * vector_next;
                 const auto position = position_current + t2 * (position_next - position_current);
 
-                const auto weight = gaussian(length(point - position), epsilon);
-
-                displacement = weight * vector;
+                displacement = vector;
 
                 info.w = t2;
                 info.z += length(vector);
             }
             else if (t1 >= 1.0f && t2 <= 0.0f)
             {
-                const auto weight = gaussian(length(point - position_current), epsilon);
-
-                displacement = weight * vector_current;
+                displacement = vector_current;
 
                 info.w = 1.5f;
                 info.z += length(vector_current);
@@ -754,9 +734,8 @@ void displacement_kernel_projection(const float3* in_points, float3* out_points,
                 if (length(point - position_1) < length(point - position_2))
                 {
                     const auto vector = (1.0f - t1) * vector_previous + t1 * vector_current;
-                    const auto weight = gaussian(length(point - position_1), epsilon);
 
-                    displacement = weight * vector;
+                    displacement = vector;
 
                     info.w = t1;
                     info.z += length(vector);
@@ -764,9 +743,8 @@ void displacement_kernel_projection(const float3* in_points, float3* out_points,
                 else
                 {
                     const auto vector = (1.0f - t2) * vector_current + t2 * vector_next;
-                    const auto weight = gaussian(length(point - position_2), epsilon);
 
-                    displacement = weight * vector;
+                    displacement = vector;
 
                     info.w = t2;
                     info.z += length(vector);
@@ -795,13 +773,12 @@ void displacement_kernel_projection(const float3* in_points, float3* out_points,
 * @param mapping_direction_orig Direction from point to position on original B-Spline
 * @param num_points             Number of points
 * @param num_displacements      Number of displacement vectors and positions
-* @param epsilon                Parameter for the Gauss kernel
 * @param degree                 B-Spline degree
 */
 __global__
 void displacement_kernel_spline_handles(const float3* in_points, const float3* point_mapping, const float* arc_position_mapping,
     float3* out_points, float4* infos, float3* mapping_direction, float3* mapping_direction_orig,
-    const int num_points, const int num_displacements, const float epsilon, const int degree)
+    const int num_points, const int num_displacements, const int degree)
 {
     __get_kernel__parameters__
 
@@ -815,7 +792,7 @@ void displacement_kernel_spline_handles(const float3* in_points, const float3* p
         // and use a Gauss function to lessen the effect for points further away
         const auto distance = length(point - point_mapping[gid]);
 
-        const float3 displacement = gaussian(distance, epsilon) * compute_point(arc_position_mapping[gid], degree, num_displacements, 3);
+        const float3 displacement = compute_point(arc_position_mapping[gid], degree, num_displacements, 3);
 
         const auto u = arc_position_mapping[gid];
 
@@ -866,13 +843,12 @@ void displacement_kernel_spline_handles(const float3* in_points, const float3* p
 * @param mapping_direction_orig Direction from point to position on original B-Spline
 * @param num_points             Number of points
 * @param num_displacements      Number of displacement vectors and positions
-* @param epsilon                Parameter for the Gauss kernel
 * @param degree                 B-Spline degree
 */
 __global__
 void displacement_kernel_spline_joints(const float3* in_points, const float3* point_mapping, const float3* tangent_mapping,
     const float* arc_position_mapping, float3* out_points, float4* infos, float3* mapping_direction,
-    float3* mapping_direction_orig, const int num_points, const int num_displacements, const float epsilon, const int degree)
+    float3* mapping_direction_orig, const int num_points, const int num_displacements, const int degree)
 {
     __get_kernel__parameters__
 
@@ -923,7 +899,7 @@ void displacement_kernel_spline_joints(const float3* in_points, const float3* po
         }
 
         // Apply displacement
-        point = point + gaussian(distance, epsilon) * (point_rotated_and_translated - point);
+        point = point_rotated_and_translated;
 
         // Get deformed mapping, using orthogonal direction for nodes mapped to the end points
         if (u > u_max - 0.001 || u < 0.001)
@@ -1353,7 +1329,7 @@ void cuda::displacement::displace(const method_t method, const parameter_t param
     case method_t::projection:
         // Run computation
         displacement_kernel_projection __kernel__parameters__(this->cuda_res_input_points, this->cuda_res_output_points, this->cuda_res_info,
-            static_cast<int>(this->points.size()), static_cast<int>(positions.size()), parameters.projection.gauss_parameter);
+            static_cast<int>(this->points.size()), static_cast<int>(positions.size()));
 
         break;
     case method_t::b_spline:
@@ -1373,7 +1349,7 @@ void cuda::displacement::displace(const method_t method, const parameter_t param
         displacement_kernel_spline_handles __kernel__parameters__(this->cuda_res_input_points, this->cuda_res_mapping_point,
             this->cuda_res_mapping_arc_position, this->cuda_res_output_points, this->cuda_res_info, this->cuda_res_mapping_direction,
             this->cuda_res_mapping_direction_orig, static_cast<int>(this->points.size()), static_cast<int>(positions.size()),
-            parameters.b_spline.gauss_parameter, parameters.b_spline.degree);
+            parameters.b_spline.degree);
 
         // Destroy resources
         cudaDestroyTextureObject(cuda_tex_knot_vector);
@@ -1418,7 +1394,7 @@ void cuda::displacement::displace(const method_t method, const parameter_t param
         displacement_kernel_spline_joints __kernel__parameters__(this->cuda_res_input_points, this->cuda_res_mapping_point, this->cuda_res_mapping_tangent,
             this->cuda_res_mapping_arc_position, this->cuda_res_output_points, this->cuda_res_info, this->cuda_res_mapping_direction,
             this->cuda_res_mapping_direction_orig, static_cast<int>(this->points.size()), static_cast<int>(positions.size()),
-            parameters.b_spline.gauss_parameter, parameters.b_spline.degree);
+            parameters.b_spline.degree);
 
         // Destroy resources
         cudaDestroyTextureObject(cuda_tex_first_derivative);

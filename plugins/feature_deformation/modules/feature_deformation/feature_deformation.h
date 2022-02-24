@@ -2,7 +2,6 @@
 
 #include "vtkDataObjectAlgorithm.h"
 
-#include "algorithm_compute_gauss.h"
 #include "algorithm_compute_tearing.h"
 #include "algorithm_displacement_assessment.h"
 #include "algorithm_displacement_computation.h"
@@ -83,29 +82,8 @@ public:
     vtkGetMacro(SplineDegree, int);
     vtkSetMacro(SplineDegree, int);
 
-    vtkGetMacro(GaussParameter, double);
-    vtkSetMacro(GaussParameter, double);
-
     vtkGetMacro(Subdivisions, int);
     vtkSetMacro(Subdivisions, int);
-
-    vtkGetMacro(ComputeGauss, int);
-    vtkSetMacro(ComputeGauss, int);
-
-    vtkGetMacro(CheckHandedness, int);
-    vtkSetMacro(CheckHandedness, int);
-
-    vtkGetMacro(CheckConvexity, int);
-    vtkSetMacro(CheckConvexity, int);
-
-    vtkGetMacro(CheckVolume, int);
-    vtkSetMacro(CheckVolume, int);
-
-    vtkGetMacro(VolumePercentage, double);
-    vtkSetMacro(VolumePercentage, double);
-
-    vtkGetMacro(GaussSubdivisions, int);
-    vtkSetMacro(GaussSubdivisions, int);
 
     vtkGetMacro(ComputeTearing, int);
     vtkSetMacro(ComputeTearing, int);
@@ -185,12 +163,6 @@ private:
     int Subdivisions;
 
     /// Pre-computation options
-    int ComputeGauss;
-    int CheckHandedness;
-    int CheckConvexity;
-    int CheckVolume;
-    double VolumePercentage;
-    int GaussSubdivisions;
     int ComputeTearing;
 
     /// Assessment options
@@ -224,15 +196,8 @@ private:
         cuda::displacement::method_t displacement_method;
         cuda::displacement::parameter_t displacement_parameters;
         cuda::displacement::inverse_distance_weighting_parameters_t idw_parameters;
-        cuda::displacement::projection_parameters_t projection_parameters;
         cuda::displacement::b_spline_parameters_t bspline_parameters;
 
-        bool compute_gauss;
-        bool check_handedness;
-        bool check_convexity;
-        bool check_volume;
-        double volume_percentage;
-        int num_subdivisions;
         bool compute_tearing;
 
         bool assess_mapping;
@@ -252,7 +217,6 @@ private:
     std::shared_ptr<algorithm_vectorfield_input> alg_vectorfield_input;
 
     // Pre-computation algorithms
-    std::shared_ptr<algorithm_compute_gauss> alg_compute_gauss;
     std::shared_ptr<algorithm_compute_tearing> alg_compute_tearing;
 
     // Computation algorithms

@@ -170,7 +170,7 @@
                 </Documentation>
             </DoubleVectorProperty>
 
-            <IntVectorProperty name="Interpolator" label="Interpolator" command="SetInterpolator" number_of_elements="1" default_values="2">
+            <IntVectorProperty name="Interpolator" label="Interpolator" command="SetInterpolator" number_of_elements="1" default_values="2" panel_visibility="advanced">
                 <EnumerationDomain name="enum">
                     <Entry value="0" text="Linear"/>
                     <Entry value="1" text="Exponential"/>
@@ -184,7 +184,7 @@
                     Mapping of real time onto the smoothing iteration step. As the smoothing has a larger effect in the beginning and a very low effect in the end, exponential mapping can be used.
                 </Documentation>
             </IntVectorProperty>
-            <DoubleVectorProperty name="InterpolatorThreshold" label="Threshold linear to exponential" command="SetInterpolatorThreshold" number_of_elements="1" default_values="0.9">
+            <DoubleVectorProperty name="InterpolatorThreshold" label="Threshold linear to exponential" command="SetInterpolatorThreshold" number_of_elements="1" default_values="0.9" panel_visibility="advanced">
                 <DoubleRangeDomain name="time_range" min="0.0" max="1.0" />
                 <Hints>
                     <PropertyWidgetDecorator type="CompositeDecorator">
@@ -198,7 +198,7 @@
                     Time in [0,1] at which the interpolator switches from linear to exponential interpolation.
                 </Documentation>
             </DoubleVectorProperty>
-            <DoubleVectorProperty name="Exponent" label="Exponent" command="SetExponent" number_of_elements="1" default_values="2.0">
+            <DoubleVectorProperty name="Exponent" label="Exponent" command="SetExponent" number_of_elements="1" default_values="2.0" panel_visibility="advanced">
                 <Hints>
                     <PropertyWidgetDecorator type="CompositeDecorator">
                         <Expression type="and">
@@ -211,7 +211,7 @@
                     Exponent for the quadratic/cubic/... interpolator.
                 </Documentation>
             </DoubleVectorProperty>
-            <IntVectorProperty name="Duration" label="Duration (s)" command="SetDuration" number_of_elements="1" default_values="5">
+            <IntVectorProperty name="Duration" label="Duration (s)" command="SetDuration" number_of_elements="1" default_values="5" panel_visibility="advanced">
                 <Hints>
                     <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Method" value="1" />
                 </Hints>
@@ -219,7 +219,7 @@
                     Duration of the animation when triggered using the python script. Does not have any effect otherwise.
                 </Documentation>
             </IntVectorProperty>
-            <IntVectorProperty name="InterpolateSmoothingFactor" label="Interpolate smoothing factor" command="SetInterpolateSmoothingFactor" number_of_elements="1" default_values="0">
+            <IntVectorProperty name="InterpolateSmoothingFactor" label="Interpolate smoothing factor" command="SetInterpolateSmoothingFactor" number_of_elements="1" default_values="0" panel_visibility="advanced">
                 <BooleanDomain name="bool"/>
                 <Hints>
                     <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Method" value="1" />
@@ -228,7 +228,7 @@
                     Linearly interpolate the smoothing factor for smaller steps in the beginning.
                 </Documentation>
             </IntVectorProperty>
-            <IntVectorProperty name="Inverse" label="Inverse" command="SetInverse" number_of_elements="1" default_values="0">
+            <IntVectorProperty name="Inverse" label="Inverse" command="SetInverse" number_of_elements="1" default_values="0" panel_visibility="advanced">
                 <BooleanDomain name="bool"/>
                 <Hints>
                     <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Method" value="1" />
@@ -273,7 +273,7 @@
                     Number of neighbors to closest feature line point included for inverse distance weighting.
                 </Documentation>
             </IntVectorProperty>
-            <IntVectorProperty name="SplineDegree" label="B-Spline degree" command="SetSplineDegree" number_of_elements="1" default_values="3">
+            <IntVectorProperty name="SplineDegree" label="B-Spline degree" command="SetSplineDegree" number_of_elements="1" default_values="3" panel_visibility="advanced">
                 <Hints>
                     <PropertyWidgetDecorator type="CompositeDecorator">
                         <Expression type="or">
@@ -286,24 +286,7 @@
                     Degree of the B-spline.
                 </Documentation>
             </IntVectorProperty>
-            <DoubleVectorProperty name="GaussParameter" label="Gauss kernel parameter" command="SetGaussParameter" number_of_elements="1" default_values="0.0">
-                <Hints>
-                    <PropertyWidgetDecorator type="CompositeDecorator">
-                        <Expression type="and">
-                            <Expression type="or">
-                                <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Weight" value="2" />
-                                <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Weight" value="3" />
-                                <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Weight" value="4" />
-                            </Expression>
-                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="ComputeGauss" value="0" />
-                        </Expression>
-                    </PropertyWidgetDecorator>
-                </Hints>
-                <Documentation>
-                    Parameter for the Gauss function, defining the region of influence. Large values lead to local deformation, smaller values increase the region of deformation. A value of 0 means infinite region, as if no Gauss function was applied.
-                </Documentation>
-            </DoubleVectorProperty>
-            <IntVectorProperty name="Subdivisions" label="Number of subdivisions" command="SetSubdivisions" number_of_elements="1" default_values="10">
+            <IntVectorProperty name="Subdivisions" label="Number of subdivisions" command="SetSubdivisions" number_of_elements="1" default_values="10" panel_visibility="advanced">
                 <Hints>
                     <PropertyWidgetDecorator type="CompositeDecorator">
                         <Expression type="or">
@@ -317,74 +300,6 @@
                 </Documentation>
             </IntVectorProperty>
 
-            <IntVectorProperty name="ComputeGauss" label="Compute Gauss parameter epsilon" command="SetComputeGauss" number_of_elements="1" default_values="0">
-                <BooleanDomain name="bool"/>
-                <Documentation>
-                    Compute Gauss parameter instead of setting it manually. This is only possible if a grid was provided as input. The following options influence this computation, where the largest possible Gauss parameter should be found.
-                </Documentation>
-            </IntVectorProperty>
-            <IntVectorProperty name="CheckHandedness" label="Check handedness" command="SetCheckHandedness" number_of_elements="1" default_values="1">
-                <BooleanDomain name="bool"/>
-                <Hints>
-                    <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="ComputeGauss" value="1" />
-                </Hints>
-                <Documentation>
-                    Only right-handed cells are allowed, preventing self-penetration of cells.
-                </Documentation>
-            </IntVectorProperty>
-            <IntVectorProperty name="CheckConvexity" label="Check convexity" command="SetCheckConvexity" number_of_elements="1" default_values="1">
-                <BooleanDomain name="bool"/>
-                <Hints>
-                    <PropertyWidgetDecorator type="CompositeDecorator">
-                        <Expression type="and">
-                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="ComputeGauss" value="1" />
-                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="CheckHandedness" value="1" />
-                        </Expression>
-                    </PropertyWidgetDecorator>
-                </Hints>
-                <Documentation>
-                    Only convex cells are allowed.
-                </Documentation>
-            </IntVectorProperty>
-            <IntVectorProperty name="CheckVolume" label="Check volume" command="SetCheckVolume" number_of_elements="1" default_values="0">
-                <BooleanDomain name="bool"/>
-                <Hints>
-                    <PropertyWidgetDecorator type="CompositeDecorator">
-                        <Expression type="and">
-                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="ComputeGauss" value="1" />
-                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="CheckHandedness" value="1" />
-                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="CheckConvexity" value="1" />
-                        </Expression>
-                    </PropertyWidgetDecorator>
-                </Hints>
-                <Documentation>
-                    Check area (in 2D) or volume (in 3D) of the cells and require them to be sufficiently large.
-                </Documentation>
-            </IntVectorProperty>
-            <DoubleVectorProperty name="VolumePercentage" label="Volume percentage" command="SetVolumePercentage" number_of_elements="1" default_values="0.2">
-                <DoubleRangeDomain name="volume_range" min="0.0" max="1.0" />
-                <Hints>
-                    <PropertyWidgetDecorator type="CompositeDecorator">
-                        <Expression type="and">
-                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="ComputeGauss" value="1" />
-                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="CheckHandedness" value="1" />
-                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="CheckConvexity" value="1" />
-                            <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="CheckVolume" value="1" />
-                        </Expression>
-                    </PropertyWidgetDecorator>
-                </Hints>
-                <Documentation>
-                    Minimum area (in 2D) or volume (in 3D) necessary, compared to the original cell size.
-                </Documentation>
-            </DoubleVectorProperty>
-            <IntVectorProperty name="GaussSubdivisions" label="Number of subdivisions" command="SetGaussSubdivisions" number_of_elements="1" default_values="10">
-                <Hints>
-                    <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="ComputeGauss" value="1" />
-                </Hints>
-                <Documentation>
-                    Number of iterations of binary search to find an adequate Gauss parameter. If no parameter was found that meets the previously set requirements, the parameter is set to zero.
-                </Documentation>
-            </IntVectorProperty>
             <IntVectorProperty name="ComputeTearing" label="Identify tearing regions" command="SetComputeTearing" number_of_elements="1" default_values="0">
                 <BooleanDomain name="bool"/>
                 <Documentation>
@@ -392,26 +307,26 @@
                 </Documentation>
             </IntVectorProperty>
 
-            <IntVectorProperty name="AssessMapping" label="Assess B-spline mapping" command="SetAssessMapping" number_of_elements="1" default_values="0">
+            <IntVectorProperty name="AssessMapping" label="Assess B-spline mapping" command="SetAssessMapping" number_of_elements="1" default_values="0" panel_visibility="advanced">
                 <BooleanDomain name="bool"/>
                 <Documentation>
                     Calculate mapping of displaced positions to displaced B-spline for assessment of the deformation process. Results are stored in "Displacement Information" (0: mapping, 1: absolute difference to mapping of undeformed positions to original B-spline)
                 </Documentation>
             </IntVectorProperty>
 
-            <IntVectorProperty name="OutputBSplineDistance" label="Output B-spline distance" command="SetOutputBSplineDistance" number_of_elements="1" default_values="0">
+            <IntVectorProperty name="OutputBSplineDistance" label="Output B-spline distance" command="SetOutputBSplineDistance" number_of_elements="1" default_values="0" panel_visibility="advanced">
                 <BooleanDomain name="bool"/>
                 <Documentation>
                     Compute and output distance of neighboring points mapped onto the B-spline. This is only valid for line input.
                 </Documentation>
             </IntVectorProperty>
-            <IntVectorProperty name="OutputDeformedGrid" label="Output deformed grid" command="SetOutputDeformedGrid" number_of_elements="1" default_values="0">
+            <IntVectorProperty name="OutputDeformedGrid" label="Output deformed grid" command="SetOutputDeformedGrid" number_of_elements="1" default_values="1">
                 <BooleanDomain name="bool"/>
                 <Documentation>
                     Output the deformed grid.
                 </Documentation>
             </IntVectorProperty>
-            <IntVectorProperty name="OutputVectorField" label="Output vector field" command="SetOutputVectorField" number_of_elements="1" default_values="0">
+            <IntVectorProperty name="OutputVectorField" label="Output vector field" command="SetOutputVectorField" number_of_elements="1" default_values="1">
                 <BooleanDomain name="bool"/>
                 <Hints>
                     <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="OutputDeformedGrid" value="1" />
@@ -420,7 +335,7 @@
                     Output adjusted vector field as attribute of the deformed grid.
                 </Documentation>
             </IntVectorProperty>
-            <IntVectorProperty name="RemoveCells" label="Remove elongated cells" command="SetRemoveCells" number_of_elements="1" default_values="0">
+            <IntVectorProperty name="RemoveCells" label="Remove elongated cells" command="SetRemoveCells" number_of_elements="1" default_values="1">
                 <BooleanDomain name="bool"/>
                 <Hints>
                     <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="OutputDeformedGrid" value="1" />
@@ -491,17 +406,10 @@
                 <Property name="EpsilonScalar" />
                 <Property name="VoronoiDistance" />
                 <Property name="SplineDegree" />
-                <Property name="GaussParameter" />
                 <Property name="Subdivisions" />
             </PropertyGroup>
 
             <PropertyGroup label="Pre-computation">
-                <Property name="ComputeGauss" />
-                <Property name="CheckHandedness" />
-                <Property name="CheckConvexity" />
-                <Property name="CheckVolume" />
-                <Property name="VolumePercentage" />
-                <Property name="GaussSubdivisions" />
                 <Property name="ComputeTearing" />
             </PropertyGroup>
 

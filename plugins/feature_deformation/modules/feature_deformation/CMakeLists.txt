@@ -16,7 +16,6 @@ set(sources
 
   algorithm_input.h
 
-  algorithm_compute_gauss.h algorithm_compute_gauss.cxx
   algorithm_compute_tearing.h algorithm_compute_tearing.cxx
 
   algorithm_displacement_assessment.h algorithm_displacement_assessment.cxx

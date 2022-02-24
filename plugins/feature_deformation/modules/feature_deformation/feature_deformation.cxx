@@ -1,6 +1,5 @@
 #include "feature_deformation.h"
 
-#include "algorithm_compute_gauss.h"
 #include "algorithm_compute_tearing.h"
 #include "algorithm_displacement_assessment.h"
 #include "algorithm_displacement_computation.h"
@@ -58,7 +57,6 @@ feature_deformation::feature_deformation() : frames(0)
     this->alg_geometry_input = std::make_shared<algorithm_geometry_input>();
     this->alg_vectorfield_input = std::make_shared<algorithm_vectorfield_input>();
 
-    this->alg_compute_gauss = std::make_shared<algorithm_compute_gauss>();
     this->alg_compute_tearing = std::make_shared<algorithm_compute_tearing>();
 
     this->alg_smoothing = std::make_shared<algorithm_smoothing>();
@@ -181,7 +179,6 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
     this->alg_line_input->be_quiet(quiet);
     this->alg_geometry_input->be_quiet(quiet);
     this->alg_vectorfield_input->be_quiet(quiet);
-    this->alg_compute_gauss->be_quiet(quiet);
     this->alg_compute_tearing->be_quiet(quiet);
     this->alg_smoothing->be_quiet(quiet);
     this->alg_displacement_creation_lines->be_quiet(quiet);
@@ -240,8 +237,7 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
         return 0;
     }
 
-    if (input_vector[0] != nullptr && input_vector[0]->GetInformationObject(0) != nullptr &&
-        (this->parameters.output_deformed_grid || this->parameters.compute_gauss))
+    if (input_vector[0] != nullptr && input_vector[0]->GetInformationObject(0) != nullptr && this->parameters.output_deformed_grid)
     {
         __next_perf_measure("get grid input");
 
@@ -276,21 +272,7 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
 
     if (!quiet) std::cout << std::endl;
 
-    // Pre-compute Gauss parameter and tearing
-    if (this->parameters.compute_gauss && (this->parameters.displacement_method == cuda::displacement::method_t::b_spline || 
-        this->parameters.displacement_method == cuda::displacement::method_t::b_spline_joints))
-    {
-        __next_perf_measure("pre-compute gauss parameter");
-
-        this->alg_compute_gauss->run(this->alg_line_input, this->alg_grid_input, this->parameters.smoothing_method,
-            this->parameters.variant, this->parameters.lambda, this->parameters.max_num_iterations, this->parameters.displacement_method,
-            this->parameters.bspline_parameters, this->parameters.num_subdivisions, this->parameters.remove_cells_scalar,
-            this->parameters.check_handedness, this->parameters.check_convexity, this->parameters.check_volume, this->parameters.volume_percentage);
-
-        this->parameters.displacement_parameters.b_spline.gauss_parameter
-            = this->parameters.bspline_parameters.gauss_parameter = this->alg_compute_gauss->get_results().gauss_parameter;
-    }
-
+    // Pre-compute tearing
     if (this->parameters.compute_tearing && this->parameters.remove_cells)
     {
         __next_perf_measure("pre-compute tearing");
@@ -527,14 +509,9 @@ void feature_deformation::process_parameters(double time)
         __set_parameter_with_cast(displacement_parameters.inverse_distance_weighting.exponent, this->EpsilonScalar, static_cast<float>);
 
         break;
-    case cuda::displacement::method_t::projection:
-        __set_parameter_with_cast(displacement_parameters.projection.gauss_parameter, this->GaussParameter, static_cast<float>);
-
-        break;
     case cuda::displacement::method_t::b_spline:
     case cuda::displacement::method_t::b_spline_joints:
         __set_parameter(displacement_parameters.b_spline.degree, this->SplineDegree);
-        __set_parameter_with_cast(displacement_parameters.b_spline.gauss_parameter, this->GaussParameter, static_cast<float>);
         __set_parameter(displacement_parameters.b_spline.iterations, this->Subdivisions);
 
         break;
@@ -542,20 +519,12 @@ void feature_deformation::process_parameters(double time)
 
     __set_parameter_with_cast(idw_parameters.exponent, this->EpsilonScalar, static_cast<float>);
     __set_parameter(idw_parameters.neighborhood, this->VoronoiDistance);
-    __set_parameter_with_cast(projection_parameters.gauss_parameter, this->GaussParameter, static_cast<float>);
     __set_parameter(bspline_parameters.degree, this->SplineDegree);
-    __set_parameter_with_cast(bspline_parameters.gauss_parameter, this->GaussParameter, static_cast<float>);
     __set_parameter(bspline_parameters.iterations, this->Subdivisions);
 
     // Pre-computation parameters
     __log_header("precomputation");
 
-    __set_parameter_bool(compute_gauss, this->ComputeGauss);
-    __set_parameter_bool(check_handedness, this->CheckHandedness);
-    __set_parameter_bool(check_convexity, this->CheckConvexity);
-    __set_parameter_bool(check_volume, this->CheckVolume);
-    __set_parameter(volume_percentage, this->VolumePercentage);
-    __set_parameter(num_subdivisions, this->GaussSubdivisions);
     __set_parameter_bool(compute_tearing, this->ComputeTearing);
 
     // Assessment parameters

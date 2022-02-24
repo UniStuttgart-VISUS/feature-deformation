@@ -28,21 +28,15 @@ namespace cuda
             float exponent;
             int neighborhood;
         };
-        struct projection_parameters_t
-        {
-            float gauss_parameter;
-        };
         struct b_spline_parameters_t
         {
             int degree;
-            float gauss_parameter;
             int iterations;
         };
 
         union parameter_t
         {
             inverse_distance_weighting_parameters_t inverse_distance_weighting;
-            projection_parameters_t projection;
             b_spline_parameters_t b_spline;
         };
 
