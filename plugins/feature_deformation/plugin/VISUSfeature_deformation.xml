@@ -544,7 +544,7 @@
             </Hints>
         </SourceProxy>
 
-        
+
         <!--
 
         Fix Curvature Gradient.
@@ -694,7 +694,7 @@
                     Ignore (multiple) border layers when calculating error for gradient descent computation.
                 </Documentation>
             </IntVectorProperty>
-            
+
             <IntVectorProperty name="NumSteps" label="Number of steps" command="SetNumSteps" number_of_elements="1" default_values="10">
                 <Documentation>
                     Maximum number of iterations.
@@ -749,7 +749,7 @@
                     Step size h for gradient calculation.
                 </Documentation>
             </DoubleVectorProperty>
-            
+
             <IntVectorProperty name="CSVOutput" label="Output CSV" command="SetCSVOutput" number_of_elements="1" default_values="0" panel_visibility="advanced">
                 <BooleanDomain name="bool"/>
                 <Documentation>
