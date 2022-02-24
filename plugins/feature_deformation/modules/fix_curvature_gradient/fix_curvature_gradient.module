@@ -1,9 +1,0 @@
-NAME
-  VISUSfeature_deformation::fix_curvature_gradient
-LIBRARY_NAME
-  fix_curvature_gradient
-DEPENDS
-  VTK::CommonCore
-  VTK::CommonDataModel
-  VTK::CommonExecutionModel
-  VTK::FiltersCore
