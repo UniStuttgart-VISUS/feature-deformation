@@ -1,0 +1,9 @@
+NAME
+  VISUSfeature_deformation::feature_flow_separation
+LIBRARY_NAME
+  feature_flow_separation
+DEPENDS
+  VTK::CommonCore
+  VTK::CommonDataModel
+  VTK::CommonExecutionModel
+  VTK::FiltersCore
