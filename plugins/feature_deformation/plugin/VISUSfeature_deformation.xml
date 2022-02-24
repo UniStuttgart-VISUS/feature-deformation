@@ -286,7 +286,7 @@
                     Degree of the B-spline.
                 </Documentation>
             </IntVectorProperty>
-            <DoubleVectorProperty name="GaussParameter" label="Gauss kernel parameter" command="SetGaussParameter" number_of_elements="1" default_values="0.1">
+            <DoubleVectorProperty name="GaussParameter" label="Gauss kernel parameter" command="SetGaussParameter" number_of_elements="1" default_values="0.0">
                 <Hints>
                     <PropertyWidgetDecorator type="CompositeDecorator">
                         <Expression type="and">
@@ -392,7 +392,7 @@
                 </Documentation>
             </IntVectorProperty>
 
-            <IntVectorProperty name="AssessMapping" label="Assess b-spline mapping" command="SetAssessMapping" number_of_elements="1" default_values="0">
+            <IntVectorProperty name="AssessMapping" label="Assess B-spline mapping" command="SetAssessMapping" number_of_elements="1" default_values="0">
                 <BooleanDomain name="bool"/>
                 <Documentation>
                     Calculate mapping of displaced positions to displaced B-spline for assessment of the deformation process. Results are stored in "Displacement Information" (0: mapping, 1: absolute difference to mapping of undeformed positions to original B-spline)
