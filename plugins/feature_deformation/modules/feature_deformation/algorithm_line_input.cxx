@@ -30,6 +30,11 @@ std::uint32_t algorithm_line_input::calculate_hash() const
 
         return -1;
     }
+    if (this->input_lines->GetPoints() == nullptr || this->input_lines->GetLines() == nullptr)
+    {
+        std::cerr << "ERROR: Feature input does not contain points or any lines." << std::endl;
+        return -1;
+    }
 
     return jenkins_hash(this->input_lines->GetPoints()->GetMTime(), this->input_lines->GetLines()->GetMTime(), this->selected_line_id);
 }

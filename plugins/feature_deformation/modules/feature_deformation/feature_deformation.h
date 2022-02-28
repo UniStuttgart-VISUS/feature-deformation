@@ -5,6 +5,7 @@
 #include "algorithm_compute_tearing.h"
 #include "algorithm_displacement_assessment.h"
 #include "algorithm_displacement_computation.h"
+#include "algorithm_displacement_computation_twisting.h"
 #include "algorithm_displacement_creation.h"
 #include "algorithm_displacement_precomputation.h"
 #include "algorithm_geometry_input.h"
@@ -21,6 +22,7 @@
 #include "algorithm_line_output_set.h"
 #include "algorithm_line_output_update.h"
 #include "algorithm_smoothing.h"
+#include "algorithm_twisting.h"
 #include "algorithm_vectorfield_input.h"
 
 #include "displacement.h"
@@ -116,6 +118,7 @@ public:
     vtkSetMacro(Quiet, int);
 
     void RemoveAllGeometryInputs();
+    void RemoveAllGridInputs();
 
 protected:
     feature_deformation();
@@ -221,6 +224,7 @@ private:
 
     // Computation algorithms
     std::shared_ptr<algorithm_smoothing> alg_smoothing;
+    std::shared_ptr<algorithm_twisting> alg_twisting;
 
     std::shared_ptr<algorithm_displacement_creation> alg_displacement_creation_lines,
         alg_displacement_creation_grid, alg_displacement_creation_geometry;
@@ -230,6 +234,8 @@ private:
         alg_displacement_computation_grid, alg_displacement_computation_geometry;
     std::shared_ptr<algorithm_displacement_assessment> alg_displacement_assess_lines,
         alg_displacement_assess_grid, alg_displacement_assess_geometry;
+    std::shared_ptr<algorithm_displacement_computation_twisting> alg_displacement_computation_lines_twisting,
+        alg_displacement_computation_grid_twisting, alg_displacement_computation_geometry_twisting;
 
     // Output algorithms
     std::shared_ptr<algorithm_line_output_creation> alg_line_output_creation;

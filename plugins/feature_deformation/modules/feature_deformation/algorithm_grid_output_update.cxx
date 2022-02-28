@@ -1,6 +1,9 @@
 #include "algorithm_grid_output_update.h"
 
+#include "algorithm_compute_tearing.h"
+#include "algorithm_displacement_assessment.h"
 #include "algorithm_displacement_computation.h"
+#include "algorithm_displacement_computation_twisting.h"
 #include "algorithm_grid_output_creation.h"
 #include "hash.h"
 
@@ -25,13 +28,15 @@
 
 void algorithm_grid_output_update::set_input(const std::shared_ptr<const algorithm_grid_input> input_grid,
     const std::shared_ptr<const algorithm_grid_output_creation> output_grid,
-    const std::shared_ptr<const algorithm_displacement_computation> displacement,
+    std::shared_ptr<const algorithm_displacement_computation> displacement,
+    std::shared_ptr<const algorithm_displacement_computation_twisting> displacement_twisting,
     const std::shared_ptr<const algorithm_displacement_assessment> assessment,
     const std::shared_ptr<const algorithm_compute_tearing> tearing, const bool remove_cells, const float remove_cells_scalar)
 {
     this->input_grid = input_grid;
     this->output_grid = output_grid;
     this->displacement = displacement;
+    this->displacement_twisting = displacement_twisting;
     this->assessment = assessment;
     this->tearing = tearing;
     this->remove_cells = remove_cells;
@@ -45,7 +50,7 @@ std::uint32_t algorithm_grid_output_update::calculate_hash() const
         return -1;
     }
 
-    return jenkins_hash(this->displacement->get_hash(), this->assessment->get_hash(),
+    return jenkins_hash(this->displacement->get_hash(), this->displacement_twisting->get_hash(), this->assessment->get_hash(),
         this->tearing->get_hash(), this->remove_cells, this->remove_cells_scalar);
 }
 

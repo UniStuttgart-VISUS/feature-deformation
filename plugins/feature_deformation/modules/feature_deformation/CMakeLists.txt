@@ -9,6 +9,7 @@ set(sources
   grid.h grid.cxx
   hash.h
   smoothing.h smoothing.cxx
+  twisting.h twisting.cxx
 
   performance.h performance.cxx
 
@@ -20,6 +21,7 @@ set(sources
 
   algorithm_displacement_assessment.h algorithm_displacement_assessment.cxx
   algorithm_displacement_computation.h algorithm_displacement_computation.cxx
+  algorithm_displacement_computation_twisting.h algorithm_displacement_computation_twisting.cxx
   algorithm_displacement_creation.h algorithm_displacement_creation.cxx
   algorithm_displacement_precomputation.h algorithm_displacement_precomputation.cxx
 
@@ -40,6 +42,7 @@ set(sources
   algorithm_line_output_update.h algorithm_line_output_update.cxx
 
   algorithm_smoothing.h algorithm_smoothing.cxx
+  algorithm_twisting.h algorithm_twisting.cxx
 
   algorithm_vectorfield_input.h algorithm_vectorfield_input.cxx)
 

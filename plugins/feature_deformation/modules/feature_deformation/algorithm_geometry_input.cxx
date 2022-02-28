@@ -30,6 +30,12 @@ std::uint32_t algorithm_geometry_input::calculate_hash() const
 
     for (auto geometry_set : this->input_geometry)
     {
+        if (geometry_set == nullptr || geometry_set->GetPoints() == nullptr)
+        {
+            std::cerr << "ERROR: Geometry set does not exist or does not contain points." << std::endl;
+            return -1;
+        }
+
         hash = jenkins_hash(hash, geometry_set->GetPoints()->GetMTime());
     }
 
@@ -75,8 +81,8 @@ bool algorithm_geometry_input::run_computation()
             #pragma omp parallel for
             for (vtkIdType p = 0; p < geometry_set->GetNumberOfPoints(); ++p)
             {
-                std::array<double, 3> point;
-                geometry_set->GetPoints()->GetPoint(p, point.data());
+                std::array<double, 3> point{};
+                geometry_set->GetPoint(p, point.data());
 
                 this->results.points[point_index + p] = { static_cast<float>(point[0]), static_cast<float>(point[1]), static_cast<float>(point[2]) };
             }

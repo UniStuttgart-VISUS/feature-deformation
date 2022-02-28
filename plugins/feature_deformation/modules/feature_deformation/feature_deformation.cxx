@@ -3,6 +3,7 @@
 #include "algorithm_compute_tearing.h"
 #include "algorithm_displacement_assessment.h"
 #include "algorithm_displacement_computation.h"
+#include "algorithm_displacement_computation_twisting.h"
 #include "algorithm_displacement_creation.h"
 #include "algorithm_displacement_precomputation.h"
 #include "algorithm_geometry_input.h"
@@ -19,12 +20,14 @@
 #include "algorithm_line_output_set.h"
 #include "algorithm_line_output_update.h"
 #include "algorithm_smoothing.h"
+#include "algorithm_twisting.h"
 #include "algorithm_vectorfield_input.h"
 
 #include "displacement.h"
 //#define __disable_performance_measure
 #include "performance.h"
 #include "smoothing.h"
+#include "twisting.h"
 
 #include "vtkAlgorithm.h"
 #include "vtkDataObject.h"
@@ -32,6 +35,7 @@
 #include "vtkInformation.h"
 #include "vtkInformationVector.h"
 #include "vtkMultiBlockDataSet.h"
+#include "vtkPointData.h"
 #include "vtkPointSet.h"
 #include "vtkPolyData.h"
 #include "vtkStreamingDemandDrivenPipeline.h"
@@ -60,20 +64,24 @@ feature_deformation::feature_deformation() : frames(0)
     this->alg_compute_tearing = std::make_shared<algorithm_compute_tearing>();
 
     this->alg_smoothing = std::make_shared<algorithm_smoothing>();
+    this->alg_twisting = std::make_shared<algorithm_twisting>();
 
     this->alg_displacement_creation_lines = std::make_shared<algorithm_displacement_creation>();
     this->alg_displacement_precomputation_lines = std::make_shared<algorithm_displacement_precomputation>();
     this->alg_displacement_computation_lines = std::make_shared<algorithm_displacement_computation>();
+    this->alg_displacement_computation_lines_twisting = std::make_shared<algorithm_displacement_computation_twisting>();
     this->alg_displacement_assess_lines = std::make_shared<algorithm_displacement_assessment>();
 
     this->alg_displacement_creation_grid = std::make_shared<algorithm_displacement_creation>();
     this->alg_displacement_precomputation_grid = std::make_shared<algorithm_displacement_precomputation>();
     this->alg_displacement_computation_grid = std::make_shared<algorithm_displacement_computation>();
+    this->alg_displacement_computation_grid_twisting = std::make_shared<algorithm_displacement_computation_twisting>();
     this->alg_displacement_assess_grid = std::make_shared<algorithm_displacement_assessment>();
 
     this->alg_displacement_creation_geometry = std::make_shared<algorithm_displacement_creation>();
     this->alg_displacement_precomputation_geometry = std::make_shared<algorithm_displacement_precomputation>();
     this->alg_displacement_computation_geometry = std::make_shared<algorithm_displacement_computation>();
+    this->alg_displacement_computation_geometry_twisting = std::make_shared<algorithm_displacement_computation_twisting>();
     this->alg_displacement_assess_geometry = std::make_shared<algorithm_displacement_assessment>();
 
     this->alg_line_output_creation = std::make_shared<algorithm_line_output_creation>();
@@ -124,13 +132,13 @@ int feature_deformation::FillInputPortInformation(int port, vtkInformation* info
 {
     if (port == 0)
     {
-        info->Set(vtkAlgorithm::INPUT_REQUIRED_DATA_TYPE(), "vtkImageData");
-        info->Set(vtkAlgorithm::INPUT_IS_OPTIONAL(), 1);
+        info->Set(vtkAlgorithm::INPUT_REQUIRED_DATA_TYPE(), "vtkPolyData");
         return 1;
     }
     else if (port == 1)
     {
-        info->Set(vtkAlgorithm::INPUT_REQUIRED_DATA_TYPE(), "vtkPolyData");
+        info->Set(vtkAlgorithm::INPUT_REQUIRED_DATA_TYPE(), "vtkImageData");
+        info->Set(vtkAlgorithm::INPUT_IS_OPTIONAL(), 1);
         return 1;
     }
     else if (port == 2)
@@ -170,6 +178,11 @@ void feature_deformation::RemoveAllGeometryInputs()
     this->SetInputConnection(2, nullptr);
 }
 
+void feature_deformation::RemoveAllGridInputs()
+{
+    this->SetInputConnection(1, nullptr);
+}
+
 int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInformationVector** input_vector, vtkInformationVector* output_vector)
 {
     // Set logging
@@ -184,14 +197,17 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
     this->alg_displacement_creation_lines->be_quiet(quiet);
     this->alg_displacement_precomputation_lines->be_quiet(quiet);
     this->alg_displacement_computation_lines->be_quiet(quiet);
+    this->alg_displacement_computation_lines_twisting->be_quiet(quiet);
     this->alg_displacement_assess_lines->be_quiet(quiet);
     this->alg_displacement_creation_grid->be_quiet(quiet);
     this->alg_displacement_precomputation_grid->be_quiet(quiet);
     this->alg_displacement_computation_grid->be_quiet(quiet);
+    this->alg_displacement_computation_grid_twisting->be_quiet(quiet);
     this->alg_displacement_assess_grid->be_quiet(quiet);
     this->alg_displacement_creation_geometry->be_quiet(quiet);
     this->alg_displacement_precomputation_geometry->be_quiet(quiet);
     this->alg_displacement_computation_geometry->be_quiet(quiet);
+    this->alg_displacement_computation_geometry_twisting->be_quiet(quiet);
     this->alg_displacement_assess_geometry->be_quiet(quiet);
     this->alg_line_output_creation->be_quiet(quiet);
     this->alg_line_output_update->be_quiet(quiet);
@@ -230,22 +246,22 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
     }
 
     // Get input
-    __next_perf_measure("get feature lines input");
+    __next_perf_measure("get feature line input");
 
-    if (!this->alg_line_input->run(vtkPolyData::SafeDownCast(input_vector[1]->GetInformationObject(0)->Get(vtkDataObject::DATA_OBJECT())), this->parameters.selected_line_id))
+    if (!this->alg_line_input->run(vtkPolyData::SafeDownCast(input_vector[0]->GetInformationObject(0)->Get(vtkDataObject::DATA_OBJECT())), this->parameters.selected_line_id))
     {
         return 0;
     }
 
-    if (input_vector[0] != nullptr && input_vector[0]->GetInformationObject(0) != nullptr && this->parameters.output_deformed_grid)
+    if (input_vector[1] != nullptr && input_vector[1]->GetInformationObject(0) != nullptr && this->parameters.output_deformed_grid)
     {
         __next_perf_measure("get grid input");
 
-        this->alg_grid_input->run(vtkImageData::SafeDownCast(input_vector[0]->GetInformationObject(0)->Get(vtkDataObject::DATA_OBJECT())));
+        this->alg_grid_input->run(vtkImageData::SafeDownCast(input_vector[1]->GetInformationObject(0)->Get(vtkDataObject::DATA_OBJECT())));
 
         if (this->parameters.output_vector_field)
         {
-            auto velocity_array = GetInputArrayToProcess(0, input_vector[0]->GetInformationObject(0)->Get(vtkDataObject::DATA_OBJECT()));
+            auto velocity_array = GetInputArrayToProcess(0, input_vector[1]->GetInformationObject(0)->Get(vtkDataObject::DATA_OBJECT()));
 
             if (velocity_array != nullptr)
             {
@@ -283,7 +299,7 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
     }
 
     // Smooth line
-    __next_perf_measure("smooth feature lines");
+    __next_perf_measure("smooth feature line");
 
     if (!this->alg_smoothing->run(this->alg_line_input, this->parameters.smoothing_method, this->parameters.variant, this->parameters.lambda, this->parameters.num_iterations))
     {
@@ -292,7 +308,7 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
 
     if (!quiet) std::cout << std::endl;
 
-    // Displace points
+    // Displace points from smoothing
     const std::array<std::tuple<std::string, std::shared_ptr<algorithm_input>, std::shared_ptr<algorithm_displacement_creation>,
         std::shared_ptr<algorithm_displacement_precomputation>, std::shared_ptr<algorithm_displacement_computation>,
         std::shared_ptr<algorithm_displacement_assessment>>, 3> displacement_inputs
@@ -340,6 +356,55 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
 
     if (!quiet) std::cout << std::endl;
 
+
+
+
+
+
+    // Twist line
+    if (this->Method == 0 || time == 1.0)
+    {
+        __next_perf_measure("twist feature line");
+
+        this->alg_twisting->run(this->alg_vectorfield_input, this->alg_grid_input, this->alg_smoothing, this->alg_displacement_computation_grid);
+
+        if (!quiet) std::cout << std::endl;
+
+        // Displace points from twisting
+        if (this->alg_twisting->is_valid())
+        {
+            const std::array<std::tuple<std::string, std::shared_ptr<algorithm_displacement_computation>,
+                std::shared_ptr<algorithm_displacement_computation_twisting>>, 3> displacement_inputs_twisting
+            {
+                std::make_tuple("line", this->alg_displacement_computation_lines, this->alg_displacement_computation_lines_twisting),
+
+                std::make_tuple("grid", this->alg_displacement_computation_grid, this->alg_displacement_computation_grid_twisting),
+
+                std::make_tuple("geometry", this->alg_displacement_computation_geometry, this->alg_displacement_computation_geometry_twisting),
+            };
+
+            for (const auto& displacement_input : displacement_inputs_twisting)
+            {
+                if (std::get<1>(displacement_input)->is_valid())
+                {
+                    if (!quiet) std::cout << "Displacing (twisting) " << std::get<0>(displacement_input) << " points..." << std::endl;
+
+                    __next_perf_measure("displace points on GPU");
+
+                    std::get<2>(displacement_input)->run(std::get<1>(displacement_input), this->alg_twisting,
+                        this->parameters.displacement_method, this->parameters.displacement_parameters);
+                }
+            }
+        }
+
+        if (!quiet) std::cout << std::endl;
+    }
+
+
+
+
+
+
     // Output lines
     __next_perf_measure("create output feature lines");
 
@@ -348,11 +413,27 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
     __next_perf_measure("update output feature lines");
 
     this->alg_line_output_update->run(this->alg_line_output_creation, this->alg_displacement_computation_lines,
-        this->alg_displacement_assess_lines, this->parameters.displacement_method, this->parameters.output_bspline_distance);
+        this->alg_displacement_computation_lines_twisting, this->alg_displacement_assess_lines,
+        this->parameters.displacement_method, this->parameters.output_bspline_distance);
 
     __next_perf_measure("output feature lines");
 
     this->alg_line_output_set->run(this->alg_line_output_update, output_vector->GetInformationObject(0), time);
+
+
+
+
+
+
+    // DEBUG
+    auto output_deformed_lines = vtkPolyData::SafeDownCast(output_vector->GetInformationObject(0)->Get(vtkDataObject::DATA_OBJECT()));
+    output_deformed_lines->GetPointData()->AddArray(this->alg_twisting->get_results().coordinate_systems);
+    // END DEBUG
+
+
+
+
+
 
     // Output geometry
     __next_perf_measure("create output geometry");
@@ -362,7 +443,8 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
     __next_perf_measure("update output geometry");
 
     this->alg_geometry_output_update->run(this->alg_geometry_output_creation, this->alg_displacement_computation_geometry,
-        this->alg_displacement_assess_geometry, this->parameters.displacement_method, this->parameters.output_bspline_distance);
+        this->alg_displacement_computation_geometry_twisting, this->alg_displacement_assess_geometry,
+        this->parameters.displacement_method, this->parameters.output_bspline_distance);
 
     __next_perf_measure("output geometry");
 
@@ -378,7 +460,8 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
         __next_perf_measure("update output grid");
 
         this->alg_grid_output_update->run(this->alg_grid_input, this->alg_grid_output_creation, this->alg_displacement_computation_grid,
-            this->alg_displacement_assess_grid, this->alg_compute_tearing, this->parameters.remove_cells, this->parameters.remove_cells_scalar);
+            this->alg_displacement_computation_grid_twisting, this->alg_displacement_assess_grid, this->alg_compute_tearing,
+            this->parameters.remove_cells, this->parameters.remove_cells_scalar);
 
         if (this->parameters.output_vector_field)
         {

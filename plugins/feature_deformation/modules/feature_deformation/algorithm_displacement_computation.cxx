@@ -1,12 +1,12 @@
 #include "algorithm_displacement_computation.h"
 
 #include "algorithm_displacement_creation.h"
-#include "algorithm_line_input.h"
 #include "algorithm_smoothing.h"
 #include "displacement.h"
 #include "hash.h"
 
 #include <iostream>
+#include <memory>
 
 void algorithm_displacement_computation::set_input(const std::shared_ptr<const algorithm_displacement_creation> displacement,
     const std::shared_ptr<const algorithm_smoothing> smoothing, const cuda::displacement::method_t method,

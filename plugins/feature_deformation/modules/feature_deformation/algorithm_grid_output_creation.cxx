@@ -64,11 +64,12 @@ bool algorithm_grid_output_creation::run_computation()
     tex_coords->SetNumberOfTuples(num_points);
     tex_coords->SetName("Original Coordinates");
 
-    vtkIdType index = 0;
-
     #pragma omp parallel for
     for (int z = 0; z < this->input_grid->get_results().dimension[2]; ++z)
     {
+        vtkIdType index = static_cast<vtkIdType>(z) * this->input_grid->get_results().dimension[1]
+            * this->input_grid->get_results().dimension[0];
+
         for (int y = 0; y < this->input_grid->get_results().dimension[1]; ++y)
         {
             for (int x = 0; x < this->input_grid->get_results().dimension[0]; ++x, ++index)
