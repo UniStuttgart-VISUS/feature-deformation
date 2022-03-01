@@ -23,25 +23,27 @@ algorithm_twisting::algorithm_twisting() : twister(nullptr), twister_hash(-1)
 void algorithm_twisting::set_input(
     std::shared_ptr<const algorithm_vectorfield_input> vector_field,
     std::shared_ptr<const algorithm_grid_input> grid,
+    std::shared_ptr<const algorithm_line_input> lines,
     std::shared_ptr<const algorithm_smoothing> straight_feature_line,
     std::shared_ptr<const algorithm_displacement_computation> displacement
 )
 {
     this->vector_field = vector_field;
     this->grid = grid;
+    this->lines = lines;
     this->straight_feature_line = straight_feature_line;
     this->displacement = displacement;
 }
 
 std::uint32_t algorithm_twisting::calculate_hash() const
 {
-    if (!this->vector_field->is_valid() || !this->grid->is_valid() ||
+    if (!this->vector_field->is_valid() || !this->grid->is_valid() || !this->lines->is_valid() ||
         !this->straight_feature_line->is_valid() || !this->displacement->is_valid())
     {
         return -1;
     }
 
-    return jenkins_hash(this->vector_field->get_hash(), this->grid->get_hash(),
+    return jenkins_hash(this->vector_field->get_hash(), this->grid->get_hash(), this->lines->get_hash(),
         this->straight_feature_line->get_hash(), this->displacement->get_hash());
 }
 
@@ -53,13 +55,13 @@ bool algorithm_twisting::run_computation()
     const auto& original_positions = this->straight_feature_line->get_results().positions;
     const auto& displacements = this->straight_feature_line->get_results().displacements;
 
-    std::vector<Eigen::Vector3f> straight_line(original_positions.size());
+    std::vector<Eigen::Vector3d> straight_line(original_positions.size());
 
     for (std::size_t i = 0; i < straight_line.size(); ++i)
     {
-        straight_line[i][0] = original_positions[i][0] + displacements[i][0];
-        straight_line[i][1] = original_positions[i][1] + displacements[i][1];
-        straight_line[i][2] = original_positions[i][2] + displacements[i][2];
+        straight_line[i][0] = static_cast<double>(original_positions[i][0]) + displacements[i][0];
+        straight_line[i][1] = static_cast<double>(original_positions[i][1]) + displacements[i][1];
+        straight_line[i][2] = static_cast<double>(original_positions[i][2]) + displacements[i][2];
     }
 
     // Get deformed grid
@@ -164,7 +166,11 @@ bool algorithm_twisting::run_computation()
     // Create twister algorithm
     this->twister = std::make_unique<twisting>(straight_line, deformed_grid);
 
-    this->twister->run();
+    if (!this->twister->run())
+    {
+        std::cerr << "ERROR: Twisting failed." << std::endl;
+        return false;
+    }
 
     const auto twisting_results = this->twister->get_rotations();
 
@@ -172,13 +178,23 @@ bool algorithm_twisting::run_computation()
     this->results.rotations.resize(twisting_results.first.size());
 
     #pragma omp parallel for
-    for (long long i = 0; i < static_cast<long long>(results.rotations.size()); ++i)
+    for (long long i = 0; i < static_cast<long long>(this->results.rotations.size()); ++i)
     {
-        this->results.rotations[i] = { twisting_results.first[i][0],
-            twisting_results.first[i][1], twisting_results.first[i][2], 1.0f };
+        this->results.rotations[i] = { static_cast<float>(twisting_results.first[i][0]),
+            static_cast<float>(twisting_results.first[i][1]), static_cast<float>(twisting_results.first[i][2]), 1.0f };
     }
 
-    this->results.coordinate_systems = twisting_results.second;
+    this->results.coordinate_systems = vtkSmartPointer<vtkDoubleArray>::New();
+    this->results.coordinate_systems->SetName("Coordinate System");
+    this->results.coordinate_systems->SetNumberOfComponents(9);
+    this->results.coordinate_systems->SetNumberOfTuples(this->lines->get_results().input_lines->GetNumberOfPoints());
+    this->results.coordinate_systems->FillValue(0.0);
+
+    #pragma omp parallel for
+    for (long long i = 0; i < static_cast<long long>(twisting_results.second.size()); ++i)
+    {
+        this->results.coordinate_systems->SetTuple(this->lines->get_results().selected_line_ids[i], twisting_results.second[i].data());
+    }
 
     return true;
 }

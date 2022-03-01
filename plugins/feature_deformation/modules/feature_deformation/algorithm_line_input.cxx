@@ -72,6 +72,7 @@ bool algorithm_line_input::run_computation()
         if (line_index == this->selected_line_id)
         {
             this->results.selected_line.resize(point_list->GetNumberOfIds());
+            this->results.selected_line_ids.resize(point_list->GetNumberOfIds());
 
             #pragma omp parallel for
             for (vtkIdType point_index = 0; point_index < point_list->GetNumberOfIds(); ++point_index)
@@ -80,6 +81,7 @@ bool algorithm_line_input::run_computation()
                 this->input_lines->GetPoints()->GetPoint(point_list->GetId(point_index), point.data());
 
                 this->results.selected_line[point_index] << static_cast<float>(point[0]), static_cast<float>(point[1]), static_cast<float>(point[2]);
+                this->results.selected_line_ids[point_index] = point_list->GetId(point_index);
             }
         }
 

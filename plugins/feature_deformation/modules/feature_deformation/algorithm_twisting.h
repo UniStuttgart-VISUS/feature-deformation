@@ -3,6 +3,7 @@
 #include "algorithm.h"
 #include "algorithm_displacement_computation.h"
 #include "algorithm_grid_input.h"
+#include "algorithm_line_input.h"
 #include "algorithm_smoothing.h"
 #include "algorithm_vectorfield_input.h"
 #include "twisting.h"
@@ -16,7 +17,8 @@
 #include <memory>
 #include <vector>
 
-class algorithm_twisting : public algorithm<std::shared_ptr<const algorithm_vectorfield_input>, std::shared_ptr<const algorithm_grid_input>,
+class algorithm_twisting : public algorithm<std::shared_ptr<const algorithm_vectorfield_input>,
+    std::shared_ptr<const algorithm_grid_input>, std::shared_ptr<const algorithm_line_input>,
     std::shared_ptr<const algorithm_smoothing>, std::shared_ptr<const algorithm_displacement_computation>>
 {
 public:
@@ -37,6 +39,7 @@ protected:
     virtual void set_input(
         std::shared_ptr<const algorithm_vectorfield_input> vector_field,
         std::shared_ptr<const algorithm_grid_input> grid,
+        std::shared_ptr<const algorithm_line_input> lines,
         std::shared_ptr<const algorithm_smoothing> straight_feature_line,
         std::shared_ptr<const algorithm_displacement_computation> displacement
     ) override;
@@ -54,6 +57,7 @@ private:
     /// Input
     std::shared_ptr<const algorithm_vectorfield_input> vector_field;
     std::shared_ptr<const algorithm_grid_input> grid;
+    std::shared_ptr<const algorithm_line_input> lines;
     std::shared_ptr<const algorithm_smoothing> straight_feature_line;
     std::shared_ptr<const algorithm_displacement_computation> displacement;
 

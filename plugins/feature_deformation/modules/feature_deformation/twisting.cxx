@@ -4,7 +4,7 @@
 #include "grid.h"
 
 #include "vtkCell.h"
-#include "vtkDoubleArray.h"
+#include "vtkDataArray.h"
 #include "vtkIdList.h"
 #include "vtkPointData.h"
 #include "vtkSmartPointer.h"
@@ -13,15 +13,16 @@
 #include "Eigen/Dense"
 
 #include <array>
+#include <cmath>
 #include <utility>
 #include <vector>
 
-twisting::twisting(std::vector<Eigen::Vector3f> line, vtkSmartPointer<vtkStructuredGrid> vector_field) :
+twisting::twisting(std::vector<Eigen::Vector3d> line, vtkSmartPointer<vtkStructuredGrid> vector_field) :
     line(line), vector_field(vector_field)
 {
 }
 
-void twisting::run()
+bool twisting::run()
 {
     // Calculate for every point of the polyline the rotation necessary to adjust the spanned coordinate
     // system by the eigenvectors on the orthogonal plane to the feature line. To this end, use the
@@ -37,14 +38,8 @@ void twisting::run()
 
     const auto twoD = this->vector_field->GetDimensions()[2] == 1;
 
-    // Initialize result variables
-    this->coordinate_systems = vtkSmartPointer<vtkDoubleArray>::New();
-    this->coordinate_systems->SetName("Coordinate System");
-    this->coordinate_systems->SetNumberOfComponents(9);
-    this->coordinate_systems->SetNumberOfTuples(this->line.size());
-    this->coordinate_systems->FillValue(0.0);
-
     this->rotations.resize(this->line.size());
+    this->coordinate_systems.resize(this->line.size());
 
     // For each point, calculate the eigenvectors on the orthogonal plane
     std::vector<std::pair<Eigen::Vector3d, Eigen::Vector3d>> coordinate_systems(this->line.size());
@@ -61,15 +56,24 @@ void twisting::run()
     int sub_id{};
 
     std::size_t index = 0;
+    vtkCell* previous_cell = nullptr;
     vtkCell* cell = nullptr;
+
+    bool is_twisted = true;
 
     for (const auto& point : this->line)
     {
         temp_point = { static_cast<double>(point[0]), static_cast<double>(point[1]), static_cast<double>(point[2]) };
 
         // Interpolate Jacobian
-        cell = jacobian_field->FindAndGetCell(temp_point.data(), cell, 0, 0.0, sub_id, p_coords.data(), weights.data());
-        auto point_ids = cell->GetPointIds();
+        cell = jacobian_field->FindAndGetCell(temp_point.data(), previous_cell, 0, 0.0, sub_id, p_coords.data(), weights.data());
+        auto point_ids = (cell != nullptr ? cell : previous_cell)->GetPointIds(); // TODO: handling of outside cells
+        previous_cell = (cell != nullptr ? cell : previous_cell);
+
+        if (cell == nullptr && previous_cell == nullptr)
+        {
+            return false;
+        }
 
         Eigen::Matrix3d jacobian, summed_jacobian;
         summed_jacobian.setZero();
@@ -102,23 +106,24 @@ void twisting::run()
 
             if (is_real[i])
             {
-                this->coordinate_systems->SetComponent(index, static_cast<int>(i * 3 + 0), eigenvectors[i][0]);
-                this->coordinate_systems->SetComponent(index, static_cast<int>(i * 3 + 1), eigenvectors[i][1]);
-                this->coordinate_systems->SetComponent(index, static_cast<int>(i * 3 + 2), eigenvectors[i][2]);
+                this->coordinate_systems[index](i * 3 + 0) = eigenvectors[i][0];
+                this->coordinate_systems[index](i * 3 + 1) = eigenvectors[i][1];
+                this->coordinate_systems[index](i * 3 + 2) = eigenvectors[i][2];
 
                 ++num_real;
             }
             else
             {
-                this->coordinate_systems->SetComponent(index, static_cast<int>(i * 3 + 0), 0.0);
-                this->coordinate_systems->SetComponent(index, static_cast<int>(i * 3 + 1), 0.0);
-                this->coordinate_systems->SetComponent(index, static_cast<int>(i * 3 + 2), 0.0);
+                this->coordinate_systems[index](i * 3 + 0) = 0.0;
+                this->coordinate_systems[index](i * 3 + 1) = 0.0;
+                this->coordinate_systems[index](i * 3 + 2) = 0.0;
             }
         }
 
-        // Filter eigenvectors
+        // Filter eigenvectors...
         if (num_real > 1)
         {
+            // ... only use real eigenvalues
             if (!is_real[0])
             {
                 eigenvectors[0] = eigenvectors[2];
@@ -132,10 +137,31 @@ void twisting::run()
                 is_real[1] = is_real[2];
             }
 
-            // TODO: remove eigenvector parallel to feature line?
+            // ... ignore eigenvector parallel to feature line
+            if (is_real[2])
+            {
+                const auto angle_1 = std::abs(direction.dot(eigenvectors[0].normalized()));
+                const auto angle_2 = std::abs(direction.dot(eigenvectors[1].normalized()));
+                const auto angle_3 = std::abs(direction.dot(eigenvectors[2].normalized()));
+
+                if (angle_1 < angle_2 && angle_1 < angle_3)
+                {
+                    eigenvectors[0] = eigenvectors[2];
+                    eigenvalues[0] = eigenvalues[2];
+                }
+                else if (angle_2 < angle_3)
+                {
+                    eigenvectors[1] = eigenvectors[2];
+                    eigenvalues[1] = eigenvalues[2];
+                }
+            }
 
             coordinate_systems[index].first = eigenvectors[0];
             coordinate_systems[index].second = eigenvectors[1];
+        }
+        else
+        {
+            is_twisted = false;
         }
 
         ++index;
@@ -143,10 +169,15 @@ void twisting::run()
 
     // Beginning at the end of the line and moving forward, adjust the back-most coordinate systems
     // to match the one to their front
+    if (is_twisted)
+    {
+        // TODO
+    }
 
+    return true;
 }
 
-const std::pair<std::vector<Eigen::Vector3f>, vtkSmartPointer<vtkDoubleArray>> twisting::get_rotations() const
+const std::pair<std::vector<Eigen::Vector3d>, std::vector<Eigen::Matrix3d>> twisting::get_rotations() const
 {
     return std::make_pair(this->rotations, this->coordinate_systems);
 }

@@ -366,7 +366,8 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
     {
         __next_perf_measure("twist feature line");
 
-        this->alg_twisting->run(this->alg_vectorfield_input, this->alg_grid_input, this->alg_smoothing, this->alg_displacement_computation_grid);
+        this->alg_twisting->run(this->alg_vectorfield_input, this->alg_grid_input, this->alg_line_input,
+            this->alg_smoothing, this->alg_displacement_computation_grid);
 
         if (!quiet) std::cout << std::endl;
 
@@ -426,8 +427,17 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
 
 
     // DEBUG
-    auto output_deformed_lines = vtkPolyData::SafeDownCast(output_vector->GetInformationObject(0)->Get(vtkDataObject::DATA_OBJECT()));
-    output_deformed_lines->GetPointData()->AddArray(this->alg_twisting->get_results().coordinate_systems);
+    if (this->alg_twisting->is_valid())
+    {
+        auto output_deformed_lines = vtkPolyData::SafeDownCast(output_vector->GetInformationObject(0)->Get(vtkDataObject::DATA_OBJECT()));
+
+        if (output_deformed_lines->GetNumberOfPoints() != this->alg_twisting->get_results().coordinate_systems->GetNumberOfTuples())
+        {
+            std::cerr << "ERROR: Numbers of points and tuples mismatch." << std::endl;
+        }
+
+        output_deformed_lines->GetPointData()->AddArray(this->alg_twisting->get_results().coordinate_systems);
+    }
     // END DEBUG
 
 

@@ -22,6 +22,7 @@ public:
         vtkPolyData* input_lines;
 
         std::vector<Eigen::Vector3f> selected_line;
+        std::vector<vtkIdType> selected_line_ids;
         std::vector<std::array<float, 3>> lines;
     };
 
