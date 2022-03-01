@@ -63,8 +63,4 @@ private:
 
     /// Results
     results_t results;
-
-    /// Twister
-    std::unique_ptr<twisting> twister;
-    uint32_t twister_hash;
 };

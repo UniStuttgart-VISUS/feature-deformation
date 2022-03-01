@@ -16,7 +16,7 @@
 #include <memory>
 #include <vector>
 
-algorithm_twisting::algorithm_twisting() : twister(nullptr), twister_hash(-1)
+algorithm_twisting::algorithm_twisting()
 {
 }
 
@@ -91,6 +91,12 @@ bool algorithm_twisting::run_computation()
     velocities->SetName("velocity");
     velocities->FillValue(0.0);
 
+    auto jacobian = vtkSmartPointer<vtkDoubleArray>::New();
+    jacobian->SetNumberOfComponents(9);
+    jacobian->SetNumberOfTuples(num_points);
+    jacobian->SetName("jacobian");
+    jacobian->FillValue(0.0);
+
     auto calc_index_point = [](const std::array<int, 3>& dimension, int x, int y, int z) -> int
     {
         return (z * dimension[1] + y) * dimension[0] + x;
@@ -157,22 +163,24 @@ bool algorithm_twisting::run_computation()
                 velocity = Jacobian * velocity;
 
                 velocities->SetTuple(index_p, velocity.data());
+                jacobian->SetTuple(index_p, Jacobian.data());
             }
         }
     }
 
     deformed_grid->GetPointData()->AddArray(velocities);
+    deformed_grid->GetPointData()->AddArray(jacobian);
 
     // Create twister algorithm
-    this->twister = std::make_unique<twisting>(straight_line, deformed_grid);
+    twisting twister(straight_line, deformed_grid);
 
-    if (!this->twister->run())
+    if (!twister.run())
     {
         std::cerr << "ERROR: Twisting failed." << std::endl;
         return false;
     }
 
-    const auto twisting_results = this->twister->get_rotations();
+    const auto twisting_results = twister.get_rotations();
 
     // Convert results
     this->results.rotations.resize(twisting_results.first.size());

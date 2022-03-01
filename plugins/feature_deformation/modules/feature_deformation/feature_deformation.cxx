@@ -356,11 +356,6 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
 
     if (!quiet) std::cout << std::endl;
 
-
-
-
-
-
     // Twist line
     if (this->Method == 0 || time == 1.0)
     {
@@ -400,11 +395,6 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
 
         if (!quiet) std::cout << std::endl;
     }
-
-
-
-
-
 
     // Output lines
     __next_perf_measure("create output feature lines");

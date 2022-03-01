@@ -34,22 +34,20 @@ bool twisting::run()
 
     const auto direction = (end - start).normalized();
 
-    // TODO: sanity check
-
     const auto twoD = this->vector_field->GetDimensions()[2] == 1;
 
     this->rotations.resize(this->line.size());
     this->coordinate_systems.resize(this->line.size());
 
-    // For each point, calculate the eigenvectors on the orthogonal plane
+    // For each point, calculate the eigenvectors
     std::vector<std::pair<Eigen::Vector3d, Eigen::Vector3d>> coordinate_systems(this->line.size());
 
-    auto jacobians = gradient_field(grid(this->vector_field,
-        this->vector_field->GetPointData()->GetArray("velocity")), gradient_method_t::least_squares);
+    const auto velocities = this->vector_field->GetPointData()->GetArray("velocity");
+    const auto deformation = this->vector_field->GetPointData()->GetArray("jacobian");
 
-    auto jacobian_field = vtkSmartPointer<vtkStructuredGrid>::New();
-    jacobian_field->CopyStructure(this->vector_field);
-    jacobian_field->GetPointData()->AddArray(jacobians);
+    const grid velocity_grid(this->vector_field, velocities, deformation);
+
+    auto jacobians = gradient_field(velocity_grid, gradient_method_t::least_squares);
 
     std::array<double, 3> temp_point{}, p_coords{};
     std::array<double, 8> weights{};
@@ -66,7 +64,7 @@ bool twisting::run()
         temp_point = { static_cast<double>(point[0]), static_cast<double>(point[1]), static_cast<double>(point[2]) };
 
         // Interpolate Jacobian
-        cell = jacobian_field->FindAndGetCell(temp_point.data(), previous_cell, 0, 0.0, sub_id, p_coords.data(), weights.data());
+        cell = this->vector_field->FindAndGetCell(temp_point.data(), previous_cell, 0, 0.0, sub_id, p_coords.data(), weights.data());
         auto point_ids = (cell != nullptr ? cell : previous_cell)->GetPointIds(); // TODO: handling of outside cells
         previous_cell = (cell != nullptr ? cell : previous_cell);
 
@@ -78,17 +76,14 @@ bool twisting::run()
         Eigen::Matrix3d jacobian, summed_jacobian;
         summed_jacobian.setZero();
 
-        double summed_weight = 0.0;
-
         for (vtkIdType i = 0; i < point_ids->GetNumberOfIds(); ++i)
         {
-            jacobians->GetTuple(i, jacobian.data());
+            jacobians->GetTuple(point_ids->GetId(i), jacobian.data());
 
             summed_jacobian += weights[i] * jacobian;
-            summed_weight += weights[i];
         }
 
-        jacobian = summed_jacobian / summed_weight;
+        jacobian = summed_jacobian;
 
         // Extract eigenvectors
         Eigen::EigenSolver<Eigen::Matrix3d> eigensolver(jacobian, true);
@@ -120,9 +115,9 @@ bool twisting::run()
             }
         }
 
-        // Filter eigenvectors...
         if (num_real > 1)
         {
+            // Filter eigenvectors...
             // ... only use real eigenvalues
             if (!is_real[0])
             {
@@ -158,6 +153,9 @@ bool twisting::run()
 
             coordinate_systems[index].first = eigenvectors[0];
             coordinate_systems[index].second = eigenvectors[1];
+
+            // Project eigenvectors to be orthogonal to the feature line tangent
+            // TODO
         }
         else
         {
