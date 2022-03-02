@@ -25,7 +25,9 @@ void algorithm_twisting::set_input(
     std::shared_ptr<const algorithm_grid_input> grid,
     std::shared_ptr<const algorithm_line_input> lines,
     std::shared_ptr<const algorithm_smoothing> straight_feature_line,
-    std::shared_ptr<const algorithm_displacement_computation> displacement
+    std::shared_ptr<const algorithm_displacement_computation> displacement,
+    const bool active,
+    const int selected_eigenvector
 )
 {
     this->vector_field = vector_field;
@@ -33,18 +35,21 @@ void algorithm_twisting::set_input(
     this->lines = lines;
     this->straight_feature_line = straight_feature_line;
     this->displacement = displacement;
+
+    this->active = active;
+    this->selected_eigenvector = selected_eigenvector;
 }
 
 std::uint32_t algorithm_twisting::calculate_hash() const
 {
-    if (!this->vector_field->is_valid() || !this->grid->is_valid() || !this->lines->is_valid() ||
+    if (!this->active || !this->vector_field->is_valid() || !this->grid->is_valid() || !this->lines->is_valid() ||
         !this->straight_feature_line->is_valid() || !this->displacement->is_valid())
     {
         return -1;
     }
 
     return jenkins_hash(this->vector_field->get_hash(), this->grid->get_hash(), this->lines->get_hash(),
-        this->straight_feature_line->get_hash(), this->displacement->get_hash());
+        this->straight_feature_line->get_hash(), this->displacement->get_hash(), this->selected_eigenvector);
 }
 
 bool algorithm_twisting::run_computation()
@@ -172,7 +177,7 @@ bool algorithm_twisting::run_computation()
     deformed_grid->GetPointData()->AddArray(jacobian);
 
     // Create twister algorithm
-    twisting twister(straight_line, deformed_grid);
+    twisting twister(straight_line, deformed_grid, this->selected_eigenvector);
 
     if (!twister.run())
     {

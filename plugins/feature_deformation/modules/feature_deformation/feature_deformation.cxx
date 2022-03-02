@@ -357,44 +357,40 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
     if (!quiet) std::cout << std::endl;
 
     // Twist line
-    if (this->Method == 0 || time == 1.0)
+    const bool twist_line = this->parameters.twist && (this->parameters.smoothing_method == smoothing::method_t::direct || time == 1.0);
+
+    __next_perf_measure("twist feature line");
+
+    this->alg_twisting->run(this->alg_vectorfield_input, this->alg_grid_input, this->alg_line_input,
+        this->alg_smoothing, this->alg_displacement_computation_grid, twist_line, this->parameters.twist_eigenvector);
+
+    if (!quiet) std::cout << std::endl;
+
+    // Displace points from twisting
+    const std::array<std::tuple<std::string, std::shared_ptr<algorithm_displacement_computation>,
+        std::shared_ptr<algorithm_displacement_computation_twisting>>, 3> displacement_inputs_twisting
     {
-        __next_perf_measure("twist feature line");
+        std::make_tuple("line", this->alg_displacement_computation_lines, this->alg_displacement_computation_lines_twisting),
 
-        this->alg_twisting->run(this->alg_vectorfield_input, this->alg_grid_input, this->alg_line_input,
-            this->alg_smoothing, this->alg_displacement_computation_grid);
+        std::make_tuple("grid", this->alg_displacement_computation_grid, this->alg_displacement_computation_grid_twisting),
 
-        if (!quiet) std::cout << std::endl;
+        std::make_tuple("geometry", this->alg_displacement_computation_geometry, this->alg_displacement_computation_geometry_twisting),
+    };
 
-        // Displace points from twisting
-        if (this->alg_twisting->is_valid())
+    for (const auto& displacement_input : displacement_inputs_twisting)
+    {
+        if (std::get<1>(displacement_input)->is_valid())
         {
-            const std::array<std::tuple<std::string, std::shared_ptr<algorithm_displacement_computation>,
-                std::shared_ptr<algorithm_displacement_computation_twisting>>, 3> displacement_inputs_twisting
-            {
-                std::make_tuple("line", this->alg_displacement_computation_lines, this->alg_displacement_computation_lines_twisting),
+            if (!quiet) std::cout << "Displacing (twisting) " << std::get<0>(displacement_input) << " points..." << std::endl;
 
-                std::make_tuple("grid", this->alg_displacement_computation_grid, this->alg_displacement_computation_grid_twisting),
+            __next_perf_measure("displace points on GPU");
 
-                std::make_tuple("geometry", this->alg_displacement_computation_geometry, this->alg_displacement_computation_geometry_twisting),
-            };
-
-            for (const auto& displacement_input : displacement_inputs_twisting)
-            {
-                if (std::get<1>(displacement_input)->is_valid())
-                {
-                    if (!quiet) std::cout << "Displacing (twisting) " << std::get<0>(displacement_input) << " points..." << std::endl;
-
-                    __next_perf_measure("displace points on GPU");
-
-                    std::get<2>(displacement_input)->run(std::get<1>(displacement_input), this->alg_smoothing, this->alg_twisting,
-                        this->parameters.displacement_method, this->parameters.displacement_parameters);
-                }
-            }
+            std::get<2>(displacement_input)->run(std::get<1>(displacement_input), this->alg_smoothing, this->alg_twisting,
+                this->parameters.displacement_method, this->parameters.displacement_parameters);
         }
-
-        if (!quiet) std::cout << std::endl;
     }
+
+    if (!quiet) std::cout << std::endl;
 
     // Output lines
     __next_perf_measure("create output feature lines");
@@ -574,6 +570,12 @@ void feature_deformation::process_parameters(double time)
 
     __set_parameter(lambda, lambda);
     __set_parameter(num_iterations, num_iterations);
+
+    // Twisting parameters
+    __log_header("twisting");
+
+    __set_parameter_bool(twist, this->Twist);
+    __set_parameter(twist_eigenvector, this->TwistEigenvector);
 
     // Displacement parameters
     __log_header("displacement");

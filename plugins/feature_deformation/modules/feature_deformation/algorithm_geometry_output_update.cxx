@@ -51,7 +51,9 @@ bool algorithm_geometry_output_update::run_computation()
     if (!this->is_quiet()) std::cout << "Updating deformed geometry output" << std::endl;
 
     // Set displaced points
-    const auto& displaced_geometry = this->displacement->get_results().displacements->get_results();
+    const auto& displaced_geometry = this->displacement_twisting->is_valid()
+        ? this->displacement->get_results().displacements->get_results_twisting()
+        : this->displacement->get_results().displacements->get_results();
 
     std::size_t global_id = 0;
 

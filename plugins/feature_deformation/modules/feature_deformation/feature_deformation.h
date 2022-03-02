@@ -54,6 +54,12 @@ public:
     vtkGetMacro(Lambda, double);
     vtkSetMacro(Lambda, double);
 
+    vtkGetMacro(Twist, int);
+    vtkSetMacro(Twist, int);
+
+    vtkGetMacro(TwistEigenvector, int);
+    vtkSetMacro(TwistEigenvector, int);
+
     vtkGetMacro(Interpolator, int);
     vtkSetMacro(Interpolator, int);
 
@@ -149,6 +155,10 @@ private:
     int MaxNumIterations;
     double Lambda;
 
+    /// Twisting the feature line
+    int Twist;
+    int TwistEigenvector;
+
     /// Animation parameters
     int Interpolator;
     double InterpolatorThreshold;
@@ -195,6 +205,9 @@ private:
         float lambda;
         int num_iterations;
         int max_num_iterations;
+
+        bool twist;
+        int twist_eigenvector;
 
         cuda::displacement::method_t displacement_method;
         cuda::displacement::parameter_t displacement_parameters;

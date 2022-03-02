@@ -64,6 +64,9 @@ namespace cuda
         /// Return displaced results
         const std::vector<std::array<float, 3>>& get_results() const;
 
+        /// Return displaced results after twisting
+        const std::vector<std::array<float, 3>>& get_results_twisting() const;
+
         /// Return displacement IDs
         const std::tuple<std::vector<float4>, std::vector<float3>, std::vector<float3>> get_displacement_info() const;
 
@@ -92,6 +95,7 @@ namespace cuda
         /// CUDA resources
         float3* cuda_res_input_points;
         float3* cuda_res_output_points;
+        float3* cuda_res_output_twisting_points;
         float4* cuda_res_info;
         float3* cuda_res_mapping_point;
         float3* cuda_res_mapping_tangent;

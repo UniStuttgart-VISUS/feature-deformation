@@ -15,7 +15,7 @@ class twisting
 {
 public:
     /// Set input for twisting
-    twisting(std::vector<Eigen::Vector3d> line, vtkSmartPointer<vtkStructuredGrid> vector_field);
+    twisting(std::vector<Eigen::Vector3d> line, vtkSmartPointer<vtkStructuredGrid> vector_field, int selected_eigenvector);
 
     /// Perform twisting algorithm
     bool run();
@@ -29,6 +29,9 @@ private:
 
     /// Grid and vector field
     vtkSmartPointer<vtkStructuredGrid> vector_field;
+
+    /// Parameter
+    int selected_eigenvector;
 
     /// Resulting rotations
     std::vector<float> rotations;

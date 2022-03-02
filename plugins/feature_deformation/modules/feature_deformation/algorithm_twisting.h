@@ -19,7 +19,8 @@
 
 class algorithm_twisting : public algorithm<std::shared_ptr<const algorithm_vectorfield_input>,
     std::shared_ptr<const algorithm_grid_input>, std::shared_ptr<const algorithm_line_input>,
-    std::shared_ptr<const algorithm_smoothing>, std::shared_ptr<const algorithm_displacement_computation>>
+    std::shared_ptr<const algorithm_smoothing>, std::shared_ptr<const algorithm_displacement_computation>,
+    bool, int>
 {
 public:
     /// Default constructor
@@ -41,7 +42,9 @@ protected:
         std::shared_ptr<const algorithm_grid_input> grid,
         std::shared_ptr<const algorithm_line_input> lines,
         std::shared_ptr<const algorithm_smoothing> straight_feature_line,
-        std::shared_ptr<const algorithm_displacement_computation> displacement
+        std::shared_ptr<const algorithm_displacement_computation> displacement,
+        bool active,
+        int selected_eigenvector
     ) override;
 
     /// Calculate hash
@@ -60,6 +63,10 @@ private:
     std::shared_ptr<const algorithm_line_input> lines;
     std::shared_ptr<const algorithm_smoothing> straight_feature_line;
     std::shared_ptr<const algorithm_displacement_computation> displacement;
+
+    /// Parameter
+    bool active;
+    int selected_eigenvector;
 
     /// Results
     results_t results;

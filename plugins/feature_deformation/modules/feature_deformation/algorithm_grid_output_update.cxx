@@ -59,7 +59,10 @@ bool algorithm_grid_output_update::run_computation()
     if (!this->is_quiet()) std::cout << "Updating deformed grid output" << std::endl;
 
     // Set displaced points and displacement map
-    const auto& displaced_grid = this->displacement->get_results().displacements->get_results();
+    const auto& displaced_grid = this->displacement_twisting->is_valid()
+        ? this->displacement->get_results().displacements->get_results_twisting()
+        : this->displacement->get_results().displacements->get_results();
+
     const auto grid = vtkPointSet::SafeDownCast(this->output_grid->get_results().grid->GetBlock(0u));
     auto displacement_map = vtkDoubleArray::FastDownCast(grid->GetPointData()->GetArray("Displacement Map"));
 

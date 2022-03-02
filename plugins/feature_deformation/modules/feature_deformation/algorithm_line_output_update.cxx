@@ -49,7 +49,9 @@ bool algorithm_line_output_update::run_computation()
     if (!this->is_quiet()) std::cout << "Updating deformed lines output" << std::endl;
 
     // Set displaced points
-    const auto& displaced_lines = displacement->get_results().displacements->get_results();
+    const auto& displaced_lines = this->displacement_twisting->is_valid()
+        ? this->displacement->get_results().displacements->get_results_twisting()
+        : this->displacement->get_results().displacements->get_results();
 
     #pragma omp parallel for
     for (vtkIdType i = 0; i < this->output_lines->get_results().lines->GetNumberOfPoints(); ++i)

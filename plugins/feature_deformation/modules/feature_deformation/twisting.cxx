@@ -19,8 +19,8 @@
 #include <utility>
 #include <vector>
 
-twisting::twisting(std::vector<Eigen::Vector3d> line, vtkSmartPointer<vtkStructuredGrid> vector_field) :
-    line(line), vector_field(vector_field)
+twisting::twisting(std::vector<Eigen::Vector3d> line, vtkSmartPointer<vtkStructuredGrid> vector_field, const int selected_eigenvector) :
+    line(line), vector_field(vector_field), selected_eigenvector(selected_eigenvector)
 {
 }
 
@@ -196,8 +196,6 @@ bool twisting::run()
 
         // Beginning at the end of the line and moving forward, adjust the back-most coordinate systems
         // to match the one to their front
-        const auto system_index = 0; // TODO: parameter
-
         auto rotate = [&direction](Eigen::Vector3d vector, float angle) -> Eigen::Vector3d
         {
             return vector * std::cos(angle) + direction.cross(vector) * std::sin(angle) + direction * direction.dot(vector) * (1.0 - std::cos(angle));
@@ -205,10 +203,10 @@ bool twisting::run()
 
         for (std::size_t i = coordinate_systems.size() - 1; i > 0; --i)
         {
-            const auto& current = system_index == 0 ? coordinate_systems[i].first : coordinate_systems[i].second;
-            const auto& comparison = system_index == 0 ? coordinate_systems[i - 1].first : coordinate_systems[i - 1].second;
+            const auto& current = this->selected_eigenvector == 0 ? coordinate_systems[i].first : coordinate_systems[i].second;
+            const auto& comparison = this->selected_eigenvector == 0 ? coordinate_systems[i - 1].first : coordinate_systems[i - 1].second;
 
-            auto angle = std::acos(current.dot(comparison));
+            auto angle = std::acos(std::max(std::min(current.dot(comparison), 1.0), -1.0));
 
             // Adjust winding direction
             const auto positive = rotate(current, angle);
@@ -236,6 +234,7 @@ bool twisting::run()
         for (std::size_t i = 0; i < coordinate_systems.size(); ++i)
         {
             this->rotations[i] = fmodf(this->rotations[i], static_cast<float>(2.0 * pi));
+            std::cout << this->rotations[i] << std::endl;
         }
 
         // Set debug output

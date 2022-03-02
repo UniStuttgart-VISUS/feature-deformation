@@ -920,14 +920,15 @@ void displacement_kernel_spline_joints(const float3* in_points, const float3* po
 /**
 * Interpolate twisting displacement at joints using B-splines and move points accordingly
 *
-* @param in_out_points          Points to displace
+* @param in_points              Points to displace
+* @param out_points             Displaced points
 * @param arc_position_mapping   Corresponding arc position on the B-Spline
 * @param num_points             Number of points
 * @param num_displacements      Number of displacement vectors and positions
 * @param degree                 B-Spline degree
 */
 __global__
-void displacement_kernel_twisting(float3* in_out_points, const float* arc_position_mapping,
+void displacement_kernel_twisting(const float3* in_points, float3* out_points, const float* arc_position_mapping,
     const int num_points, const int num_displacements, const int degree)
 {
     __get_kernel__parameters__
@@ -943,7 +944,7 @@ void displacement_kernel_twisting(float3* in_out_points, const float* arc_positi
             - compute_point(0.0, degree, num_displacements, 5));
 
         // Rotate point around the (assumedly) straight feature line
-        in_out_points[gid] = center_of_rotation + rotate(in_out_points[gid] - center_of_rotation, axis_of_rotation, angle_of_rotation.x);
+        out_points[gid] = center_of_rotation + rotate(in_points[gid] - center_of_rotation, axis_of_rotation, angle_of_rotation.x);
     }
 }
 
@@ -1031,9 +1032,11 @@ namespace
 }
 
 cuda::displacement::displacement(std::vector<std::array<float, 3>> points) :
-    points(std::move(points)), cuda_res_input_points(nullptr), cuda_res_output_points(nullptr), cuda_res_info(nullptr),
-    cuda_res_mapping_point(nullptr), cuda_res_mapping_tangent(nullptr), cuda_res_mapping_direction(nullptr),
-    cuda_res_mapping_direction_orig(nullptr), cuda_res_mapping_arc_position(nullptr), cuda_res_mapping_arc_position_displaced(nullptr)
+    points(std::move(points)), cuda_res_input_points(nullptr), cuda_res_output_points(nullptr),
+    cuda_res_output_twisting_points(nullptr), cuda_res_info(nullptr), cuda_res_mapping_point(nullptr),
+    cuda_res_mapping_tangent(nullptr), cuda_res_mapping_direction(nullptr),
+    cuda_res_mapping_direction_orig(nullptr), cuda_res_mapping_arc_position(nullptr),
+    cuda_res_mapping_arc_position_displaced(nullptr)
 {
     upload_points();
 }
@@ -1043,6 +1046,7 @@ cuda::displacement::~displacement()
     // Free CUDA resources
     if (this->cuda_res_input_points != nullptr) cudaFree(this->cuda_res_input_points);
     if (this->cuda_res_output_points != nullptr) cudaFree(this->cuda_res_output_points);
+    if (this->cuda_res_output_twisting_points != nullptr) cudaFree(this->cuda_res_output_twisting_points);
     if (this->cuda_res_info != nullptr) cudaFree(this->cuda_res_info);
     if (this->cuda_res_mapping_point != nullptr) cudaFree(this->cuda_res_mapping_point);
     if (this->cuda_res_mapping_tangent != nullptr) cudaFree(this->cuda_res_mapping_tangent);
@@ -1096,6 +1100,29 @@ void cuda::displacement::upload_points()
         {
             std::stringstream ss;
             ss << "Error copying to GPU memory using cudaMemcpy for output points" << " (" << cudaGetErrorName(err) << ": " << cudaGetErrorString(err) << ")";
+            throw std::runtime_error(ss.str());
+        }
+    }
+
+    // Create writeable CUDA image and upload output points to the GPU
+    {
+        const auto err = cudaMalloc((void**)&this->cuda_res_output_twisting_points, this->points.size() * sizeof(float3));
+
+        if (err)
+        {
+            std::stringstream ss;
+            ss << "Error allocating memory using cudaMalloc for output (twisting) points" << " (" << cudaGetErrorName(err) << ": " << cudaGetErrorString(err) << ")";
+            throw std::runtime_error(ss.str());
+        }
+    }
+
+    {
+        const auto err = cudaMemcpy(this->cuda_res_output_twisting_points, this->points.data(), this->points.size() * sizeof(float3), cudaMemcpyHostToDevice);
+
+        if (err)
+        {
+            std::stringstream ss;
+            ss << "Error copying to GPU memory using cudaMemcpy for output (twisting) points" << " (" << cudaGetErrorName(err) << ": " << cudaGetErrorString(err) << ")";
             throw std::runtime_error(ss.str());
         }
     }
@@ -1483,8 +1510,9 @@ void cuda::displacement::displace_twisting(const method_t method, const paramete
     cudaMemcpyToSymbol(textures, &cuda_tex_positions, sizeof(cudaTextureObject_t), 5 * sizeof(cudaTextureObject_t));
     cudaMemcpyToSymbol(textures, &cuda_tex_rotations, sizeof(cudaTextureObject_t), 2 * sizeof(cudaTextureObject_t));
 
-    displacement_kernel_twisting __kernel__parameters__(this->cuda_res_output_points, this->cuda_res_mapping_arc_position,
-        static_cast<int>(this->points.size()), static_cast<int>(rotations.size()), parameters.b_spline.degree);
+    displacement_kernel_twisting __kernel__parameters__(this->cuda_res_output_points, this->cuda_res_output_twisting_points,
+        this->cuda_res_mapping_arc_position, static_cast<int>(this->points.size()),
+        static_cast<int>(rotations.size()), parameters.b_spline.degree);
 
     // Destroy resources
     cudaDestroyTextureObject(cuda_tex_positions);
@@ -1536,6 +1564,21 @@ const std::vector<std::array<float, 3>>& cuda::displacement::get_results() const
     {
         std::stringstream ss;
         ss << "Error copying from GPU memory using cudaMemcpy for output points" << " (" << cudaGetErrorName(err) << ": " << cudaGetErrorString(err) << ")";
+        throw std::runtime_error(ss.str());
+    }
+
+    return this->points;
+}
+
+const std::vector<std::array<float, 3>>& cuda::displacement::get_results_twisting() const
+{
+    // Download displaced points from the GPU
+    const auto err = cudaMemcpy(this->points.data(), this->cuda_res_output_twisting_points, this->points.size() * sizeof(float3), cudaMemcpyDeviceToHost);
+
+    if (err)
+    {
+        std::stringstream ss;
+        ss << "Error copying from GPU memory using cudaMemcpy for output (twisting) points" << " (" << cudaGetErrorName(err) << ": " << cudaGetErrorString(err) << ")";
         throw std::runtime_error(ss.str());
     }
 
