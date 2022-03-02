@@ -187,24 +187,39 @@ bool twisting::run()
         }
 
         // Set debug output
-        /*for (std::size_t i = 0; i < coordinate_systems.size(); ++i)
+        for (std::size_t i = 0; i < coordinate_systems.size(); ++i)
         {
             this->coordinate_systems[i].col(0) = coordinate_systems[i].first;
             this->coordinate_systems[i].col(1) = coordinate_systems[i].second;
-            this->coordinate_systems[i].col(2) = direction;
-        }*/
+        }
 
-        // Beginning at the end of the line and moving forward, adjust the back-most coordinate systems
-        // to match the one to their front
+        // Calculate a representative vector, to which all others should be aligned
+        Eigen::Vector3d comparison;
+        comparison.setZero();
+
+        for (std::size_t i = 0; i < coordinate_systems.size(); ++i)
+        {
+            comparison += this->selected_eigenvector == 0 ? coordinate_systems[i].first : coordinate_systems[i].second;
+        }
+
+        if (comparison.isZero())
+        {
+            comparison = this->selected_eigenvector == 0 ? coordinate_systems[0].first : coordinate_systems[0].second;
+        }
+        else
+        {
+            comparison.normalize();
+        }
+
+        // Calculate rotation necessary to match the previously calculated representative vector
         auto rotate = [&direction](Eigen::Vector3d vector, float angle) -> Eigen::Vector3d
         {
             return vector * std::cos(angle) + direction.cross(vector) * std::sin(angle) + direction * direction.dot(vector) * (1.0 - std::cos(angle));
         };
 
-        for (std::size_t i = coordinate_systems.size() - 1; i > 0; --i)
+        for (std::size_t i = 0; i < coordinate_systems.size(); ++i)
         {
             const auto& current = this->selected_eigenvector == 0 ? coordinate_systems[i].first : coordinate_systems[i].second;
-            const auto& comparison = this->selected_eigenvector == 0 ? coordinate_systems[i - 1].first : coordinate_systems[i - 1].second;
 
             auto angle = std::acos(std::max(std::min(current.dot(comparison), 1.0), -1.0));
 
@@ -222,26 +237,13 @@ bool twisting::run()
 
             // Set rotation
             this->rotations[i] = static_cast<float>(angle);
-
-            for (std::size_t j = i + 1; j < coordinate_systems.size(); ++j)
-            {
-                this->rotations[j] += static_cast<float>(angle);
-            }
-        }
-
-        this->rotations[0] = 0.0f;
-
-        for (std::size_t i = 0; i < coordinate_systems.size(); ++i)
-        {
-            this->rotations[i] = fmodf(this->rotations[i], static_cast<float>(2.0 * pi));
         }
 
         // Set debug output
         for (std::size_t i = 0; i < coordinate_systems.size(); ++i)
         {
-            this->coordinate_systems[i].col(0) = rotate(coordinate_systems[i].first, this->rotations[i]);
-            this->coordinate_systems[i].col(1) = rotate(coordinate_systems[i].second, this->rotations[i]);
-            this->coordinate_systems[i].col(2) = direction;
+            this->coordinate_systems[i].col(2) = rotate(this->selected_eigenvector == 0
+                ? coordinate_systems[i].first : coordinate_systems[i].second, this->rotations[i]);
         }
     }
 
