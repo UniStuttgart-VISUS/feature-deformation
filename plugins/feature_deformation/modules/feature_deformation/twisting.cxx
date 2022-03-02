@@ -234,7 +234,6 @@ bool twisting::run()
         for (std::size_t i = 0; i < coordinate_systems.size(); ++i)
         {
             this->rotations[i] = fmodf(this->rotations[i], static_cast<float>(2.0 * pi));
-            std::cout << this->rotations[i] << std::endl;
         }
 
         // Set debug output
