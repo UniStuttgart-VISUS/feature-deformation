@@ -21,7 +21,7 @@ public:
     bool run();
 
     /// Get rotations from twisting
-    const std::pair<std::vector<Eigen::Vector3d>, std::vector<Eigen::Matrix3d>> get_rotations() const;
+    const std::pair<std::vector<float>, std::vector<Eigen::Matrix3d>> get_rotations() const;
 
 private:
     /// Line for twisting
@@ -31,6 +31,6 @@ private:
     vtkSmartPointer<vtkStructuredGrid> vector_field;
 
     /// Resulting rotations
-    std::vector<Eigen::Vector3d> rotations;
+    std::vector<float> rotations;
     std::vector<Eigen::Matrix3d> coordinate_systems;
 };

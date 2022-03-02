@@ -3,6 +3,8 @@
 #include "gradient.h"
 #include "grid.h"
 
+#include "common/math.h"
+
 #include "vtkCell.h"
 #include "vtkDataArray.h"
 #include "vtkIdList.h"
@@ -57,7 +59,7 @@ bool twisting::run()
     vtkCell* previous_cell = nullptr;
     vtkCell* cell = nullptr;
 
-    bool is_twisted = true;
+    std::size_t non_twisted = 0;
 
     for (const auto& point : this->line)
     {
@@ -95,87 +97,160 @@ bool twisting::run()
 
         for (std::size_t i = 0; i < (twoD ? 2 : 3); ++i)
         {
-            eigenvectors[i] = eigensolver.eigenvectors().real().col(i);
+            eigenvectors[i] = eigensolver.eigenvectors().real().col(i).normalized();
             eigenvalues[i] = eigensolver.eigenvalues().real()[i];
             is_real[i] = eigensolver.eigenvalues().imag()[i] == 0.0;
 
             if (is_real[i])
             {
-                this->coordinate_systems[index](i * 3 + 0) = eigenvectors[i][0];
-                this->coordinate_systems[index](i * 3 + 1) = eigenvectors[i][1];
-                this->coordinate_systems[index](i * 3 + 2) = eigenvectors[i][2];
-
                 ++num_real;
-            }
-            else
-            {
-                this->coordinate_systems[index](i * 3 + 0) = 0.0;
-                this->coordinate_systems[index](i * 3 + 1) = 0.0;
-                this->coordinate_systems[index](i * 3 + 2) = 0.0;
             }
         }
 
         if (num_real > 1)
         {
-            // Filter eigenvectors...
-            // ... only use real eigenvalues
-            if (!is_real[0])
-            {
-                eigenvectors[0] = eigenvectors[2];
-                eigenvalues[0] = eigenvalues[2];
-                is_real[0] = is_real[2];
-            }
-            else if (!is_real[1])
-            {
-                eigenvectors[1] = eigenvectors[2];
-                eigenvalues[1] = eigenvalues[2];
-                is_real[1] = is_real[2];
-            }
-
-            // ... ignore eigenvector parallel to feature line
+            // Ignore eigenvector (most) parallel to feature line
             if (is_real[2])
             {
-                const auto angle_1 = std::abs(direction.dot(eigenvectors[0].normalized()));
-                const auto angle_2 = std::abs(direction.dot(eigenvectors[1].normalized()));
-                const auto angle_3 = std::abs(direction.dot(eigenvectors[2].normalized()));
+                const auto inv_90_angle_1 = std::abs(direction.dot(eigenvectors[0].normalized()));
+                const auto inv_90_angle_2 = std::abs(direction.dot(eigenvectors[1].normalized()));
+                const auto inv_90_angle_3 = std::abs(direction.dot(eigenvectors[2].normalized()));
 
-                if (angle_1 < angle_2 && angle_1 < angle_3)
+                if (inv_90_angle_1 > inv_90_angle_2 && inv_90_angle_1 > inv_90_angle_3)
                 {
-                    eigenvectors[0] = eigenvectors[2];
-                    eigenvalues[0] = eigenvalues[2];
+                    std::swap(eigenvectors[0], eigenvectors[2]);
+                    std::swap(eigenvalues[0], eigenvalues[2]);
                 }
-                else if (angle_2 < angle_3)
+                else if (inv_90_angle_2 > inv_90_angle_3)
                 {
-                    eigenvectors[1] = eigenvectors[2];
-                    eigenvalues[1] = eigenvalues[2];
+                    std::swap(eigenvectors[1], eigenvectors[2]);
+                    std::swap(eigenvalues[1], eigenvalues[2]);
                 }
             }
 
-            coordinate_systems[index].first = eigenvectors[0];
-            coordinate_systems[index].second = eigenvectors[1];
+            // Project eigenvectors onto the plane orthogonal to the feature line tangent
+            coordinate_systems[index].first = eigenvectors[0] - eigenvectors[0].dot(direction) * direction;
+            coordinate_systems[index].second = eigenvectors[1] - eigenvectors[1].dot(direction) * direction;
 
-            // Project eigenvectors to be orthogonal to the feature line tangent
-            // TODO
+            coordinate_systems[index].first.normalize();
+            coordinate_systems[index].second.normalize();
+        }
+        else if (index > 0)
+        {
+            coordinate_systems[index].first = coordinate_systems[index - 1].first;
+            coordinate_systems[index].second = coordinate_systems[index - 1].second;
+
+            ++non_twisted;
         }
         else
         {
-            is_twisted = false;
+            std::cerr << "ERROR: First set of eigenvectors are non-real." << std::endl;
+            non_twisted = coordinate_systems.size(); // TODO
         }
+
+        // Set debug output
+        this->coordinate_systems[index].setZero();
 
         ++index;
     }
 
-    // Beginning at the end of the line and moving forward, adjust the back-most coordinate systems
-    // to match the one to their front
-    if (is_twisted)
+    std::cout << "Number of non-real eigenvector pairs: " << non_twisted << " / " << coordinate_systems.size() << std::endl;
+
+    if (true /*non_twisted < 0.1 * coordinate_systems.size()*/) // TODO
     {
-        // TODO
+        // Sort eigenvectors such that the change is minimal
+        for (std::size_t i = 0; i < coordinate_systems.size() - 1; ++i)
+        {
+            const auto inv_90_angle_1 = std::abs(coordinate_systems[i].first.dot(coordinate_systems[i + 1].first));
+            const auto inv_90_angle_2 = std::abs(coordinate_systems[i].first.dot(coordinate_systems[i + 1].second));
+
+            if (inv_90_angle_1 < inv_90_angle_2)
+            {
+                std::swap(coordinate_systems[i + 1].first, coordinate_systems[i + 1].second);
+            }
+        }
+
+        // Invert eigenvectors such that the change is minimal
+        for (std::size_t i = 0; i < coordinate_systems.size() - 1; ++i)
+        {
+            const auto inv_180_angle_1 = coordinate_systems[i].first.dot(coordinate_systems[i + 1].first);
+            const auto inv_180_angle_2 = coordinate_systems[i].second.dot(coordinate_systems[i + 1].second);
+
+            if (inv_180_angle_1 < 0)
+            {
+                coordinate_systems[i + 1].first *= -1.0;
+            }
+            if (inv_180_angle_2 < 0)
+            {
+                coordinate_systems[i + 1].second *= -1.0;
+            }
+        }
+
+        // Set debug output
+        /*for (std::size_t i = 0; i < coordinate_systems.size(); ++i)
+        {
+            this->coordinate_systems[i].col(0) = coordinate_systems[i].first;
+            this->coordinate_systems[i].col(1) = coordinate_systems[i].second;
+            this->coordinate_systems[i].col(2) = direction;
+        }*/
+
+        // Beginning at the end of the line and moving forward, adjust the back-most coordinate systems
+        // to match the one to their front
+        const auto system_index = 0; // TODO: parameter
+
+        auto rotate = [&direction](Eigen::Vector3d vector, float angle) -> Eigen::Vector3d
+        {
+            return vector * std::cos(angle) + direction.cross(vector) * std::sin(angle) + direction * direction.dot(vector) * (1.0 - std::cos(angle));
+        };
+
+        for (std::size_t i = coordinate_systems.size() - 1; i > 0; --i)
+        {
+            const auto& current = system_index == 0 ? coordinate_systems[i].first : coordinate_systems[i].second;
+            const auto& comparison = system_index == 0 ? coordinate_systems[i - 1].first : coordinate_systems[i - 1].second;
+
+            auto angle = std::acos(current.dot(comparison));
+
+            // Adjust winding direction
+            const auto positive = rotate(current, angle);
+            const auto negative = rotate(current, -angle);
+
+            const auto inv_180_angle_positive = positive.dot(comparison);
+            const auto inv_180_angle_negative = negative.dot(comparison);
+
+            if (inv_180_angle_positive < inv_180_angle_negative)
+            {
+                angle *= -1.0;
+            }
+
+            // Set rotation
+            this->rotations[i] = static_cast<float>(angle);
+
+            for (std::size_t j = i + 1; j < coordinate_systems.size(); ++j)
+            {
+                this->rotations[j] += static_cast<float>(angle);
+            }
+        }
+
+        this->rotations[0] = 0.0f;
+
+        for (std::size_t i = 0; i < coordinate_systems.size(); ++i)
+        {
+            this->rotations[i] = fmodf(this->rotations[i], static_cast<float>(2.0 * pi));
+        }
+
+        // Set debug output
+        for (std::size_t i = 0; i < coordinate_systems.size(); ++i)
+        {
+            this->coordinate_systems[i].col(0) = rotate(coordinate_systems[i].first, this->rotations[i]);
+            this->coordinate_systems[i].col(1) = rotate(coordinate_systems[i].second, this->rotations[i]);
+            this->coordinate_systems[i].col(2) = direction;
+        }
     }
 
     return true;
 }
 
-const std::pair<std::vector<Eigen::Vector3d>, std::vector<Eigen::Matrix3d>> twisting::get_rotations() const
+const std::pair<std::vector<float>, std::vector<Eigen::Matrix3d>> twisting::get_rotations() const
 {
     return std::make_pair(this->rotations, this->coordinate_systems);
 }

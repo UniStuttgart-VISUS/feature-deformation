@@ -188,8 +188,7 @@ bool algorithm_twisting::run_computation()
     #pragma omp parallel for
     for (long long i = 0; i < static_cast<long long>(this->results.rotations.size()); ++i)
     {
-        this->results.rotations[i] = { static_cast<float>(twisting_results.first[i][0]),
-            static_cast<float>(twisting_results.first[i][1]), static_cast<float>(twisting_results.first[i][2]), 1.0f };
+        this->results.rotations[i] = { static_cast<float>(twisting_results.first[i]), 0.0f, 0.0f, 0.0f };
     }
 
     this->results.coordinate_systems = vtkSmartPointer<vtkDoubleArray>::New();
