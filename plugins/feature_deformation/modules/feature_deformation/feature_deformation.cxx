@@ -387,7 +387,7 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
 
                     __next_perf_measure("displace points on GPU");
 
-                    std::get<2>(displacement_input)->run(std::get<1>(displacement_input), this->alg_twisting,
+                    std::get<2>(displacement_input)->run(std::get<1>(displacement_input), this->alg_smoothing, this->alg_twisting,
                         this->parameters.displacement_method, this->parameters.displacement_parameters);
                 }
             }

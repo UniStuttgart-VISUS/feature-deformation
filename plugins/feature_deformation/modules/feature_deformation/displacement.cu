@@ -19,7 +19,7 @@
 /// Textures:
 /// 0: positions (de Boor points)
 /// 1: first B-spline derivative
-/// 2: (unused)
+/// 2: angles for twisting
 /// 3: displacements
 /// 4: knot vector
 /// 5: displaced positions (displaced de Boor points)
@@ -917,6 +917,36 @@ void displacement_kernel_spline_joints(const float3* in_points, const float3* po
     }
 }
 
+/**
+* Interpolate twisting displacement at joints using B-splines and move points accordingly
+*
+* @param in_out_points          Points to displace
+* @param arc_position_mapping   Corresponding arc position on the B-Spline
+* @param num_points             Number of points
+* @param num_displacements      Number of displacement vectors and positions
+* @param degree                 B-Spline degree
+*/
+__global__
+void displacement_kernel_twisting(float3* in_out_points, const float* arc_position_mapping,
+    const int num_points, const int num_displacements, const int degree)
+{
+    __get_kernel__parameters__
+
+    if (gid < num_points)
+    {
+        // Get information for rotating
+        const auto u = arc_position_mapping[gid];
+
+        const auto center_of_rotation = compute_point(u, degree, num_displacements, 5);
+        const auto angle_of_rotation = compute_point(u, degree, num_displacements, 2);
+        const auto axis_of_rotation = normalize(compute_point(1.0, degree, num_displacements, 5)
+            - compute_point(0.0, degree, num_displacements, 5));
+
+        // Rotate point around the (assumedly) straight feature line
+        in_out_points[gid] = center_of_rotation + rotate(in_out_points[gid] - center_of_rotation, axis_of_rotation, angle_of_rotation.x);
+    }
+}
+
 /// Functionality for resource management
 namespace
 {
@@ -1419,6 +1449,49 @@ void cuda::displacement::displace(const method_t method, const parameter_t param
 
     cudaDestroyTextureObject(cuda_tex_displacements);
     cudaFree(cuda_res_displacements);
+}
+
+void cuda::displacement::displace_twisting(const method_t method, const parameter_t parameters,
+    const std::vector<std::array<float, 4>>& positions, const std::vector<std::array<float, 4>>& displacements,
+    const std::vector<std::array<float, 4>>& rotations)
+{
+    // Sanity checks and early termination
+    if (positions.size() != rotations.size())
+    {
+        throw std::runtime_error("Number of positions and rotations does not match");
+    }
+
+    if (rotations.empty()) return;
+
+    // CUDA kernel parameters
+    int num_threads = 128;
+    int num_blocks = static_cast<int>(this->points.size()) / num_threads
+        + (static_cast<int>(this->points.size()) % num_threads == 0 ? 0 : 1);
+
+    // Upload positions and rotations to GPU (needed by all methods)
+    const auto displaced_positions = displace_positions(positions, displacements);
+
+    cudaTextureObject_t cuda_tex_positions, cuda_tex_rotations;
+    float4* cuda_res_positions, * cuda_res_rotations;
+
+    initialize_texture((void*)displaced_positions.data(), static_cast<int>(displaced_positions.size()),
+        sizeof(float), sizeof(float), sizeof(float), sizeof(float), &cuda_tex_positions, (void**)&cuda_res_positions);
+
+    initialize_texture((void*)rotations.data(), static_cast<int>(rotations.size()),
+        sizeof(float), sizeof(float), sizeof(float), sizeof(float), &cuda_tex_rotations, (void**)&cuda_res_rotations);
+
+    cudaMemcpyToSymbol(textures, &cuda_tex_positions, sizeof(cudaTextureObject_t), 5 * sizeof(cudaTextureObject_t));
+    cudaMemcpyToSymbol(textures, &cuda_tex_rotations, sizeof(cudaTextureObject_t), 2 * sizeof(cudaTextureObject_t));
+
+    displacement_kernel_twisting __kernel__parameters__(this->cuda_res_output_points, this->cuda_res_mapping_arc_position,
+        static_cast<int>(this->points.size()), static_cast<int>(rotations.size()), parameters.b_spline.degree);
+
+    // Destroy resources
+    cudaDestroyTextureObject(cuda_tex_positions);
+    cudaFree(cuda_res_positions);
+
+    cudaDestroyTextureObject(cuda_tex_rotations);
+    cudaFree(cuda_res_rotations);
 }
 
 std::vector<float> cuda::displacement::create_knot_vector(int degree, const std::vector<std::array<float, 4>>& positions) const
