@@ -16,6 +16,7 @@
 
 #include <array>
 #include <cmath>
+#include <map>
 #include <utility>
 #include <vector>
 
@@ -49,7 +50,12 @@ bool twisting::run()
 
     const grid velocity_grid(this->vector_field, velocities, deformation);
 
-    auto jacobians = gradient_field(velocity_grid, gradient_method_t::least_squares);
+    const auto& dimension = velocity_grid.dimensions();
+    const auto factor_x = 1uLL;
+    const auto factor_y = factor_x * dimension[0];
+    const auto factor_z = factor_y * dimension[1];
+
+    std::map<std::size_t, Eigen::Matrix3d> jacobians;
 
     std::array<double, 3> temp_point{}, p_coords{};
     std::array<double, 8> weights{};
@@ -80,7 +86,24 @@ bool twisting::run()
 
         for (vtkIdType i = 0; i < point_ids->GetNumberOfIds(); ++i)
         {
-            jacobians->GetTuple(point_ids->GetId(i), jacobian.data());
+            const auto id = point_ids->GetId(i);
+
+            if (jacobians.find(id) != jacobians.end())
+            {
+                jacobian = jacobians.at(id);
+            }
+            else
+            {
+                const auto z = static_cast<int>(id / factor_z);
+                const auto rest_z = id % factor_z;
+
+                const auto y = static_cast<int>(rest_z / factor_y);
+                const auto rest_y = rest_z % factor_y;
+
+                const auto x = static_cast<int>(rest_y / factor_x);
+
+                jacobian = jacobians[id] = gradient_least_squares(velocity_grid, { x, y, z });
+            }
 
             summed_jacobian += weights[i] * jacobian;
         }

@@ -19,9 +19,9 @@ Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> gradient_differences(const
     const std::array<int, 3>& coords);
 
 Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> gradient_least_squares(const grid& data,
-    const std::array<int, 3>& coords, int kernel_size);
+    const std::array<int, 3>& coords, int kernel_size = 1);
 
 Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> gradient(const grid& data,
-    const std::array<int, 3>& coords, gradient_method_t method, int kernel_size);
+    const std::array<int, 3>& coords, gradient_method_t method, int kernel_size = 1);
 
 vtkSmartPointer<vtkDoubleArray> gradient_field(const grid& data, gradient_method_t method, int kernel_size = 1);
