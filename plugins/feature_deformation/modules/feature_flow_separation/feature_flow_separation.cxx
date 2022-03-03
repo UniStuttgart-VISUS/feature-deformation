@@ -108,8 +108,7 @@ int feature_flow_separation::RequestData(vtkInformation*, vtkInformationVector**
     second_basis = feature_direction.cross(first_basis).normalized();
 
     Eigen::Matrix3d rotation;
-    rotation << first_basis, second_basis, feature_direction; // TODO: check
-    //rotation.reverseInPlace();
+    rotation << first_basis, second_basis, feature_direction;
 
     // ... separate into divergent and rotational part
     auto vector_field_part = vtkSmartPointer<vtkDoubleArray>::New();

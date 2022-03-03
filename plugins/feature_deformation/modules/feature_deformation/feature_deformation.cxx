@@ -407,30 +407,6 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
 
     this->alg_line_output_set->run(this->alg_line_output_update, output_vector->GetInformationObject(0), time);
 
-
-
-
-
-
-    // DEBUG
-    if (this->alg_twisting->is_valid())
-    {
-        auto output_deformed_lines = vtkPolyData::SafeDownCast(output_vector->GetInformationObject(0)->Get(vtkDataObject::DATA_OBJECT()));
-
-        if (output_deformed_lines->GetNumberOfPoints() != this->alg_twisting->get_results().coordinate_systems->GetNumberOfTuples())
-        {
-            std::cerr << "ERROR: Numbers of points and tuples mismatch." << std::endl;
-        }
-
-        output_deformed_lines->GetPointData()->AddArray(this->alg_twisting->get_results().coordinate_systems);
-    }
-    // END DEBUG
-
-
-
-
-
-
     // Output geometry
     __next_perf_measure("create output geometry");
 
