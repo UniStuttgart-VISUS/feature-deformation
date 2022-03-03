@@ -65,122 +65,189 @@ bool twisting::run()
     vtkCell* previous_cell = nullptr;
     vtkCell* cell = nullptr;
 
-    std::size_t non_twisted = 0;
+    std::vector<std::size_t> non_twisted;
 
     for (const auto& point : this->line)
     {
+        // Interpolate Jacobian
         temp_point = { static_cast<double>(point[0]), static_cast<double>(point[1]), static_cast<double>(point[2]) };
 
-        // Interpolate Jacobian
         cell = this->vector_field->FindAndGetCell(temp_point.data(), previous_cell, 0, 0.0, sub_id, p_coords.data(), weights.data());
-        auto point_ids = (cell != nullptr ? cell : previous_cell)->GetPointIds(); // TODO: handling of outside cells
-        previous_cell = (cell != nullptr ? cell : previous_cell);
 
-        if (cell == nullptr && previous_cell == nullptr)
+        if (cell != nullptr)
         {
-            return false;
-        }
+            auto point_ids = cell->GetPointIds();
 
-        Eigen::Matrix3d jacobian, summed_jacobian;
-        summed_jacobian.setZero();
+            Eigen::Matrix3d jacobian, summed_jacobian;
+            summed_jacobian.setZero();
 
-        for (vtkIdType i = 0; i < point_ids->GetNumberOfIds(); ++i)
-        {
-            const auto id = point_ids->GetId(i);
-
-            if (jacobians.find(id) != jacobians.end())
+            for (vtkIdType i = 0; i < point_ids->GetNumberOfIds(); ++i)
             {
-                jacobian = jacobians.at(id);
+                const auto id = point_ids->GetId(i);
+
+                if (jacobians.find(id) != jacobians.end())
+                {
+                    jacobian = jacobians.at(id);
+                }
+                else
+                {
+                    const auto z = static_cast<int>(id / factor_z);
+                    const auto rest_z = id % factor_z;
+
+                    const auto y = static_cast<int>(rest_z / factor_y);
+                    const auto rest_y = rest_z % factor_y;
+
+                    const auto x = static_cast<int>(rest_y / factor_x);
+
+                    jacobian = jacobians[id] = gradient_least_squares(velocity_grid, { x, y, z });
+                }
+
+                summed_jacobian += weights[i] * jacobian;
+            }
+
+            jacobian = summed_jacobian;
+
+            // Extract eigenvectors
+            Eigen::EigenSolver<Eigen::Matrix3d> eigensolver(jacobian, true);
+
+            std::array<Eigen::Vector3d, 3> eigenvectors;
+            std::array<double, 3> eigenvalues{};
+            std::array<bool, 3> is_real{};
+            std::size_t num_real = 0;
+
+            for (std::size_t i = 0; i < (twoD ? 2 : 3); ++i)
+            {
+                eigenvectors[i] = eigensolver.eigenvectors().real().col(i).normalized();
+                eigenvalues[i] = eigensolver.eigenvalues().real()[i];
+                is_real[i] = eigensolver.eigenvalues().imag()[i] == 0.0;
+
+                if (is_real[i])
+                {
+                    ++num_real;
+                }
+            }
+
+            if (num_real > 1)
+            {
+                // Ignore eigenvector (most) parallel to feature line
+                if (is_real[2])
+                {
+                    const auto inv_90_angle_1 = std::abs(direction.dot(eigenvectors[0].normalized()));
+                    const auto inv_90_angle_2 = std::abs(direction.dot(eigenvectors[1].normalized()));
+                    const auto inv_90_angle_3 = std::abs(direction.dot(eigenvectors[2].normalized()));
+
+                    if (inv_90_angle_1 > inv_90_angle_2 && inv_90_angle_1 > inv_90_angle_3)
+                    {
+                        std::swap(eigenvectors[0], eigenvectors[2]);
+                        std::swap(eigenvalues[0], eigenvalues[2]);
+                    }
+                    else if (inv_90_angle_2 > inv_90_angle_3)
+                    {
+                        std::swap(eigenvectors[1], eigenvectors[2]);
+                        std::swap(eigenvalues[1], eigenvalues[2]);
+                    }
+                }
+
+                // Project eigenvectors onto the plane orthogonal to the feature line tangent
+                coordinate_systems[index].first = eigenvectors[0] - eigenvectors[0].dot(direction) * direction;
+                coordinate_systems[index].second = eigenvectors[1] - eigenvectors[1].dot(direction) * direction;
+
+                coordinate_systems[index].first.normalize();
+                coordinate_systems[index].second.normalize();
             }
             else
             {
-                const auto z = static_cast<int>(id / factor_z);
-                const auto rest_z = id % factor_z;
-
-                const auto y = static_cast<int>(rest_z / factor_y);
-                const auto rest_y = rest_z % factor_y;
-
-                const auto x = static_cast<int>(rest_y / factor_x);
-
-                jacobian = jacobians[id] = gradient_least_squares(velocity_grid, { x, y, z });
+                non_twisted.push_back(index);
             }
-
-            summed_jacobian += weights[i] * jacobian;
-        }
-
-        jacobian = summed_jacobian;
-
-        // Extract eigenvectors
-        Eigen::EigenSolver<Eigen::Matrix3d> eigensolver(jacobian, true);
-
-        std::array<Eigen::Vector3d, 3> eigenvectors;
-        std::array<double, 3> eigenvalues{};
-        std::array<bool, 3> is_real{};
-        std::size_t num_real = 0;
-
-        for (std::size_t i = 0; i < (twoD ? 2 : 3); ++i)
-        {
-            eigenvectors[i] = eigensolver.eigenvectors().real().col(i).normalized();
-            eigenvalues[i] = eigensolver.eigenvalues().real()[i];
-            is_real[i] = eigensolver.eigenvalues().imag()[i] == 0.0;
-
-            if (is_real[i])
-            {
-                ++num_real;
-            }
-        }
-
-        if (num_real > 1)
-        {
-            // Ignore eigenvector (most) parallel to feature line
-            if (is_real[2])
-            {
-                const auto inv_90_angle_1 = std::abs(direction.dot(eigenvectors[0].normalized()));
-                const auto inv_90_angle_2 = std::abs(direction.dot(eigenvectors[1].normalized()));
-                const auto inv_90_angle_3 = std::abs(direction.dot(eigenvectors[2].normalized()));
-
-                if (inv_90_angle_1 > inv_90_angle_2 && inv_90_angle_1 > inv_90_angle_3)
-                {
-                    std::swap(eigenvectors[0], eigenvectors[2]);
-                    std::swap(eigenvalues[0], eigenvalues[2]);
-                }
-                else if (inv_90_angle_2 > inv_90_angle_3)
-                {
-                    std::swap(eigenvectors[1], eigenvectors[2]);
-                    std::swap(eigenvalues[1], eigenvalues[2]);
-                }
-            }
-
-            // Project eigenvectors onto the plane orthogonal to the feature line tangent
-            coordinate_systems[index].first = eigenvectors[0] - eigenvectors[0].dot(direction) * direction;
-            coordinate_systems[index].second = eigenvectors[1] - eigenvectors[1].dot(direction) * direction;
-
-            coordinate_systems[index].first.normalize();
-            coordinate_systems[index].second.normalize();
-        }
-        else if (index > 0)
-        {
-            coordinate_systems[index].first = coordinate_systems[index - 1].first;
-            coordinate_systems[index].second = coordinate_systems[index - 1].second;
-
-            ++non_twisted;
         }
         else
         {
-            std::cerr << "ERROR: First set of eigenvectors are non-real." << std::endl;
-            non_twisted = coordinate_systems.size(); // TODO
+            non_twisted.push_back(index);
         }
 
         // Set debug output
         this->coordinate_systems[index].setZero();
+        this->rotations[index] = 0.0f;
 
+        previous_cell = cell;
         ++index;
     }
 
-    std::cout << "Number of non-real eigenvector pairs: " << non_twisted << " / " << coordinate_systems.size() << std::endl;
-
-    if (true /*non_twisted < 0.1 * coordinate_systems.size()*/) // TODO
+    if (non_twisted.size() > 0)
     {
+        std::cout << "Number of non-real eigenvector pairs: " << non_twisted.size() << " / " << coordinate_systems.size() << std::endl;
+    }
+
+    if (non_twisted.size() < 0.3 * coordinate_systems.size())
+    {
+        // Interpolate at non-twisted line points...
+        std::size_t begin = 0uLL, end = non_twisted.size() - 1;
+
+        // ... using same value at the beginning
+        if (non_twisted.front() == 0uLL)
+        {
+            auto index = non_twisted.front();
+
+            while (non_twisted[index + 1] - non_twisted[index] == 1)
+            {
+                ++index;
+            }
+
+            for (std::size_t i = non_twisted.front(); i <= index; ++i)
+            {
+                coordinate_systems[i].first = coordinate_systems[index + 1].first;
+                coordinate_systems[i].second = coordinate_systems[index + 1].second;
+            }
+
+            begin = index + 1;
+        }
+
+        // ... using same value at the end
+        if (non_twisted.back() == coordinate_systems.size() - 1)
+        {
+            auto index = non_twisted.back();
+            auto index_arr = non_twisted.size() - 1;
+
+            while (non_twisted[index_arr] - non_twisted[index_arr - 1] == 1)
+            {
+                --index;
+                --index_arr;
+            }
+
+            for (std::size_t i = non_twisted.back(); i >= index; --i)
+            {
+                coordinate_systems[i].first = coordinate_systems[index - 1].first;
+                coordinate_systems[i].second = coordinate_systems[index - 1].second;
+            }
+
+            end = index_arr - 1;
+        }
+
+        // ... linear interpolating in between
+        for (auto index_arr = begin; index_arr <= end; ++index_arr)
+        {
+            const auto index_left = non_twisted[index_arr] - 1;
+
+            while (non_twisted[index_arr + 1] - non_twisted[index_arr] == 1)
+            {
+                ++index_arr;
+            }
+
+            const auto index_right = non_twisted[index_arr] + 1;
+
+            const auto distance = index_right - index_left;
+
+            for (auto index = index_left + 1; index < index_right; ++index)
+            {
+                const auto weight = (index - index_left) / static_cast<double>(distance);
+
+                coordinate_systems[index].first = (weight * coordinate_systems[index_right].first
+                    + (1.0 - weight) * coordinate_systems[index_left].first).normalized();
+                coordinate_systems[index].second = (weight * coordinate_systems[index_right].second
+                    + (1.0 - weight) * coordinate_systems[index_left].second).normalized();
+            }
+        }
+
         // Sort eigenvectors such that the change is minimal
         for (std::size_t i = 0; i < coordinate_systems.size() - 1; ++i)
         {
