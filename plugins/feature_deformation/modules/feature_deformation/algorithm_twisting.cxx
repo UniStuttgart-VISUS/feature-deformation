@@ -1,6 +1,7 @@
 #include "algorithm_twisting.h"
 
 #include "hash.h"
+#include "jacobian.h"
 #include "twisting.h"
 
 #include "vtkDoubleArray.h"
@@ -101,40 +102,6 @@ bool algorithm_twisting::run_computation()
     jacobian->SetNumberOfTuples(num_points);
     jacobian->SetName("jacobian");
     jacobian->FillValue(0.0);
-
-    auto calc_index_point = [](const std::array<int, 3>& dimension, int x, int y, int z) -> int
-    {
-        return (z * dimension[1] + y) * dimension[0] + x;
-    };
-
-    auto calc_jacobian = [](vtkPoints* field, const int center,
-        const int index, const int max, const int component, double h_l, double h_r, const int offset) -> double
-    {
-        double left_diff = 0.0;
-        double right_diff = 0.0;
-        int num = 0;
-
-        std::array<double, 3> point_l{}, point_r{};
-
-        if (center != 0) // Backward difference
-        {
-            field->GetPoint(static_cast<std::size_t>(index) - offset, point_l.data());
-            field->GetPoint(index, point_r.data());
-
-            left_diff = (point_r[component] - point_l[component]) / h_l;
-            ++num;
-        }
-        if (center != max) // Forward difference
-        {
-            field->GetPoint(index, point_l.data());
-            field->GetPoint(static_cast<std::size_t>(index) + offset, point_r.data());
-
-            right_diff = (point_r[component] - point_l[component]) / h_r;
-            ++num;
-        }
-
-        return (left_diff + right_diff) / num;
-    };
 
     const auto& dimension = this->grid->get_results().dimension;
     const auto& spacing = this->grid->get_results().spacing;

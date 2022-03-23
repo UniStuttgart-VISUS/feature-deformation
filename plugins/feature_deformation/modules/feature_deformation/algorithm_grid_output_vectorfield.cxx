@@ -3,6 +3,7 @@
 #include "algorithm_grid_output_update.h"
 #include "algorithm_vectorfield_input.h"
 #include "hash.h"
+#include "jacobian.h"
 
 #include "vtkDoubleArray.h"
 #include "vtkPointData.h"
@@ -49,65 +50,7 @@ bool algorithm_grid_output_vectorfield::run_computation()
     auto def_curl = vtkDoubleArray::SafeDownCast(grid->GetPointData()->GetArray("Curl (Deformed)"));
     auto data_array = vector_field->get_results().vector_field;
 
-    auto calc_index_point = [](const std::array<int, 3>& dimension, int x, int y, int z) -> int
-    {
-        return (z * dimension[1] + y) * dimension[0] + x;
-    };
-
-    auto calc_jacobian = [](vtkDataArray* field, const int center,
-        const int index, const int max, const int component, double h_l, double h_r, const int offset) -> double
-    {
-        double left_diff = 0.0;
-        double right_diff = 0.0;
-        int num = 0;
-
-        if (center != 0) // Backward difference
-        {
-            const auto left = field->GetComponent(index - offset, component);
-            const auto right = field->GetComponent(index, component);
-
-            left_diff = (right - left) / h_l;
-            ++num;
-        }
-        if (center != max) // Forward difference
-        {
-            const auto left = field->GetComponent(index, component);
-            const auto right = field->GetComponent(index + offset, component);
-
-            right_diff = (right - left) / h_r;
-            ++num;
-        }
-
-        return (left_diff + right_diff) / num;
-    };
-
-    auto calc_jacobian_irregular = [calc_jacobian](vtkDataArray* field, const int center,
-        const int index, const int max, const int component, vtkDoubleArray* h, const int offset) -> double
-    {
-        double h_l = 0.0;
-        double h_r = 0.0;
-
-        if (center != 0) // Backward difference
-        {
-            Eigen::Vector3d left, right;
-            h->GetTuple(index - offset, left.data());
-            h->GetTuple(index, right.data());
-
-            h_l = (right - left).norm();
-        }
-        if (center != max) // Forward difference
-        {
-            Eigen::Vector3d left, right;
-            h->GetTuple(index, left.data());
-            h->GetTuple(index + offset, right.data());
-
-            h_r = (right - left).norm();
-        }
-
-        return calc_jacobian(field, center, index, max, component, h_l, h_r, offset);
-    };
-
-    // Calculate Jacobian and use it to calculate the velocities at the deformed grid
+    // Get Jacobian and use it to calculate the velocities at the deformed grid
     const auto& dimension = this->input_grid->get_results().dimension;
     const auto& spacing = this->input_grid->get_results().spacing;
 
@@ -120,21 +63,9 @@ bool algorithm_grid_output_vectorfield::run_computation()
             {
                 const auto index_p = calc_index_point(dimension, x, y, z);
 
-                // Calculate Jacobian of the displacement
-                const auto Jxdx = (dimension[0] > 1) ? calc_jacobian(displacement_map, x, index_p, dimension[0] - 1, 0, spacing[0], spacing[0], 1) : 1.0;
-                const auto Jxdy = (dimension[1] > 1) ? calc_jacobian(displacement_map, y, index_p, dimension[1] - 1, 0, spacing[1], spacing[1], dimension[0]) : 0.0;
-                const auto Jxdz = (dimension[2] > 1) ? calc_jacobian(displacement_map, z, index_p, dimension[2] - 1, 0, spacing[2], spacing[2], dimension[0] * dimension[1]) : 0.0;
-                const auto Jydx = (dimension[0] > 1) ? calc_jacobian(displacement_map, x, index_p, dimension[0] - 1, 1, spacing[0], spacing[0], 1) : 0.0;
-                const auto Jydy = (dimension[1] > 1) ? calc_jacobian(displacement_map, y, index_p, dimension[1] - 1, 1, spacing[1], spacing[1], dimension[0]) : 1.0;
-                const auto Jydz = (dimension[2] > 1) ? calc_jacobian(displacement_map, z, index_p, dimension[2] - 1, 1, spacing[2], spacing[2], dimension[0] * dimension[1]) : 0.0;
-                const auto Jzdx = (dimension[0] > 1) ? calc_jacobian(displacement_map, x, index_p, dimension[0] - 1, 2, spacing[0], spacing[0], 1) : 0.0;
-                const auto Jzdy = (dimension[1] > 1) ? calc_jacobian(displacement_map, y, index_p, dimension[1] - 1, 2, spacing[1], spacing[1], dimension[0]) : 0.0;
-                const auto Jzdz = (dimension[2] > 1) ? calc_jacobian(displacement_map, z, index_p, dimension[2] - 1, 2, spacing[2], spacing[2], dimension[0] * dimension[1]) : 1.0;
-
+                // Get Jacobian of the displacement
                 Eigen::Matrix3d Jacobian;
-                Jacobian << Jxdx, Jxdy, Jxdz, Jydx, Jydy, Jydz, Jzdx, Jzdy, Jzdz;
-
-                jacobian->SetTuple(index_p, Jacobian.data());
+                jacobian->GetTuple(index_p, Jacobian.data());
 
                 // Calculate velocities
                 Eigen::Vector3d velocity;
@@ -228,7 +159,6 @@ bool algorithm_grid_output_vectorfield::run_computation()
         }
     }
 
-    jacobian->Modified();
     velocities->Modified();
     orig_divergence->Modified();
     orig_curl->Modified();

@@ -7,6 +7,7 @@ set(sources
   displacement.h displacement.cu
   gradient.h gradient.cxx
   grid.h grid.cxx
+  jacobian.h jacobian.cxx
   hash.h
   smoothing.h smoothing.cxx
   twisting.h twisting.cxx

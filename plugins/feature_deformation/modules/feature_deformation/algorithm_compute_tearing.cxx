@@ -8,6 +8,7 @@
 #include "algorithm_smoothing.h"
 #include "displacement.h"
 #include "hash.h"
+#include "jacobian.h"
 #include "smoothing.h"
 
 #include "vtkIdTypeArray.h"
@@ -83,11 +84,6 @@ bool algorithm_compute_tearing::run_computation()
     const auto is_2d = dimension[2] == 1;
     const auto threshold = this->remove_cells_scalar * this->grid_input->get_results().spacing.head(is_2d ? 2 : 3).norm();
 
-    auto calc_index_point = [](const std::array<int, 3>& dimension, int x, int y, int z) -> int
-    {
-        return (z * dimension[1] + y) * dimension[0] + x;
-    };
-
     // Create output array
     this->results.tearing_cells = vtkSmartPointer<vtkIdTypeArray>::New();
     this->results.tearing_cells->SetNumberOfComponents(2);
@@ -160,7 +156,7 @@ bool algorithm_compute_tearing::run_computation()
     // Use region growing to detect and label connected tearing regions
     int next_region = 0;
 
-    auto hasher = [&dimension, &calc_index_point](const std::tuple<int, int, int>& key) -> std::size_t {
+    auto hasher = [&dimension](const std::tuple<int, int, int>& key) -> std::size_t {
         return std::hash<int>()(calc_index_point(dimension, std::get<0>(key), std::get<1>(key), std::get<2>(key)));
     };
 

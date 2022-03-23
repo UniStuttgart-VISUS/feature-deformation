@@ -6,6 +6,7 @@
 #include "algorithm_displacement_computation_twisting.h"
 #include "algorithm_grid_output_creation.h"
 #include "hash.h"
+#include "jacobian.h"
 
 #include "vtkCellArray.h"
 #include "vtkCellData.h"
@@ -85,6 +86,45 @@ bool algorithm_grid_output_update::run_computation()
     std::memcpy(grid->GetPointData()->GetArray("Mapping to B-Spline (Original)")->GetVoidPointer(0),
         std::get<2>(displacement_ids).data(), std::get<2>(displacement_ids).size() * sizeof(float3));
 
+    // Calculate Jacobian of deformation
+    const auto& dimension = this->input_grid->get_results().dimension;
+    const auto& spacing = this->input_grid->get_results().spacing;
+
+    auto jacobian = grid->GetPointData()->GetArray("Jacobian of Deformation");
+    auto magnitude = grid->GetPointData()->GetArray("Magnitude of Deformation");
+
+    #pragma omp parallel for
+    for (int z = 0; z < dimension[2]; ++z)
+    {
+        for (int y = 0; y < dimension[1]; ++y)
+        {
+            for (int x = 0; x < dimension[0]; ++x)
+            {
+                const auto index_p = calc_index_point(dimension, x, y, z);
+
+                // Calculate Jacobian of the displacement
+                const auto Jxdx = (dimension[0] > 1) ? calc_jacobian(displacement_map, x, index_p, dimension[0] - 1, 0, spacing[0], spacing[0], 1) : 1.0;
+                const auto Jxdy = (dimension[1] > 1) ? calc_jacobian(displacement_map, y, index_p, dimension[1] - 1, 0, spacing[1], spacing[1], dimension[0]) : 0.0;
+                const auto Jxdz = (dimension[2] > 1) ? calc_jacobian(displacement_map, z, index_p, dimension[2] - 1, 0, spacing[2], spacing[2], dimension[0] * dimension[1]) : 0.0;
+                const auto Jydx = (dimension[0] > 1) ? calc_jacobian(displacement_map, x, index_p, dimension[0] - 1, 1, spacing[0], spacing[0], 1) : 0.0;
+                const auto Jydy = (dimension[1] > 1) ? calc_jacobian(displacement_map, y, index_p, dimension[1] - 1, 1, spacing[1], spacing[1], dimension[0]) : 1.0;
+                const auto Jydz = (dimension[2] > 1) ? calc_jacobian(displacement_map, z, index_p, dimension[2] - 1, 1, spacing[2], spacing[2], dimension[0] * dimension[1]) : 0.0;
+                const auto Jzdx = (dimension[0] > 1) ? calc_jacobian(displacement_map, x, index_p, dimension[0] - 1, 2, spacing[0], spacing[0], 1) : 0.0;
+                const auto Jzdy = (dimension[1] > 1) ? calc_jacobian(displacement_map, y, index_p, dimension[1] - 1, 2, spacing[1], spacing[1], dimension[0]) : 0.0;
+                const auto Jzdz = (dimension[2] > 1) ? calc_jacobian(displacement_map, z, index_p, dimension[2] - 1, 2, spacing[2], spacing[2], dimension[0] * dimension[1]) : 1.0;
+
+                Eigen::Matrix3d Jacobian;
+                Jacobian << Jxdx, Jxdy, Jxdz, Jydx, Jydy, Jydz, Jzdx, Jzdy, Jzdz;
+
+                jacobian->SetTuple(index_p, Jacobian.data());
+                magnitude->SetComponent(index_p, 0, Jacobian.norm());
+            }
+        }
+    }
+
+    jacobian->Modified();
+    magnitude->Modified();
+
     // Create cells and create grid to store "removed" cells
     if (this->remove_cells)
     {
@@ -112,11 +152,6 @@ bool algorithm_grid_output_update::run_computation()
         handedness->SetNumberOfComponents(1);
         handedness->Allocate(num_cells);
         handedness->SetName("Handedness");
-
-        auto calc_index_point = [](const std::array<int, 3>& dimension, int x, int y, int z) -> int
-        {
-            return (z * dimension[1] + y) * dimension[0] + x;
-        };
 
         for (int z = 0; z < (is_2d ? 1 : (dimension[2] - 1)); ++z)
         {

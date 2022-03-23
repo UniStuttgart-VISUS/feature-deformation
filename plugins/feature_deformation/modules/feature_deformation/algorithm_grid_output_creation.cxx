@@ -122,6 +122,12 @@ bool algorithm_grid_output_creation::run_computation()
     jacobian->SetName("Jacobian of Deformation");
     jacobian->FillValue(0.0);
 
+    auto magnitude = vtkSmartPointer<vtkDoubleArray>::New();
+    magnitude->SetNumberOfComponents(1);
+    magnitude->SetNumberOfTuples(num_points);
+    magnitude->SetName("Magnitude of Deformation");
+    magnitude->FillValue(0.0);
+
     auto velocities = vtkSmartPointer<vtkDoubleArray>::New();
     velocities->SetNumberOfComponents(3);
     velocities->SetNumberOfTuples(num_points);
@@ -157,6 +163,7 @@ bool algorithm_grid_output_creation::run_computation()
     output_deformed_grid->GetPointData()->AddArray(mapping_array_original);
     output_deformed_grid->GetPointData()->AddArray(displacement_map);
     output_deformed_grid->GetPointData()->AddArray(jacobian);
+    output_deformed_grid->GetPointData()->AddArray(magnitude);
     output_deformed_grid->GetPointData()->AddArray(velocities);
     output_deformed_grid->GetPointData()->AddArray(orig_divergence);
     output_deformed_grid->GetPointData()->AddArray(orig_curl);
