@@ -32,7 +32,8 @@ void algorithm_grid_output_update::set_input(const std::shared_ptr<const algorit
     std::shared_ptr<const algorithm_displacement_computation> displacement,
     std::shared_ptr<const algorithm_displacement_computation_twisting> displacement_twisting,
     const std::shared_ptr<const algorithm_displacement_assessment> assessment,
-    const std::shared_ptr<const algorithm_compute_tearing> tearing, const bool remove_cells, const float remove_cells_scalar)
+    const std::shared_ptr<const algorithm_compute_tearing> tearing, const bool remove_cells,
+    const float remove_cells_scalar, const bool minimal_output)
 {
     this->input_grid = input_grid;
     this->output_grid = output_grid;
@@ -42,6 +43,7 @@ void algorithm_grid_output_update::set_input(const std::shared_ptr<const algorit
     this->tearing = tearing;
     this->remove_cells = remove_cells;
     this->remove_cells_scalar = remove_cells_scalar;
+    this->minimal_output = minimal_output;
 }
 
 std::uint32_t algorithm_grid_output_update::calculate_hash() const
@@ -52,7 +54,7 @@ std::uint32_t algorithm_grid_output_update::calculate_hash() const
     }
 
     return jenkins_hash(this->displacement->get_hash(), this->displacement_twisting->get_hash(), this->assessment->get_hash(),
-        this->tearing->get_hash(), this->remove_cells, this->remove_cells_scalar);
+        this->tearing->get_hash(), this->remove_cells, this->remove_cells_scalar, this->minimal_output);
 }
 
 bool algorithm_grid_output_update::run_computation()
@@ -74,17 +76,30 @@ bool algorithm_grid_output_update::run_computation()
         displacement_map->SetTuple(i, displaced_grid[i].data());
     }
 
+    displacement_map->Modified();
+
     // Create displacement ID array
-    const auto displacement_ids = this->displacement->get_results().displacements->get_displacement_info();
+    if (!this->minimal_output)
+    {
+        const auto displacement_ids = this->displacement->get_results().displacements->get_displacement_info();
 
-    std::memcpy(grid->GetPointData()->GetArray("Displacement Information")->GetVoidPointer(0),
-        std::get<0>(displacement_ids).data(), std::get<0>(displacement_ids).size() * sizeof(float4));
+        auto displacement_info = grid->GetPointData()->GetArray("Displacement Information");
+        auto mapping = grid->GetPointData()->GetArray("Mapping to B-Spline");
+        auto mapping_original = grid->GetPointData()->GetArray("Mapping to B-Spline (Original)");
 
-    std::memcpy(grid->GetPointData()->GetArray("Mapping to B-Spline")->GetVoidPointer(0),
-        std::get<1>(displacement_ids).data(), std::get<1>(displacement_ids).size() * sizeof(float3));
+        std::memcpy(displacement_info->GetVoidPointer(0),
+            std::get<0>(displacement_ids).data(), std::get<0>(displacement_ids).size() * sizeof(float4));
 
-    std::memcpy(grid->GetPointData()->GetArray("Mapping to B-Spline (Original)")->GetVoidPointer(0),
-        std::get<2>(displacement_ids).data(), std::get<2>(displacement_ids).size() * sizeof(float3));
+        std::memcpy(mapping->GetVoidPointer(0),
+            std::get<1>(displacement_ids).data(), std::get<1>(displacement_ids).size() * sizeof(float3));
+
+        std::memcpy(mapping_original->GetVoidPointer(0),
+            std::get<2>(displacement_ids).data(), std::get<2>(displacement_ids).size() * sizeof(float3));
+
+        displacement_info->Modified();
+        mapping->Modified();
+        mapping_original->Modified();
+    }
 
     // Calculate Jacobian of deformation
     const auto& dimension = this->input_grid->get_results().dimension;

@@ -401,7 +401,7 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
 
     this->alg_line_output_update->run(this->alg_line_output_creation, this->alg_displacement_computation_lines,
         this->alg_displacement_computation_lines_twisting, this->alg_displacement_assess_lines,
-        this->parameters.displacement_method, this->parameters.output_bspline_distance);
+        this->parameters.displacement_method, this->parameters.minimal_output, this->parameters.output_bspline_distance);
 
     __next_perf_measure("output feature lines");
 
@@ -416,7 +416,7 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
 
     this->alg_geometry_output_update->run(this->alg_geometry_output_creation, this->alg_displacement_computation_geometry,
         this->alg_displacement_computation_geometry_twisting, this->alg_displacement_assess_geometry,
-        this->parameters.displacement_method, this->parameters.output_bspline_distance);
+        this->parameters.displacement_method, this->parameters.minimal_output, this->parameters.output_bspline_distance);
 
     __next_perf_measure("output geometry");
 
@@ -433,7 +433,7 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
 
         this->alg_grid_output_update->run(this->alg_grid_input, this->alg_grid_output_creation, this->alg_displacement_computation_grid,
             this->alg_displacement_computation_grid_twisting, this->alg_displacement_assess_grid, this->alg_compute_tearing,
-            this->parameters.remove_cells, this->parameters.remove_cells_scalar);
+            this->parameters.remove_cells, this->parameters.remove_cells_scalar, this->parameters.minimal_output);
 
         if (this->parameters.output_vector_field)
         {
@@ -596,6 +596,7 @@ void feature_deformation::process_parameters(double time)
     // Output parameters
     __log_header("output");
 
+    __set_parameter_bool(minimal_output, this->MinimalOutput);
     __set_parameter_bool(output_bspline_distance, this->OutputBSplineDistance);
     __set_parameter_bool(output_deformed_grid, this->OutputDeformedGrid);
     __set_parameter_bool(output_vector_field, this->OutputVectorField);

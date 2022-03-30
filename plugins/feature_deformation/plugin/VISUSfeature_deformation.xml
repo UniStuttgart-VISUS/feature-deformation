@@ -341,8 +341,17 @@
                 </Documentation>
             </IntVectorProperty>
 
+            <IntVectorProperty name="MinimalOutput" label="Reduce to necessary output" command="SetMinimalOutput" number_of_elements="1" default_values="0" panel_visibility="advanced">
+                <BooleanDomain name="bool"/>
+                <Documentation>
+                    Update only necessary data fields (caution: available data might then be wrong).
+                </Documentation>
+            </IntVectorProperty>
             <IntVectorProperty name="OutputBSplineDistance" label="Output B-spline distance" command="SetOutputBSplineDistance" number_of_elements="1" default_values="0" panel_visibility="advanced">
                 <BooleanDomain name="bool"/>
+                <Hints>
+                    <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="MinimalOutput" value="0" />
+                </Hints>
                 <Documentation>
                     Compute and output distance of neighboring points mapped onto the B-spline. This is only valid for line input.
                 </Documentation>
@@ -450,6 +459,7 @@
             </PropertyGroup>
 
             <PropertyGroup label="Output">
+                <Property name="MinimalOutput" />
                 <Property name="OutputBSplineDistance" />
                 <Property name="OutputDeformedGrid" />
                 <Property name="OutputVectorField" />

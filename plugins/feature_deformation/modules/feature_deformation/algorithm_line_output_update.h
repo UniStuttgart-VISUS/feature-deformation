@@ -14,7 +14,7 @@
 
 class algorithm_line_output_update : public algorithm<std::shared_ptr<const algorithm_line_output_creation>,
     std::shared_ptr<const algorithm_displacement_computation>, std::shared_ptr<const algorithm_displacement_computation_twisting>,
-    std::shared_ptr<const algorithm_displacement_assessment>, cuda::displacement::method_t, bool>
+    std::shared_ptr<const algorithm_displacement_assessment>, cuda::displacement::method_t, bool, bool>
 {
 public:
     /// Default constructor
@@ -36,6 +36,7 @@ protected:
         std::shared_ptr<const algorithm_displacement_computation_twisting> displacement_twisting,
         std::shared_ptr<const algorithm_displacement_assessment> assessment,
         cuda::displacement::method_t displacement_method,
+        bool minimal_output,
         bool output_bspline_distance
     ) override;
 
@@ -57,6 +58,7 @@ private:
 
     /// Parameters
     cuda::displacement::method_t displacement_method;
+    bool minimal_output;
     bool output_bspline_distance;
 
     /// Results

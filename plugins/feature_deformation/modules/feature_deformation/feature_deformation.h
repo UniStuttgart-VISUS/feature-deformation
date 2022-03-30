@@ -99,6 +99,9 @@ public:
     vtkGetMacro(AssessMapping, int);
     vtkSetMacro(AssessMapping, int);
 
+    vtkGetMacro(MinimalOutput, int);
+    vtkSetMacro(MinimalOutput, int);
+
     vtkGetMacro(OutputBSplineDistance, int);
     vtkSetMacro(OutputBSplineDistance, int);
 
@@ -182,6 +185,7 @@ private:
     int AssessMapping;
 
     /// Output options
+    int MinimalOutput;
     int OutputBSplineDistance;
     int OutputDeformedGrid;
     int OutputVectorField;
@@ -218,6 +222,7 @@ private:
 
         bool assess_mapping;
 
+        bool minimal_output;
         bool output_bspline_distance;
         bool output_deformed_grid;
         bool output_vector_field;
