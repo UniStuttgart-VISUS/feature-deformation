@@ -23,6 +23,7 @@ set(sources
   algorithm_displacement_assessment.h algorithm_displacement_assessment.cxx
   algorithm_displacement_computation.h algorithm_displacement_computation.cxx
   algorithm_displacement_computation_twisting.h algorithm_displacement_computation_twisting.cxx
+  algorithm_displacement_computation_winding.h algorithm_displacement_computation_winding.cxx
   algorithm_displacement_creation.h algorithm_displacement_creation.cxx
   algorithm_displacement_precomputation.h algorithm_displacement_precomputation.cxx
 

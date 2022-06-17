@@ -4,6 +4,7 @@
 #include "algorithm_displacement_assessment.h"
 #include "algorithm_displacement_computation.h"
 #include "algorithm_displacement_computation_twisting.h"
+#include "algorithm_displacement_computation_winding.h"
 #include "algorithm_line_output_creation.h"
 #include "displacement.h"
 
@@ -13,8 +14,9 @@
 #include <memory>
 
 class algorithm_line_output_update : public algorithm<std::shared_ptr<const algorithm_line_output_creation>,
-    std::shared_ptr<const algorithm_displacement_computation>, std::shared_ptr<const algorithm_displacement_computation_twisting>,
-    std::shared_ptr<const algorithm_displacement_assessment>, cuda::displacement::method_t, bool, bool>
+    std::shared_ptr<const algorithm_displacement_computation>, std::shared_ptr<const algorithm_displacement_computation_winding>,
+    std::shared_ptr<const algorithm_displacement_computation_twisting>, std::shared_ptr<const algorithm_displacement_assessment>,
+    cuda::displacement::method_t, bool, bool>
 {
 public:
     /// Default constructor
@@ -33,6 +35,7 @@ protected:
     virtual void set_input(
         std::shared_ptr<const algorithm_line_output_creation> output_lines,
         std::shared_ptr<const algorithm_displacement_computation> displacement,
+        std::shared_ptr<const algorithm_displacement_computation_winding> displacement_winding,
         std::shared_ptr<const algorithm_displacement_computation_twisting> displacement_twisting,
         std::shared_ptr<const algorithm_displacement_assessment> assessment,
         cuda::displacement::method_t displacement_method,
@@ -53,6 +56,7 @@ private:
     /// Input
     std::shared_ptr<const algorithm_line_output_creation> output_lines;
     std::shared_ptr<const algorithm_displacement_computation> displacement;
+    std::shared_ptr<const algorithm_displacement_computation_winding> displacement_winding;
     std::shared_ptr<const algorithm_displacement_computation_twisting> displacement_twisting;
     std::shared_ptr<const algorithm_displacement_assessment> assessment;
 

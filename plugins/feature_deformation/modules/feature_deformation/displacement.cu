@@ -18,13 +18,21 @@
 
 /// Textures:
 /// 0: positions (de Boor points)
+#define __positions__ 0
 /// 1: first B-spline derivative
+#define __first_derivative__ 1
 /// 2: angles for twisting
+#define __twisting_angle__ 2
 /// 3: displacements
+#define __displacements__ 3
 /// 4: knot vector
+#define __knot_vector__ 4
 /// 5: displaced positions (displaced de Boor points)
+#define __displaced_positions__ 5
 /// 6: first displaced B-spline derivative
-/// 7: (unused)
+#define __displaced_derivative__ 6
+/// 7: second B-spline derivative
+#define __second_derivative__ 7
 __constant__ cudaTextureObject_t textures[8];
 
 
@@ -120,10 +128,10 @@ __device__
 float basis_function(const float u, int degree, int de_boor_index, const int derivative)
 {
     // Get knot vector
-    const auto knot_vector_0 = fetch1D(textures[4], derivative + de_boor_index);
-    const auto knot_vector_1 = fetch1D(textures[4], derivative + de_boor_index + 1);
-    const auto knot_vector_degree_0 = fetch1D(textures[4], derivative + de_boor_index + degree);
-    const auto knot_vector_degree_1 = fetch1D(textures[4], derivative + de_boor_index + degree + 1);
+    const auto knot_vector_0 = fetch1D(textures[__knot_vector__], derivative + de_boor_index);
+    const auto knot_vector_1 = fetch1D(textures[__knot_vector__], derivative + de_boor_index + 1);
+    const auto knot_vector_degree_0 = fetch1D(textures[__knot_vector__], derivative + de_boor_index + degree);
+    const auto knot_vector_degree_1 = fetch1D(textures[__knot_vector__], derivative + de_boor_index + degree + 1);
 
     // 1 if u_i <= u < u_i+1, 0 otherwise
     if (degree == 0)
@@ -148,7 +156,7 @@ float3 compute_point(float u, int degree, const int num_de_boor_points, const in
     float3 point{ 0.0f, 0.0f, 0.0f };
 
     // Handle right boundary
-    const auto u_max = fetch1D(textures[4], num_de_boor_points);
+    const auto u_max = fetch1D(textures[__knot_vector__], num_de_boor_points);
 
     if (u >= u_max)
     {
@@ -177,7 +185,7 @@ float3 rotate(float3 point, float3 axis, float angle)
 }
 
 __device__
-float4 compute_rotation(float3 source_vec, float3 target_vec)
+float4 compute_rotation(float3 source_vec, float3 target_vec, const bool adjust_sign = true)
 {
     if (length(source_vec - target_vec) < 0.0001f)
     {
@@ -187,28 +195,35 @@ float4 compute_rotation(float3 source_vec, float3 target_vec)
     const auto axis = normalize(cross(source_vec, target_vec));
     const auto angle = acosf(fmaxf(fminf(dot(source_vec, target_vec), 1.0f), -1.0f));
 
-    const auto diff_pos_angle = length(rotate(source_vec, axis, angle) - target_vec);
-    const auto diff_neg_angle = length(rotate(source_vec, axis, -angle) - target_vec);
-
-    if (diff_pos_angle < diff_neg_angle)
+    if (adjust_sign)
     {
-        return float4{ axis.x, axis.y, axis.z, angle };
+        const auto diff_pos_angle = length(rotate(source_vec, axis, angle) - target_vec);
+        const auto diff_neg_angle = length(rotate(source_vec, axis, -angle) - target_vec);
+
+        if (diff_pos_angle < diff_neg_angle)
+        {
+            return float4{ axis.x, axis.y, axis.z, angle };
+        }
+        else
+        {
+            return float4{ axis.x, axis.y, axis.z, -angle };
+        }
     }
     else
     {
-        return float4{ axis.x, axis.y, axis.z, -angle };
+        return float4{ axis.x, axis.y, axis.z, angle };
     }
 }
 
 __device__
 float3 compute_rotation(float3 point, int index)
 {
-    const auto origin_start = fetch(textures[0], index);
-    const auto origin_end = fetch(textures[0], index + 1);
+    const auto origin_start = fetch(textures[__positions__], index);
+    const auto origin_end = fetch(textures[__positions__], index + 1);
     const auto origin_vector = normalize(origin_end - origin_start);
 
-    const auto target_start = origin_start + fetch(textures[3], index);
-    const auto target_end = origin_end + fetch(textures[3], index + 1);
+    const auto target_start = origin_start + fetch(textures[__displacements__], index);
+    const auto target_end = origin_end + fetch(textures[__displacements__], index + 1);
     const auto target_vector = normalize(target_end - target_start);
 
     const auto axis = cross(origin_vector, target_vector);
@@ -248,12 +263,12 @@ void precompute_mapping_kernel(const float3* in_points, float3* point_mapping, f
         float min_arc_position = 0.0f;
         float min_distance = CUDART_NORM_HUGE_F;
 
-        const float delta = fetch1D(textures[4], degree + 1) - fetch1D(textures[4], degree);
+        const float delta = fetch1D(textures[__knot_vector__], degree + 1) - fetch1D(textures[__knot_vector__], degree);
 
         for (int index = degree; index < num_displacements; ++index)
         {
             // Start at the center of the segment
-            auto u_left = fetch1D(textures[4], index);
+            auto u_left = fetch1D(textures[__knot_vector__], index);
             auto u_right = u_left + delta;
             auto u = u_left + 0.5f * delta;
 
@@ -263,8 +278,8 @@ void precompute_mapping_kernel(const float3* in_points, float3* point_mapping, f
             for (int i = 0; i < iterations && !good_match; ++i)
             {
                 // The subdivision plane is defined by the position and the tangent at u
-                const auto position = compute_point(u, degree, num_displacements, 0);
-                const auto tangent = compute_point(u, degree, num_displacements, 1, 1);
+                const auto position = compute_point(u, degree, num_displacements, __positions__);
+                const auto tangent = compute_point(u, degree, num_displacements, __first_derivative__, 1);
 
                 const auto direction = dot(tangent, point - position);
 
@@ -287,7 +302,7 @@ void precompute_mapping_kernel(const float3* in_points, float3* point_mapping, f
             }
 
             // Calculate distance and set new if its is smaller
-            const auto position = compute_point(u, degree, num_displacements, 0);
+            const auto position = compute_point(u, degree, num_displacements, __positions__);
             const auto distance = length(point - position);
 
             if (distance < min_distance)
@@ -298,8 +313,8 @@ void precompute_mapping_kernel(const float3* in_points, float3* point_mapping, f
         }
 
         // Get point and tangent of original B-spline at the arc position
-        const auto origin = compute_point(min_arc_position, degree, num_displacements, 0);
-        const auto tangent = normalize(compute_point(min_arc_position, degree, num_displacements, 1, 1));
+        const auto origin = compute_point(min_arc_position, degree, num_displacements, __positions__);
+        const auto tangent = normalize(compute_point(min_arc_position, degree, num_displacements, __first_derivative__, 1));
 
         // Store results
         point_mapping[gid] = origin;
@@ -335,12 +350,12 @@ void assess_mapping_kernel(const float3* in_points, float4* infos, const int num
         float min_arc_position = 0.0f;
         float min_distance = CUDART_NORM_HUGE_F;
 
-        const float delta = fetch1D(textures[4], degree + 1) - fetch1D(textures[4], degree);
+        const float delta = fetch1D(textures[__knot_vector__], degree + 1) - fetch1D(textures[__knot_vector__], degree);
 
         for (int index = degree; index < num_displacements; ++index)
         {
             // Start at the center of the segment
-            auto u_left = fetch1D(textures[4], index);
+            auto u_left = fetch1D(textures[__knot_vector__], index);
             auto u_right = u_left + delta;
             auto u = u_left + 0.5f * delta;
 
@@ -350,8 +365,8 @@ void assess_mapping_kernel(const float3* in_points, float4* infos, const int num
             for (int i = 0; i < iterations && !good_match; ++i)
             {
                 // The subdivision plane is defined by the position and the tangent at u
-                const auto position = compute_point(u, degree, num_displacements, 0);
-                const auto tangent = compute_point(u, degree, num_displacements, 1, 1);
+                const auto position = compute_point(u, degree, num_displacements, __positions__);
+                const auto tangent = compute_point(u, degree, num_displacements, __first_derivative__, 1);
 
                 const auto direction = dot(tangent, point - position);
 
@@ -374,7 +389,7 @@ void assess_mapping_kernel(const float3* in_points, float4* infos, const int num
             }
 
             // Calculate distance and set new if its is smaller
-            const auto position = compute_point(u, degree, num_displacements, 0);
+            const auto position = compute_point(u, degree, num_displacements, __positions__);
             const auto distance = length(point - position);
 
             if (distance < min_distance)
@@ -417,11 +432,11 @@ void displacement_kernel_idw(const float3* in_points, float3* out_points, float4
 
         // Get nearest displacement position
         int nearest_index = 0;
-        float nearest_distance = length(point - fetch(textures[0], 0));
+        float nearest_distance = length(point - fetch(textures[__positions__], 0));
 
         for (int i = 1; i < num_displacements; ++i)
         {
-            const float distance = length(point - fetch(textures[0], i));
+            const float distance = length(point - fetch(textures[__positions__], i));
 
             if (distance < nearest_distance)
             {
@@ -445,7 +460,7 @@ void displacement_kernel_idw(const float3* in_points, float3* out_points, float4
         // Check if points coincide
         if (nearest_distance < 0.0001f)
         {
-            displacement = fetch(textures[3], nearest_index);
+            displacement = fetch(textures[__displacements__], nearest_index);
             weights = 1.0f;
         }
         else
@@ -456,8 +471,8 @@ void displacement_kernel_idw(const float3* in_points, float3* out_points, float4
 
             for (int i = lower_bound; i <= upper_bound; ++i)
             {
-                const auto position = fetch(textures[0], i);
-                const auto vector = fetch(textures[3], i);
+                const auto position = fetch(textures[__positions__], i);
+                const auto vector = fetch(textures[__displacements__], i);
 
                 const auto weight_neighbor = 1.0f / powf(length(point - position), idw_exponent);
 
@@ -505,11 +520,11 @@ void displacement_kernel_idw_joints(const float3* in_points, float3* out_points,
 
             // Get nearest displacement position
             int nearest_index = 0;
-            float nearest_distance = length(point - fetch(textures[0], 0));
+            float nearest_distance = length(point - fetch(textures[__positions__], 0));
 
             for (int i = 1; i < num_displacements; ++i)
             {
-                const float distance = length(point - fetch(textures[0], i));
+                const float distance = length(point - fetch(textures[__positions__], i));
 
                 if (distance < nearest_distance)
                 {
@@ -524,7 +539,7 @@ void displacement_kernel_idw_joints(const float3* in_points, float3* out_points,
 
             if (nearest_distance < 0.0001f)
             {
-                displacement = fetch(textures[3], nearest_index);
+                displacement = fetch(textures[__displacements__], nearest_index);
                 displacement_weights = 1.0f;
             }
             else
@@ -532,8 +547,8 @@ void displacement_kernel_idw_joints(const float3* in_points, float3* out_points,
                 // Add weighted displacement of the adjacent neighbors, if they exist
                 for (int i = 0; i < num_displacements; ++i)
                 {
-                    const auto position = fetch(textures[0], i);
-                    const auto vector = fetch(textures[3], i);
+                    const auto position = fetch(textures[__positions__], i);
+                    const auto vector = fetch(textures[__displacements__], i);
 
                     const auto weight_neighbor = 1.0f / powf(length(point - position), idw_exponent);
 
@@ -553,11 +568,11 @@ void displacement_kernel_idw_joints(const float3* in_points, float3* out_points,
 
             // Get nearest rotation position
             int nearest_joint_index = 0;
-            float nearest_joint_distance = length(point - 0.5f * (fetch(textures[0], 0) + fetch(textures[0], 1)));
+            float nearest_joint_distance = length(point - 0.5f * (fetch(textures[__positions__], 0) + fetch(textures[__positions__], 1)));
 
             for (int i = 1; i < num_displacements - 1; ++i)
             {
-                const float distance = length(point - 0.5f * (fetch(textures[0], i) + fetch(textures[0], i + 1)));
+                const float distance = length(point - 0.5f * (fetch(textures[__positions__], i) + fetch(textures[__positions__], i + 1)));
 
                 if (distance < nearest_joint_distance)
                 {
@@ -580,8 +595,8 @@ void displacement_kernel_idw_joints(const float3* in_points, float3* out_points,
                 // Add weighted rotation
                 for (int i = 0; i < num_displacements - 1; ++i)
                 {
-                    const auto position_start = fetch(textures[0], i);
-                    const auto position_end = fetch(textures[0], i + 1);
+                    const auto position_start = fetch(textures[__positions__], i);
+                    const auto position_end = fetch(textures[__positions__], i + 1);
 
                     const auto weight_neighbor = 1.0f / powf(length(point - 0.5f * (position_start + position_end)), idw_exponent);
 
@@ -625,11 +640,11 @@ void displacement_kernel_projection(const float3* in_points, float3* out_points,
 
         // Get nearest displacement position
         int nearest_index = 0;
-        float nearest_distance = length(point - fetch(textures[0], 0));
+        float nearest_distance = length(point - fetch(textures[__positions__], 0));
 
         for (int i = 1; i < num_displacements; ++i)
         {
-            const float distance = length(point - fetch(textures[0], i));
+            const float distance = length(point - fetch(textures[__positions__], i));
 
             if (distance < nearest_distance)
             {
@@ -642,13 +657,13 @@ void displacement_kernel_projection(const float3* in_points, float3* out_points,
         float3 displacement = { 0.0f, 0.0f, 0.0f };
 
         // Projection onto the line and apply linear interpolation
-        const auto position_previous = fetch(textures[0], maxi(0, nearest_index - 1));
-        const auto position_current = fetch(textures[0], nearest_index);
-        const auto position_next = fetch(textures[0], mini(num_displacements - 1, nearest_index + 1));
+        const auto position_previous = fetch(textures[__positions__], maxi(0, nearest_index - 1));
+        const auto position_current = fetch(textures[__positions__], nearest_index);
+        const auto position_next = fetch(textures[__positions__], mini(num_displacements - 1, nearest_index + 1));
 
-        const auto vector_previous = fetch(textures[3], maxi(0, nearest_index - 1));
-        const auto vector_current = fetch(textures[3], nearest_index);
-        const auto vector_next = fetch(textures[3], mini(num_displacements - 1, nearest_index + 1));
+        const auto vector_previous = fetch(textures[__displacements__], maxi(0, nearest_index - 1));
+        const auto vector_current = fetch(textures[__displacements__], nearest_index);
+        const auto vector_next = fetch(textures[__displacements__], mini(num_displacements - 1, nearest_index + 1));
 
         if (nearest_index == 0)
         {
@@ -792,7 +807,7 @@ void displacement_kernel_spline_handles(const float3* in_points, const float3* p
         // and use a Gauss function to lessen the effect for points further away
         const auto distance = length(point - point_mapping[gid]);
 
-        const float3 displacement = compute_point(arc_position_mapping[gid], degree, num_displacements, 3);
+        const float3 displacement = compute_point(arc_position_mapping[gid], degree, num_displacements, __displacements__);
 
         const auto u = arc_position_mapping[gid];
 
@@ -800,11 +815,11 @@ void displacement_kernel_spline_handles(const float3* in_points, const float3* p
         info.z = distance;
 
         // Get original mapping, using orthogonal direction for nodes mapped to the end points
-        const auto u_max = fetch1D(textures[4], num_displacements);
+        const auto u_max = fetch1D(textures[__knot_vector__], num_displacements);
 
         if (u > u_max - 0.001 || u < 0.001)
         {
-            mapping_direction_orig[gid] = rotate(compute_point(u, degree, num_displacements, 1, 1), float3{ 0.0, 0.0, 1.0 }, __pi / 2.0);
+            mapping_direction_orig[gid] = rotate(compute_point(u, degree, num_displacements, __first_derivative__, 1), float3{ 0.0, 0.0, 1.0 }, __pi / 2.0);
         }
         else
         {
@@ -817,11 +832,11 @@ void displacement_kernel_spline_handles(const float3* in_points, const float3* p
         // Get deformed mapping, using orthogonal direction for nodes mapped to the end points
         if (u > u_max - 0.001 || u < 0.001)
         {
-            mapping_direction[gid] = rotate(compute_point(u, degree, num_displacements, 6, 1), float3{ 0.0, 0.0, 1.0 }, __pi / 2.0);
+            mapping_direction[gid] = rotate(compute_point(u, degree, num_displacements, __displaced_derivative__, 1), float3{ 0.0, 0.0, 1.0 }, __pi / 2.0);
         }
         else
         {
-            mapping_direction[gid] = compute_point(u, degree, num_displacements, 5) - point;
+            mapping_direction[gid] = compute_point(u, degree, num_displacements, __displaced_positions__) - point;
         }
 
         // Store result
@@ -867,8 +882,8 @@ void displacement_kernel_spline_joints(const float3* in_points, const float3* po
         const auto origin = point_mapping[gid];
         const auto tangent = tangent_mapping[gid];
 
-        const auto deformed_origin = compute_point(u, degree, num_displacements, 5);
-        const auto deformed_tangent = normalize(compute_point(u, degree, num_displacements, 6, 1));
+        const auto deformed_origin = compute_point(u, degree, num_displacements, __displaced_positions__);
+        const auto deformed_tangent = normalize(compute_point(u, degree, num_displacements, __displaced_derivative__, 1));
 
         const auto distance = length(point - origin);
 
@@ -887,7 +902,7 @@ void displacement_kernel_spline_joints(const float3* in_points, const float3* po
         info.z = distance;
 
         // Get original mapping, using orthogonal direction for nodes mapped to the end points
-        const auto u_max = fetch1D(textures[4], num_displacements);
+        const auto u_max = fetch1D(textures[__knot_vector__], num_displacements);
 
         if (u > u_max - 0.001 || u < 0.001)
         {
@@ -918,6 +933,79 @@ void displacement_kernel_spline_joints(const float3* in_points, const float3* po
 }
 
 /**
+* Interpolate winding preserving displacement at joints using B-splines and move points accordingly
+*
+* @param in_points              Points to displace
+* @param out_points             Displaced points
+* @param arc_position_mapping   Corresponding arc position on the B-Spline
+* @param num_points             Number of points
+* @param num_displacements      Number of displacement vectors and positions
+* @param degree                 B-Spline degree
+*/
+__global__
+void displacement_kernel_winding(const float3* in_points, float3* out_points, const float* arc_position_mapping,
+    const int num_points, const int num_displacements, const int degree)
+{
+    __get_kernel__parameters__
+
+    if (gid < num_points)
+    {
+        // Get information for rotating
+        const auto u = arc_position_mapping[gid];
+
+        const auto center_of_rotation = compute_point(u, degree, num_displacements, __displaced_positions__);
+        const auto axis_of_rotation = normalize(compute_point(1.0, degree, num_displacements, __displaced_positions__)
+            - compute_point(0.0, degree, num_displacements, __displaced_positions__));
+
+        const auto tangent = normalize(compute_point(u, degree, num_displacements, __first_derivative__, 1));
+        const auto second_derivative = normalize(compute_point(u, degree, num_displacements, __second_derivative__, 2));
+        const auto binormal = cross(tangent, second_derivative);
+
+        // Create rotation, rotating the binormal onto the deformed B-spline
+        const auto deformed_tangent = normalize(compute_point(u, degree, num_displacements, __displaced_derivative__, 1));
+
+        const auto rotation = compute_rotation(tangent, deformed_tangent);
+
+        const float3 axis{ rotation.x, rotation.y, rotation.z };
+        const auto angle = rotation.w;
+
+        const auto rotated_binormal = normalize(rotate(binormal, axis, angle));
+
+        // Calculate rotated binormal at the center of the B-spline as reference
+        float3 winding_axis;
+        float winding_angle;
+
+        {
+            const auto u_max = fetch1D(textures[__knot_vector__], num_displacements);
+
+            const auto u = u_max / 2.0f;
+
+            const auto tangent = normalize(compute_point(u, degree, num_displacements, __first_derivative__, 1));
+            const auto second_derivative = normalize(compute_point(u, degree, num_displacements, __second_derivative__, 2));
+            const auto binormal = cross(tangent, second_derivative);
+
+            // Create rotation, rotating the binormal onto the deformed B-spline
+            const auto deformed_tangent = normalize(compute_point(u, degree, num_displacements, __displaced_derivative__, 1));
+
+            const auto rotation = compute_rotation(tangent, deformed_tangent);
+
+            const float3 axis{ rotation.x, rotation.y, rotation.z };
+            const auto angle = rotation.w;
+
+            const auto reference_binormal = normalize(rotate(binormal, axis, angle));
+
+            const auto winding_rotation = compute_rotation(rotated_binormal, reference_binormal);
+
+            winding_axis = float3{ winding_rotation.x, winding_rotation.y, winding_rotation.z };
+            winding_angle = winding_rotation.w;
+        }
+
+        // Rotate point around the (assumedly) straight feature line
+        out_points[gid] = center_of_rotation + rotate(in_points[gid] - center_of_rotation, winding_axis, winding_angle);
+    }
+}
+
+/**
 * Interpolate twisting displacement at joints using B-splines and move points accordingly
 *
 * @param in_points              Points to displace
@@ -938,10 +1026,10 @@ void displacement_kernel_twisting(const float3* in_points, float3* out_points, c
         // Get information for rotating
         const auto u = arc_position_mapping[gid];
 
-        const auto center_of_rotation = compute_point(u, degree, num_displacements, 5);
-        const auto angle_of_rotation = compute_point(u, degree, num_displacements, 2);
-        const auto axis_of_rotation = normalize(compute_point(1.0, degree, num_displacements, 5)
-            - compute_point(0.0, degree, num_displacements, 5));
+        const auto center_of_rotation = compute_point(u, degree, num_displacements, __displaced_positions__);
+        const auto angle_of_rotation = compute_point(u, degree, num_displacements, __twisting_angle__);
+        const auto axis_of_rotation = normalize(compute_point(1.0, degree, num_displacements, __displaced_positions__)
+            - compute_point(0.0, degree, num_displacements, __displaced_positions__));
 
         // Rotate point around the (assumedly) straight feature line
         out_points[gid] = center_of_rotation + rotate(in_points[gid] - center_of_rotation, axis_of_rotation, angle_of_rotation.x);
@@ -1231,7 +1319,7 @@ void cuda::displacement::precompute(const parameter_t parameters, const std::vec
     initialize_texture((void*)positions.data(), static_cast<int>(positions.size()),
         sizeof(float), sizeof(float), sizeof(float), sizeof(float), &cuda_tex_positions, (void**)&cuda_res_positions);
 
-    cudaMemcpyToSymbol(textures, &cuda_tex_positions, sizeof(cudaTextureObject_t), 0 * sizeof(cudaTextureObject_t));
+    cudaMemcpyToSymbol(textures, &cuda_tex_positions, sizeof(cudaTextureObject_t), __positions__ * sizeof(cudaTextureObject_t));
 
     // Create knot vector, compute B-Spline derivative, and upload them to the GPU
     const auto knot_vector = create_knot_vector(parameters.b_spline.degree, positions);
@@ -1249,8 +1337,8 @@ void cuda::displacement::precompute(const parameter_t parameters, const std::vec
     initialize_texture((void*)knot_vector.data(), static_cast<int>(knot_vector.size()),
         sizeof(float), 0, 0, 0, &cuda_tex_knot_vector, (void**)&cuda_res_knot_vector);
 
-    cudaMemcpyToSymbol(textures, &cuda_tex_first_derivative, sizeof(cudaTextureObject_t), 1 * sizeof(cudaTextureObject_t));
-    cudaMemcpyToSymbol(textures, &cuda_tex_knot_vector, sizeof(cudaTextureObject_t), 4 * sizeof(cudaTextureObject_t));
+    cudaMemcpyToSymbol(textures, &cuda_tex_first_derivative, sizeof(cudaTextureObject_t), __first_derivative__ * sizeof(cudaTextureObject_t));
+    cudaMemcpyToSymbol(textures, &cuda_tex_knot_vector, sizeof(cudaTextureObject_t), __knot_vector__ * sizeof(cudaTextureObject_t));
 
     // Run precomputation
     precompute_mapping_kernel __kernel__parameters__(this->cuda_res_input_points, this->cuda_res_mapping_point, this->cuda_res_mapping_tangent,
@@ -1295,7 +1383,7 @@ void cuda::displacement::assess_quality(const parameter_t parameters, const std:
     initialize_texture((void*)positions.data(), static_cast<int>(positions.size()),
         sizeof(float), sizeof(float), sizeof(float), sizeof(float), &cuda_tex_positions, (void**)&cuda_res_positions);
 
-    cudaMemcpyToSymbol(textures, &cuda_tex_positions, sizeof(cudaTextureObject_t), 0 * sizeof(cudaTextureObject_t));
+    cudaMemcpyToSymbol(textures, &cuda_tex_positions, sizeof(cudaTextureObject_t), __positions__ * sizeof(cudaTextureObject_t));
 
     // Create knot vector, compute B-Spline derivative, and upload them to the GPU
     const auto knot_vector = create_knot_vector(parameters.b_spline.degree, positions);
@@ -1313,8 +1401,8 @@ void cuda::displacement::assess_quality(const parameter_t parameters, const std:
     initialize_texture((void*)knot_vector.data(), static_cast<int>(knot_vector.size()),
         sizeof(float), 0, 0, 0, &cuda_tex_knot_vector, (void**)&cuda_res_knot_vector);
 
-    cudaMemcpyToSymbol(textures, &cuda_tex_first_derivative, sizeof(cudaTextureObject_t), 1 * sizeof(cudaTextureObject_t));
-    cudaMemcpyToSymbol(textures, &cuda_tex_knot_vector, sizeof(cudaTextureObject_t), 4 * sizeof(cudaTextureObject_t));
+    cudaMemcpyToSymbol(textures, &cuda_tex_first_derivative, sizeof(cudaTextureObject_t), __first_derivative__ * sizeof(cudaTextureObject_t));
+    cudaMemcpyToSymbol(textures, &cuda_tex_knot_vector, sizeof(cudaTextureObject_t), __knot_vector__ * sizeof(cudaTextureObject_t));
 
     // Run precomputation
     assess_mapping_kernel __kernel__parameters__(this->cuda_res_output_points, this->cuda_res_info,
@@ -1358,8 +1446,8 @@ void cuda::displacement::displace(const method_t method, const parameter_t param
     initialize_texture((void*)displacements.data(), static_cast<int>(displacements.size()),
         sizeof(float), sizeof(float), sizeof(float), sizeof(float), &cuda_tex_displacements, (void**)&cuda_res_displacements);
 
-    cudaMemcpyToSymbol(textures, &cuda_tex_positions, sizeof(cudaTextureObject_t), 0 * sizeof(cudaTextureObject_t));
-    cudaMemcpyToSymbol(textures, &cuda_tex_displacements, sizeof(cudaTextureObject_t), 3 * sizeof(cudaTextureObject_t));
+    cudaMemcpyToSymbol(textures, &cuda_tex_positions, sizeof(cudaTextureObject_t), __positions__ * sizeof(cudaTextureObject_t));
+    cudaMemcpyToSymbol(textures, &cuda_tex_displacements, sizeof(cudaTextureObject_t), __displacements__ * sizeof(cudaTextureObject_t));
 
     // Depending on method, upload further information to the GPU and start CUDA computation
     switch (method)
@@ -1400,7 +1488,7 @@ void cuda::displacement::displace(const method_t method, const parameter_t param
         initialize_texture((void*)knot_vector.data(), static_cast<int>(knot_vector.size()),
             sizeof(float), 0, 0, 0, &cuda_tex_knot_vector, (void**)&cuda_res_knot_vector);
 
-        cudaMemcpyToSymbol(textures, &cuda_tex_knot_vector, sizeof(cudaTextureObject_t), 4 * sizeof(cudaTextureObject_t));
+        cudaMemcpyToSymbol(textures, &cuda_tex_knot_vector, sizeof(cudaTextureObject_t), __knot_vector__ * sizeof(cudaTextureObject_t));
 
         // Run computation
         displacement_kernel_spline_handles __kernel__parameters__(this->cuda_res_input_points, this->cuda_res_mapping_point,
@@ -1443,10 +1531,10 @@ void cuda::displacement::displace(const method_t method, const parameter_t param
         initialize_texture((void*)displaced_positions_first_derivative.data(), static_cast<int>(displaced_positions_first_derivative.size()),
             sizeof(float), sizeof(float), sizeof(float), sizeof(float), &cuda_tex_displaced_first_derivative, (void**)&cuda_res_displaced_first_derivative);
 
-        cudaMemcpyToSymbol(textures, &cuda_tex_first_derivative, sizeof(cudaTextureObject_t), 1 * sizeof(cudaTextureObject_t));
-        cudaMemcpyToSymbol(textures, &cuda_tex_knot_vector, sizeof(cudaTextureObject_t), 4 * sizeof(cudaTextureObject_t));
-        cudaMemcpyToSymbol(textures, &cuda_tex_displaced_positions, sizeof(cudaTextureObject_t), 5 * sizeof(cudaTextureObject_t));
-        cudaMemcpyToSymbol(textures, &cuda_tex_displaced_first_derivative, sizeof(cudaTextureObject_t), 6 * sizeof(cudaTextureObject_t));
+        cudaMemcpyToSymbol(textures, &cuda_tex_first_derivative, sizeof(cudaTextureObject_t), __first_derivative__ * sizeof(cudaTextureObject_t));
+        cudaMemcpyToSymbol(textures, &cuda_tex_knot_vector, sizeof(cudaTextureObject_t), __knot_vector__ * sizeof(cudaTextureObject_t));
+        cudaMemcpyToSymbol(textures, &cuda_tex_displaced_positions, sizeof(cudaTextureObject_t), __displaced_positions__ * sizeof(cudaTextureObject_t));
+        cudaMemcpyToSymbol(textures, &cuda_tex_displaced_first_derivative, sizeof(cudaTextureObject_t), __displaced_derivative__ * sizeof(cudaTextureObject_t));
 
         displacement_kernel_spline_joints __kernel__parameters__(this->cuda_res_input_points, this->cuda_res_mapping_point, this->cuda_res_mapping_tangent,
             this->cuda_res_mapping_arc_position, this->cuda_res_output_points, this->cuda_res_info, this->cuda_res_mapping_direction,
@@ -1478,6 +1566,71 @@ void cuda::displacement::displace(const method_t method, const parameter_t param
     cudaFree(cuda_res_displacements);
 }
 
+void cuda::displacement::displace_winding(const method_t method, const parameter_t parameters,
+    const std::vector<std::array<float, 4>>& positions, const std::vector<std::array<float, 4>>& displacements)
+{
+    // CUDA kernel parameters
+    int num_threads = 128;
+    int num_blocks = static_cast<int>(this->points.size()) / num_threads
+        + (static_cast<int>(this->points.size()) % num_threads == 0 ? 0 : 1);
+
+    // Upload B-spline information to GPU
+    const auto knot_vector = create_knot_vector(parameters.b_spline.degree, positions);
+
+    const auto positions_first_derivative = compute_derivative(positions, knot_vector.cbegin(), parameters.b_spline.degree);
+    const auto positions_second_derivative = compute_derivative(positions_first_derivative, knot_vector.cbegin() + 1, parameters.b_spline.degree - 1); // TODO: is this correct?
+
+    const auto displaced_positions = displace_positions(positions, displacements);
+    const auto displaced_positions_first_derivative = compute_derivative(displaced_positions, knot_vector.cbegin(), parameters.b_spline.degree);
+
+    cudaTextureObject_t cuda_tex_knot_vector, cuda_tex_first_derivative,
+        cuda_tex_second_derivative, cuda_tex_displaced_positions, cuda_tex_displaced_first_derivative;
+
+    float* cuda_res_knot_vector;
+    float4* cuda_res_first_derivative, * cuda_res_second_derivative, * cuda_res_displaced_positions, * cuda_res_displaced_first_derivative;
+
+    initialize_texture((void*)knot_vector.data(), static_cast<int>(knot_vector.size()),
+        sizeof(float), 0, 0, 0, &cuda_tex_knot_vector, (void**)&cuda_res_knot_vector);
+
+    initialize_texture((void*)positions_first_derivative.data(), static_cast<int>(positions_first_derivative.size()),
+        sizeof(float), sizeof(float), sizeof(float), sizeof(float), &cuda_tex_first_derivative, (void**)&cuda_res_first_derivative);
+
+    initialize_texture((void*)positions_second_derivative.data(), static_cast<int>(positions_second_derivative.size()),
+        sizeof(float), sizeof(float), sizeof(float), sizeof(float), &cuda_tex_second_derivative, (void**)&cuda_res_second_derivative);
+
+    initialize_texture((void*)displaced_positions.data(), static_cast<int>(displaced_positions.size()),
+        sizeof(float), sizeof(float), sizeof(float), sizeof(float), &cuda_tex_displaced_positions, (void**)&cuda_res_displaced_positions);
+
+    initialize_texture((void*)displaced_positions_first_derivative.data(), static_cast<int>(displaced_positions_first_derivative.size()),
+        sizeof(float), sizeof(float), sizeof(float), sizeof(float), &cuda_tex_displaced_first_derivative, (void**)&cuda_res_displaced_first_derivative);
+
+    cudaMemcpyToSymbol(textures, &cuda_tex_knot_vector, sizeof(cudaTextureObject_t), __knot_vector__ * sizeof(cudaTextureObject_t));
+    cudaMemcpyToSymbol(textures, &cuda_tex_first_derivative, sizeof(cudaTextureObject_t), __first_derivative__ * sizeof(cudaTextureObject_t));
+    cudaMemcpyToSymbol(textures, &cuda_tex_second_derivative, sizeof(cudaTextureObject_t), __second_derivative__ * sizeof(cudaTextureObject_t));
+    cudaMemcpyToSymbol(textures, &cuda_tex_displaced_positions, sizeof(cudaTextureObject_t), __displaced_positions__ * sizeof(cudaTextureObject_t));
+    cudaMemcpyToSymbol(textures, &cuda_tex_displaced_first_derivative, sizeof(cudaTextureObject_t), __displaced_derivative__ * sizeof(cudaTextureObject_t));
+
+    displacement_kernel_winding __kernel__parameters__(this->cuda_res_output_points, this->cuda_res_output_twisting_points,
+        this->cuda_res_mapping_arc_position, static_cast<int>(this->points.size()),
+        static_cast<int>(positions.size()), parameters.b_spline.degree);
+
+    // Destroy resources
+    cudaDestroyTextureObject(cuda_tex_knot_vector);
+    cudaFree(cuda_res_knot_vector);
+
+    cudaDestroyTextureObject(cuda_tex_first_derivative);
+    cudaFree(cuda_res_first_derivative);
+
+    cudaDestroyTextureObject(cuda_tex_second_derivative);
+    cudaFree(cuda_res_second_derivative);
+
+    cudaDestroyTextureObject(cuda_tex_displaced_positions);
+    cudaFree(cuda_res_displaced_positions);
+
+    cudaDestroyTextureObject(cuda_tex_displaced_first_derivative);
+    cudaFree(cuda_res_displaced_first_derivative);
+}
+
 void cuda::displacement::displace_twisting(const method_t method, const parameter_t parameters,
     const std::vector<std::array<float, 4>>& positions, const std::vector<std::array<float, 4>>& displacements,
     const std::vector<std::array<float, 4>>& rotations)
@@ -1495,7 +1648,7 @@ void cuda::displacement::displace_twisting(const method_t method, const paramete
     int num_blocks = static_cast<int>(this->points.size()) / num_threads
         + (static_cast<int>(this->points.size()) % num_threads == 0 ? 0 : 1);
 
-    // Upload positions and rotations to GPU (needed by all methods)
+    // Upload positions and rotations to GPU
     const auto displaced_positions = displace_positions(positions, displacements);
 
     cudaTextureObject_t cuda_tex_positions, cuda_tex_rotations;
@@ -1507,8 +1660,8 @@ void cuda::displacement::displace_twisting(const method_t method, const paramete
     initialize_texture((void*)rotations.data(), static_cast<int>(rotations.size()),
         sizeof(float), sizeof(float), sizeof(float), sizeof(float), &cuda_tex_rotations, (void**)&cuda_res_rotations);
 
-    cudaMemcpyToSymbol(textures, &cuda_tex_positions, sizeof(cudaTextureObject_t), 5 * sizeof(cudaTextureObject_t));
-    cudaMemcpyToSymbol(textures, &cuda_tex_rotations, sizeof(cudaTextureObject_t), 2 * sizeof(cudaTextureObject_t));
+    cudaMemcpyToSymbol(textures, &cuda_tex_positions, sizeof(cudaTextureObject_t), __displaced_positions__ * sizeof(cudaTextureObject_t));
+    cudaMemcpyToSymbol(textures, &cuda_tex_rotations, sizeof(cudaTextureObject_t), __twisting_angle__ * sizeof(cudaTextureObject_t));
 
     displacement_kernel_twisting __kernel__parameters__(this->cuda_res_output_points, this->cuda_res_output_twisting_points,
         this->cuda_res_mapping_arc_position, static_cast<int>(this->points.size()),
@@ -1547,9 +1700,9 @@ std::vector<std::array<float, 4>> cuda::displacement::compute_derivative(const s
 
     for (std::size_t index = 0; index < derivative.size(); ++index)
     {
-        const auto sacalar = degree / (*(knot_begin + index + degree + 1) - *(knot_begin + index + 1));
+        const auto scalar = degree / (*(knot_begin + index + degree + 1) - *(knot_begin + index + 1));
 
-        derivative[index] = mul(sacalar, sub(positions[index + 1], positions[index]));
+        derivative[index] = mul(scalar, sub(positions[index + 1], positions[index]));
     }
 
     return derivative;

@@ -4,6 +4,7 @@
 #include "algorithm_displacement_assessment.h"
 #include "algorithm_displacement_computation.h"
 #include "algorithm_displacement_computation_twisting.h"
+#include "algorithm_displacement_computation_winding.h"
 #include "algorithm_displacement_creation.h"
 #include "algorithm_displacement_precomputation.h"
 #include "algorithm_geometry_input.h"
@@ -69,18 +70,21 @@ feature_deformation::feature_deformation() : frames(0)
     this->alg_displacement_creation_lines = std::make_shared<algorithm_displacement_creation>();
     this->alg_displacement_precomputation_lines = std::make_shared<algorithm_displacement_precomputation>();
     this->alg_displacement_computation_lines = std::make_shared<algorithm_displacement_computation>();
+    this->alg_displacement_computation_lines_winding = std::make_shared<algorithm_displacement_computation_winding>();
     this->alg_displacement_computation_lines_twisting = std::make_shared<algorithm_displacement_computation_twisting>();
     this->alg_displacement_assess_lines = std::make_shared<algorithm_displacement_assessment>();
 
     this->alg_displacement_creation_grid = std::make_shared<algorithm_displacement_creation>();
     this->alg_displacement_precomputation_grid = std::make_shared<algorithm_displacement_precomputation>();
     this->alg_displacement_computation_grid = std::make_shared<algorithm_displacement_computation>();
+    this->alg_displacement_computation_grid_winding = std::make_shared<algorithm_displacement_computation_winding>();
     this->alg_displacement_computation_grid_twisting = std::make_shared<algorithm_displacement_computation_twisting>();
     this->alg_displacement_assess_grid = std::make_shared<algorithm_displacement_assessment>();
 
     this->alg_displacement_creation_geometry = std::make_shared<algorithm_displacement_creation>();
     this->alg_displacement_precomputation_geometry = std::make_shared<algorithm_displacement_precomputation>();
     this->alg_displacement_computation_geometry = std::make_shared<algorithm_displacement_computation>();
+    this->alg_displacement_computation_geometry_winding = std::make_shared<algorithm_displacement_computation_winding>();
     this->alg_displacement_computation_geometry_twisting = std::make_shared<algorithm_displacement_computation_twisting>();
     this->alg_displacement_assess_geometry = std::make_shared<algorithm_displacement_assessment>();
 
@@ -197,16 +201,19 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
     this->alg_displacement_creation_lines->be_quiet(quiet);
     this->alg_displacement_precomputation_lines->be_quiet(quiet);
     this->alg_displacement_computation_lines->be_quiet(quiet);
+    this->alg_displacement_computation_lines_winding->be_quiet(quiet);
     this->alg_displacement_computation_lines_twisting->be_quiet(quiet);
     this->alg_displacement_assess_lines->be_quiet(quiet);
     this->alg_displacement_creation_grid->be_quiet(quiet);
     this->alg_displacement_precomputation_grid->be_quiet(quiet);
     this->alg_displacement_computation_grid->be_quiet(quiet);
+    this->alg_displacement_computation_grid_winding->be_quiet(quiet);
     this->alg_displacement_computation_grid_twisting->be_quiet(quiet);
     this->alg_displacement_assess_grid->be_quiet(quiet);
     this->alg_displacement_creation_geometry->be_quiet(quiet);
     this->alg_displacement_precomputation_geometry->be_quiet(quiet);
     this->alg_displacement_computation_geometry->be_quiet(quiet);
+    this->alg_displacement_computation_geometry_winding->be_quiet(quiet);
     this->alg_displacement_computation_geometry_twisting->be_quiet(quiet);
     this->alg_displacement_assess_geometry->be_quiet(quiet);
     this->alg_line_output_creation->be_quiet(quiet);
@@ -356,8 +363,38 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
 
     if (!quiet) std::cout << std::endl;
 
+    // Preserve winding number
+    const bool preserve_windings = this->parameters.winding && (this->parameters.smoothing_method == smoothing::method_t::direct || time == 1.0);
+
+    __next_perf_measure("preserve windings");
+
+    const std::array<std::tuple<std::string, std::shared_ptr<algorithm_displacement_computation>,
+        std::shared_ptr<algorithm_displacement_computation_winding>>, 3> displacement_inputs_winding
+    {
+        std::make_tuple("line", this->alg_displacement_computation_lines, this->alg_displacement_computation_lines_winding),
+
+        std::make_tuple("grid", this->alg_displacement_computation_grid, this->alg_displacement_computation_grid_winding),
+
+        std::make_tuple("geometry", this->alg_displacement_computation_geometry, this->alg_displacement_computation_geometry_winding),
+    };
+
+    for (const auto& displacement_input : displacement_inputs_winding)
+    {
+        if (std::get<1>(displacement_input)->is_valid())
+        {
+            if (!quiet) std::cout << "Displacing (preserve windings) " << std::get<0>(displacement_input) << " points..." << std::endl;
+
+            __next_perf_measure("displace points on GPU");
+
+            std::get<2>(displacement_input)->run(std::get<1>(displacement_input), this->alg_smoothing,
+                this->parameters.displacement_method, this->parameters.displacement_parameters, preserve_windings);
+        }
+    }
+
+    if (!quiet) std::cout << std::endl;
+
     // Twist line
-    const bool twist_line = this->parameters.twist && (this->parameters.smoothing_method == smoothing::method_t::direct || time == 1.0);
+    const bool twist_line = (this->parameters.twist && (this->parameters.smoothing_method == smoothing::method_t::direct || time == 1.0)) && !preserve_windings;
 
     __next_perf_measure("twist feature line");
 
@@ -400,7 +437,7 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
     __next_perf_measure("update output feature lines");
 
     this->alg_line_output_update->run(this->alg_line_output_creation, this->alg_displacement_computation_lines,
-        this->alg_displacement_computation_lines_twisting, this->alg_displacement_assess_lines,
+        this->alg_displacement_computation_lines_winding, this->alg_displacement_computation_lines_twisting, this->alg_displacement_assess_lines,
         this->parameters.displacement_method, this->parameters.minimal_output, this->parameters.output_bspline_distance);
 
     __next_perf_measure("output feature lines");
@@ -415,7 +452,7 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
     __next_perf_measure("update output geometry");
 
     this->alg_geometry_output_update->run(this->alg_geometry_output_creation, this->alg_displacement_computation_geometry,
-        this->alg_displacement_computation_geometry_twisting, this->alg_displacement_assess_geometry,
+        this->alg_displacement_computation_geometry_winding, this->alg_displacement_computation_geometry_twisting, this->alg_displacement_assess_geometry,
         this->parameters.displacement_method, this->parameters.minimal_output, this->parameters.output_bspline_distance);
 
     __next_perf_measure("output geometry");
@@ -432,7 +469,7 @@ int feature_deformation::RequestData(vtkInformation* vtkNotUsed(request), vtkInf
         __next_perf_measure("update output grid");
 
         this->alg_grid_output_update->run(this->alg_grid_input, this->alg_grid_output_creation, this->alg_displacement_computation_grid,
-            this->alg_displacement_computation_grid_twisting, this->alg_displacement_assess_grid, this->alg_compute_tearing,
+            this->alg_displacement_computation_grid_winding, this->alg_displacement_computation_grid_twisting, this->alg_displacement_assess_grid, this->alg_compute_tearing,
             this->parameters.remove_cells, this->parameters.remove_cells_scalar, this->parameters.minimal_output);
 
         if (this->parameters.output_vector_field)
@@ -550,6 +587,7 @@ void feature_deformation::process_parameters(double time)
     // Twisting parameters
     __log_header("twisting");
 
+    __set_parameter_bool(winding, this->Winding);
     __set_parameter_bool(twist, this->Twist);
     __set_parameter(twist_eigenvector, this->TwistEigenvector);
 

@@ -57,6 +57,10 @@ namespace cuda
         void displace(method_t method, parameter_t parameters, const std::vector<std::array<float, 4>>& positions,
             const std::vector<std::array<float, 4>>& displacements);
 
+        /// Displace all points from preserving the windings around the feature line
+        void displace_winding(method_t method, parameter_t parameters, const std::vector<std::array<float, 4>>& positions,
+            const std::vector<std::array<float, 4>>& displacements);
+
         /// Displace all points from twisting the feature line
         void displace_twisting(method_t method, parameter_t parameters, const std::vector<std::array<float, 4>>& positions,
             const std::vector<std::array<float, 4>>& displacements, const std::vector<std::array<float, 4>>& rotations);
@@ -64,7 +68,7 @@ namespace cuda
         /// Return displaced results
         const std::vector<std::array<float, 3>>& get_results() const;
 
-        /// Return displaced results after twisting
+        /// Return displaced results after twisting or preserving windings
         const std::vector<std::array<float, 3>>& get_results_twisting() const;
 
         /// Return displacement IDs

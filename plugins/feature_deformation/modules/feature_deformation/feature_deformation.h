@@ -6,6 +6,7 @@
 #include "algorithm_displacement_assessment.h"
 #include "algorithm_displacement_computation.h"
 #include "algorithm_displacement_computation_twisting.h"
+#include "algorithm_displacement_computation_winding.h"
 #include "algorithm_displacement_creation.h"
 #include "algorithm_displacement_precomputation.h"
 #include "algorithm_geometry_input.h"
@@ -53,6 +54,9 @@ public:
 
     vtkGetMacro(Lambda, double);
     vtkSetMacro(Lambda, double);
+
+    vtkGetMacro(Winding, int);
+    vtkSetMacro(Winding, int);
 
     vtkGetMacro(Twist, int);
     vtkSetMacro(Twist, int);
@@ -159,6 +163,7 @@ private:
     double Lambda;
 
     /// Twisting the feature line
+    int Winding;
     int Twist;
     int TwistEigenvector;
 
@@ -210,6 +215,7 @@ private:
         int num_iterations;
         int max_num_iterations;
 
+        bool winding;
         bool twist;
         int twist_eigenvector;
 
@@ -252,6 +258,8 @@ private:
         alg_displacement_computation_grid, alg_displacement_computation_geometry;
     std::shared_ptr<algorithm_displacement_assessment> alg_displacement_assess_lines,
         alg_displacement_assess_grid, alg_displacement_assess_geometry;
+    std::shared_ptr<algorithm_displacement_computation_winding> alg_displacement_computation_lines_winding,
+        alg_displacement_computation_grid_winding, alg_displacement_computation_geometry_winding;
     std::shared_ptr<algorithm_displacement_computation_twisting> alg_displacement_computation_lines_twisting,
         alg_displacement_computation_grid_twisting, alg_displacement_computation_geometry_twisting;
 

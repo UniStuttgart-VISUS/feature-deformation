@@ -4,6 +4,7 @@
 #include "algorithm_displacement_assessment.h"
 #include "algorithm_displacement_computation.h"
 #include "algorithm_displacement_computation_twisting.h"
+#include "algorithm_displacement_computation_winding.h"
 #include "algorithm_grid_output_creation.h"
 #include "hash.h"
 #include "jacobian.h"
@@ -30,6 +31,7 @@
 void algorithm_grid_output_update::set_input(const std::shared_ptr<const algorithm_grid_input> input_grid,
     const std::shared_ptr<const algorithm_grid_output_creation> output_grid,
     std::shared_ptr<const algorithm_displacement_computation> displacement,
+    std::shared_ptr<const algorithm_displacement_computation_winding> displacement_winding,
     std::shared_ptr<const algorithm_displacement_computation_twisting> displacement_twisting,
     const std::shared_ptr<const algorithm_displacement_assessment> assessment,
     const std::shared_ptr<const algorithm_compute_tearing> tearing, const bool remove_cells,
@@ -38,6 +40,7 @@ void algorithm_grid_output_update::set_input(const std::shared_ptr<const algorit
     this->input_grid = input_grid;
     this->output_grid = output_grid;
     this->displacement = displacement;
+    this->displacement_winding = displacement_winding;
     this->displacement_twisting = displacement_twisting;
     this->assessment = assessment;
     this->tearing = tearing;
@@ -53,8 +56,8 @@ std::uint32_t algorithm_grid_output_update::calculate_hash() const
         return -1;
     }
 
-    return jenkins_hash(this->displacement->get_hash(), this->displacement_twisting->get_hash(), this->assessment->get_hash(),
-        this->tearing->get_hash(), this->remove_cells, this->remove_cells_scalar, this->minimal_output);
+    return jenkins_hash(this->displacement->get_hash(), this->displacement_winding->get_hash(), this->displacement_twisting->get_hash(),
+        this->assessment->get_hash(), this->tearing->get_hash(), this->remove_cells, this->remove_cells_scalar, this->minimal_output);
 }
 
 bool algorithm_grid_output_update::run_computation()
@@ -62,7 +65,7 @@ bool algorithm_grid_output_update::run_computation()
     if (!this->is_quiet()) std::cout << "Updating deformed grid output" << std::endl;
 
     // Set displaced points and displacement map
-    const auto& displaced_grid = this->displacement_twisting->is_valid()
+    const auto& displaced_grid = (this->displacement_winding->is_valid() || this->displacement_twisting->is_valid())
         ? this->displacement->get_results().displacements->get_results_twisting()
         : this->displacement->get_results().displacements->get_results();
 

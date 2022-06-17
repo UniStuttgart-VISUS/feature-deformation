@@ -170,6 +170,15 @@
                 </Documentation>
             </DoubleVectorProperty>
 
+            <IntVectorProperty name="Winding" label="Preserve windings" command="SetWinding" number_of_elements="1" default_values="0">
+                <BooleanDomain name="bool"/>
+                <Hints>
+                    <PropertyWidgetDecorator type="GenericDecorator" mode="visibility" property="Weight" value="4" />
+                </Hints>
+                <Documentation>
+                    Twist the straightened feature line, such that windings are preserved.
+                </Documentation>
+            </IntVectorProperty>
             <IntVectorProperty name="Twist" label="Twist feature" command="SetTwist" number_of_elements="1" default_values="0">
                 <BooleanDomain name="bool"/>
                 <Hints>
@@ -425,6 +434,7 @@
             </PropertyGroup>
 
             <PropertyGroup label="Twisting">
+                <Property name="Winding" />
                 <Property name="Twist" />
                 <Property name="TwistEigenvector" />
             </PropertyGroup>
