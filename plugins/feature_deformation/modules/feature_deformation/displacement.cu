@@ -943,7 +943,7 @@ void displacement_kernel_spline_joints(const float3* in_points, const float3* po
 * @param degree                 B-Spline degree
 */
 __global__
-void displacement_kernel_winding(const float3* in_points, float3* out_points, const float* arc_position_mapping,
+void displacement_kernel_winding(const float3* in_points, float3* out_points, float4* out_infos, const float* arc_position_mapping,
     const int num_points, const int num_displacements, const int degree)
 {
     __get_kernel__parameters__
@@ -958,10 +958,11 @@ void displacement_kernel_winding(const float3* in_points, float3* out_points, co
             - compute_point(0.0, degree, num_displacements, __displaced_positions__));
 
         const auto tangent = normalize(compute_point(u, degree, num_displacements, __first_derivative__, 1));
-        const auto second_derivative = normalize(compute_point(u, degree, num_displacements, __second_derivative__, 2));
-        const auto binormal = cross(tangent, second_derivative);
+        const auto second_derivative = compute_point(u, degree, num_displacements, __second_derivative__, 2);
+        const auto binormal = normalize(cross(tangent, second_derivative));
+        const auto normal = cross(tangent, binormal);
 
-        // Create rotation, rotating the binormal onto the deformed B-spline
+        // Create rotation, rotating the normal onto the deformed B-spline
         const auto deformed_tangent = normalize(compute_point(u, degree, num_displacements, __displaced_derivative__, 1));
 
         const auto rotation = compute_rotation(tangent, deformed_tangent);
@@ -969,9 +970,9 @@ void displacement_kernel_winding(const float3* in_points, float3* out_points, co
         const float3 axis{ rotation.x, rotation.y, rotation.z };
         const auto angle = rotation.w;
 
-        const auto rotated_binormal = normalize(rotate(binormal, axis, angle));
+        const auto rotated_normal = normalize(rotate(normal, axis, angle));
 
-        // Calculate rotated binormal at the center of the B-spline as reference
+        // Calculate rotated normal at the center of the B-spline as reference
         float3 winding_axis;
         float winding_angle;
 
@@ -981,10 +982,11 @@ void displacement_kernel_winding(const float3* in_points, float3* out_points, co
             const auto u = u_max / 2.0f;
 
             const auto tangent = normalize(compute_point(u, degree, num_displacements, __first_derivative__, 1));
-            const auto second_derivative = normalize(compute_point(u, degree, num_displacements, __second_derivative__, 2));
-            const auto binormal = cross(tangent, second_derivative);
+            const auto second_derivative = compute_point(u, degree, num_displacements, __second_derivative__, 2);
+            const auto binormal = normalize(cross(tangent, second_derivative));
+            const auto normal = cross(tangent, binormal);
 
-            // Create rotation, rotating the binormal onto the deformed B-spline
+            // Create rotation, rotating the normal onto the deformed B-spline
             const auto deformed_tangent = normalize(compute_point(u, degree, num_displacements, __displaced_derivative__, 1));
 
             const auto rotation = compute_rotation(tangent, deformed_tangent);
@@ -992,9 +994,9 @@ void displacement_kernel_winding(const float3* in_points, float3* out_points, co
             const float3 axis{ rotation.x, rotation.y, rotation.z };
             const auto angle = rotation.w;
 
-            const auto reference_binormal = normalize(rotate(binormal, axis, angle));
+            const auto reference_normal = normalize(rotate(normal, axis, angle));
 
-            const auto winding_rotation = compute_rotation(rotated_binormal, reference_binormal);
+            const auto winding_rotation = compute_rotation(rotated_normal, reference_normal);
 
             winding_axis = float3{ winding_rotation.x, winding_rotation.y, winding_rotation.z };
             winding_angle = winding_rotation.w;
@@ -1002,6 +1004,7 @@ void displacement_kernel_winding(const float3* in_points, float3* out_points, co
 
         // Rotate point around the (assumedly) straight feature line
         out_points[gid] = center_of_rotation + rotate(in_points[gid] - center_of_rotation, winding_axis, winding_angle);
+        out_infos[gid] = float4{ winding_axis.x, winding_axis.y, winding_axis.z, winding_angle };
     }
 }
 
@@ -1611,7 +1614,7 @@ void cuda::displacement::displace_winding(const method_t method, const parameter
     cudaMemcpyToSymbol(textures, &cuda_tex_displaced_first_derivative, sizeof(cudaTextureObject_t), __displaced_derivative__ * sizeof(cudaTextureObject_t));
 
     displacement_kernel_winding __kernel__parameters__(this->cuda_res_output_points, this->cuda_res_output_twisting_points,
-        this->cuda_res_mapping_arc_position, static_cast<int>(this->points.size()),
+        this->cuda_res_info, this->cuda_res_mapping_arc_position, static_cast<int>(this->points.size()),
         static_cast<int>(positions.size()), parameters.b_spline.degree);
 
     // Destroy resources
